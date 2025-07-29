@@ -22,6 +22,7 @@ with open("/home/submit/mariadlf/Hrare/CMSSW_10_6_27_new/src/HmumuRun3/analysis/
 GOODMUON = jsonObject['GOODMUON']
 GOODJETSALL = jsonObject['GOODJETSALL']
 LOOSEelectrons = jsonObject['LOOSEelectrons']
+LOOSEmuons = jsonObject['LOOSEmuons']
 BJETS = jsonObject['BJETS']
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
@@ -57,30 +58,41 @@ def analysis(files,year,mc,sumW):
     TRIGGER="HLT_IsoMu24"
     print(TRIGGER)
 
+    rho = 'Rho_fixedGridRhoFastjetAll'
+    if year=='12016' or year=='22016' or year=='2017' or  year=='2018':
+        rho = 'fixedGridRhoFastjetAll'
+
     dfComm = (dfINI
               .Define("mc","{}".format(mc))
               .Define("isData","{}".format(isData))
               .Define("applyJson","{}".format(JSON)).Filter("applyJson","pass JSON")
               .Define("w","{}".format(weight))
               .Define("wraw","{}".format(weight))
+              .Define("rho","{}".format(rho))
               .Define("lumiIntegrated","{}".format(lumiIntegrated))
               .Filter("PV_npvsGood>0","one good PV")
               .Define("triggerAna","{}".format(TRIGGER))
               .Filter("triggerAna>0","passing trigger")
               )
 
+    # apply JEC
+    dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, isData, "{0}" )'.format(year))
+
     df = (dfComm.Define("goodMuons","{}".format(GOODMUON)+" and Muon_mediumId and Muon_pfRelIso04_all < 0.25") # add ID and ISO
           .Filter("Sum(goodMuons)>=1 and Sum(Muon_charge[goodMuons])==0","at least two good muons OS") # fix the charge for WH and ZH          
           .Define("looseEle","{}".format(LOOSEelectrons))
+          .Define("looseMu","{}".format(LOOSEmuons))
+          .Define("jetMuon_mask", "cleaningMask(Muon_jetIdx[goodMuons],nJet)")
+          .Define("jetID_mask", "cleaningJetSelMask(0, Jet_eta, Jet_neHEF, Jet_chEmEF, Jet_muEF, Jet_neEmEF, Jet_jetId)") # redo JetID for nanoV12
           .Define("BJETS","{}".format(BJETS))
-          .Filter("Sum(looseEle)==0 and Sum(BJETS)==0", "no extra loose leptons and no bjets")
+          .Filter("Sum(looseMu)==2 and Sum(looseEle)==0 and Sum(BJETS)==0", "no extra loose leptons and no bjets")
+          ## end preselection
           .Define("HiggsCandMass","Minv(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
           .Define("fsrPhoton_mask", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
           .Define("goodFRSphoton","fsrPhoton_mask")
           .Define("HiggsCandCorrMass","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
           .Define("HiggsCandCorrPt","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
           .Define("HiggsCandCorrRapidity","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")          
-          .Define("jet_mask", "cleaningMask(Muon_jetIdx[goodMuons],nJet)")
           )
 
     if (isData == "false"):
@@ -126,6 +138,7 @@ def analysis(files,year,mc,sumW):
         hists = {
             "HiggsCandMass": {"name":"HiggsCandMass","title":"M(mu1,mu2); M(mu1,mu2) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
             "HiggsCandCorrMass": {"name":"HiggsCandCorrMass","title":"M(mu1,mu2,fsr); M(mu1,mu2,fsr) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
+            "HiggsCandCorrPt": {"name":"HiggsCandCorrPt","title":"p_{T}(mu1,mu2,fsr); p_{T}(mu1,mu2,fsr) (GeV);N_{Events}","bin":250,"xmin":0.,"xmax":250.},
         }
 
         histsVBF = {
@@ -234,12 +247,11 @@ def loopOnDataset(year):
         analysis(files,year,sampleNOW,sumW)
 
     data = []
-
     if year=="12022": data = [-11,-12,-13,-14]
     if year=="22022": data = [-15,-16,-17]
     if year=="12023": data = [-21,-22,-23,-24]
     if year=="22023": data = [-31,-32]
-    
+
     readDataQuality(year)
 
     for sampleNOW in data:

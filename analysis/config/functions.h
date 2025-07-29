@@ -64,6 +64,43 @@ Vec_b fsrMask(Vec_i indices, int size) {
   return mask;
 }
 
+// https://twiki.cern.ch/twiki/bin/view/CMS/JetID13p6TeV
+// bug fix for v12 nano
+
+Vec_b cleaningJetSelMask(unsigned int sel, Vec_f jet_eta, /*Vec_f jet_chHEF, */ Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_neEmEF, Vec_f jet_muEF, /*Vec_f jet_chMultiplicity, Vec_f jet_neMultiplicity, */ Vec_ui jet_jetId /*, int year*/){
+
+  Vec_b jet_Sel_mask(jet_eta.size(), true);
+  bool debug = false;
+  //  if(debug) printf("seljetID: %lu %d\n",jet_eta.size(),sel);
+  float result = 0.0;
+
+  for(unsigned int i=0;i<jet_eta.size();i++) {
+
+    result = 0.0;
+    if(sel >= 0){
+      bool jet_passJetIdTight = false;
+      if      (abs(jet_eta[i]) <= 2.7) jet_passJetIdTight = jet_jetId[i] & (1 << 1);
+      else if (abs(jet_eta[i]) > 2.7 && abs(jet_eta[i]) <= 3.0) jet_passJetIdTight = (jet_jetId[i] & (1 << 1)) && (jet_neHEF[i] < 0.99);
+      else if (abs(jet_eta[i]) > 3.0) jet_passJetIdTight = (jet_jetId[i] & (1 << 1)) && (jet_neEmEF[i] < 0.4);
+
+      if(sel == 0 && jet_passJetIdTight == true) result = 1.0;
+
+      if(sel == 1) {
+	bool jet_passJetIdTightLepVeto = false;
+	if (abs(jet_eta[i]) <= 2.7) jet_passJetIdTightLepVeto = jet_passJetIdTight && (jet_muEF[i] < 0.8) && (jet_chEmEF[i] < 0.8);
+	else jet_passJetIdTightLepVeto = jet_passJetIdTight;
+
+	if(jet_passJetIdTightLepVeto == true) result = 1.0;
+      } // sel == 1
+    } // sel == 0 / 1
+
+    if(result == 0) jet_Sel_mask[i] = false;
+    //    if(debug) printf("seljetID(%d/%d): %.1f / %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f\n",i, sel, result, jet_eta[i], jet_chHEF[i], jet_neHEF[i], jet_chEmEF[i], jet_neEmEF[i], jet_muEF[i], jet_chMultiplicity[i], jet_neMultiplicity[i]);
+  }
+
+  return jet_Sel_mask;
+}
+
 float Minv(const Vec_f& pt, const Vec_f& eta, const Vec_f& phi, const Vec_f& m) {
   PtEtaPhiMVector p1(pt[0], eta[0], phi[0], m[0]);
   PtEtaPhiMVector p2(pt[1], eta[1], phi[1], m[1]);

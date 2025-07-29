@@ -95,6 +95,44 @@ MyCorrections::MyCorrections(int year) {
     // to add isolation
   }
 
+  const std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
+  auto csetJEC = correction::CorrectionSet::from_file(fileNameJEC);
+
+  if(year == 12022 or year == 22022 or year == 12023 or year == 22023) {
+
+    const std::string jetType="AK4PFPuppi";
+
+    std::string tagName = "";
+    if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
+    if(year == 22022)  tagName = "Summer22EE_22Sep2023_RunE_V2";
+    if(year == 12023)  tagName = "Summer23Prompt23_RunCv123_V2";
+    if(year == 22023)  tagName = "Summer23BPixPrompt23_RunD_V3";
+    JECdata_ = csetJEC->compound().at(tagName+"_DATA_L1L2L3Res_"+jetType);
+
+    std::string tagNameMC = "";
+    if(year == 12022)  tagNameMC = "Summer22_22Sep2023_V2";
+    if(year == 22022)  tagNameMC = "Summer22EE_22Sep2023_V2";
+    if(year == 12023)  tagNameMC = "Summer23Prompt23_V2";
+    if(year == 22023)  tagNameMC = "Summer23BPixPrompt23_V3";
+    JEC_ = csetJEC->compound().at(tagNameMC+"_MC_L1L2L3Res_"+jetType);
+    jesUnc_ = csetJEC->at(tagNameMC+"_MC_Total_"+jetType);
+
+  }
+
+
+  // veto Map the jet
+  std::string fileNameJetVeto = dirName+"JME/"+subDirName+"jetvetomaps.json.gz";
+  auto csetVeto = correction::CorrectionSet::from_file(fileNameJetVeto);
+  std::string tagNameVeto = "";
+  if(year == 22016 or year == 2017 or year == 2018) tagNameVeto = "Summer19"+dataName+"_V1";
+  if(year == 12016) tagNameVeto = "Summer19UL16_V1";
+  if(year == 12022) tagNameVeto = "Summer22_23Sep2023_RunCD_V1";
+  if(year == 22022) tagNameVeto = "Summer22EE_23Sep2023_RunEFG_V1";
+  if(year == 12023) tagNameVeto = "Summer23Prompt23_RunC_V1";
+  if(year == 22023) tagNameVeto = "Summer23BPixPrompt23_RunD_V1";
+
+  vetoMaps_ = csetVeto->at(tagNameVeto);
+
 };
 
 double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, std::string year) {
