@@ -15,8 +15,6 @@ def loadTree(mytree, directory, category, year ):
       mytree.Add(directory+'snapshot_mc-17'+year+category+'.root')
 
    if (year == '_12023'):
-      mytree.Add(directory+'snapshot_mc-21'+year+category+'.root')
-      mytree.Add(directory+'snapshot_mc-22'+year+category+'.root')
       mytree.Add(directory+'snapshot_mc-23'+year+category+'.root')
       mytree.Add(directory+'snapshot_mc-24'+year+category+'.root')
 

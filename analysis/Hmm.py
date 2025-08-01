@@ -76,7 +76,7 @@ def analysis(files,year,mc,sumW):
               )
 
     # apply JEC
-    dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, isData, "{0}" )'.format(year))
+    dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}" )'.format(year))
 
     df = (dfComm.Define("goodMuons","{}".format(GOODMUON)+" and Muon_mediumId and Muon_pfRelIso04_all < 0.25") # add ID and ISO
           .Filter("Sum(goodMuons)>=1 and Sum(Muon_charge[goodMuons])==0","at least two good muons OS") # fix the charge for WH and ZH          
@@ -86,13 +86,18 @@ def analysis(files,year,mc,sumW):
           .Define("jetID_mask", "cleaningJetSelMask(0, Jet_eta, Jet_neHEF, Jet_chEmEF, Jet_muEF, Jet_neEmEF, Jet_jetId)") # redo JetID for nanoV12
           .Define("BJETS","{}".format(BJETS))
           .Filter("Sum(looseMu)==2 and Sum(looseEle)==0 and Sum(BJETS)==0", "no extra loose leptons and no bjets")
+          .Define("Muon1_pt","Muon_pt[goodMuons][0]")
+          .Define("Muon2_pt","Muon_pt[goodMuons][0]")
           ## end preselection
           .Define("HiggsCandMass","Minv(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
           .Define("fsrPhoton_mask", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
           .Define("goodFRSphoton","fsrPhoton_mask")
+          .Define("FsrPH_pt","FsrPhoton_pt[goodFRSphoton][0]")
+          .Define("FsrPH_eta","FsrPhoton_eta[goodFRSphoton][0]")
           .Define("HiggsCandCorrMass","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
           .Define("HiggsCandCorrPt","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
-          .Define("HiggsCandCorrRapidity","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")          
+          .Define("HiggsCandCorrRapidity","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
+          .Filter("HiggsCandCorrMass>50 and HiggsCandCorrMass<200","HiggsMass within reasonable range 50-200")
           )
 
     if (isData == "false"):
@@ -133,7 +138,7 @@ def analysis(files,year,mc,sumW):
                  .Define("jetVBF2_partonFlavour","Jet_partonFlavour[goodJetsAll][index_VBFJets[1]]")
                  )
         
-    if True:
+    if False:
         print("writing histograms")
         hists = {
             "HiggsCandMass": {"name":"HiggsCandMass","title":"M(mu1,mu2); M(mu1,mu2) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
@@ -189,7 +194,11 @@ def analysis(files,year,mc,sumW):
                 #
                 "HiggsCandCorrMass",
                 "HiggsCandCorrPt",
-                "HiggsCandCorrRapidity",                
+                "HiggsCandCorrRapidity",
+                "Muon1_pt",
+                "Muon2_pt",
+                "FsrPH_pt",
+                "FsrPH_eta"
         ]:
             branchList.push_back(branchName)
 
@@ -209,8 +218,9 @@ def analysis(files,year,mc,sumW):
             ]:
                 branchList.push_back(branchName)
 
-        myDir='ROOTFILES/'
-        if doVBF: outputFile = myDir+"snapshot_mc"+str(mc)+"_"+str(year)+"_withVBFjets.root"
+        myDir='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
+        if doVBF: outputFile = myDir+"snapshot_mc"+str(mc)+"_"+str(year)+"_VBFcat.root"
+        else : outputFile = myDir+"snapshot_mc"+str(mc)+"_"+str(year)+"_ggHcat.root"
 
         print(outputFile)
         snapshotOptions = ROOT.RDF.RSnapshotOptions()
@@ -249,7 +259,7 @@ def loopOnDataset(year):
     data = []
     if year=="12022": data = [-11,-12,-13,-14]
     if year=="22022": data = [-15,-16,-17]
-    if year=="12023": data = [-21,-22,-23,-24]
+    if year=="12023": data = [-23,-24]
     if year=="22023": data = [-31,-32]
 
     readDataQuality(year)

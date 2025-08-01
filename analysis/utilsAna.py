@@ -126,8 +126,8 @@ def BuildDict(year):
 
     if(year == '12023'):
         dict_ = {
-            -21: (findDIR(dirName+str(year)+"/Run2023B/Muon0/*/*/"),-1),
-            -22: (findDIR(dirName+str(year)+"/Run2023B/Muon1/*/*/"),-1),
+#            -21: (findDIR(dirName+str(year)+"/Run2023B/Muon0/*/*/"),-1),
+#            -22: (findDIR(dirName+str(year)+"/Run2023B/Muon1/*/*/"),-1),
             -23: (findDIR(dirName+str(year)+"/Run2023C/Muon0/*/*/"),-1),
             -24: (findDIR(dirName+str(year)+"/Run2023C/Muon1/*/*/"),-1),                        
         }
@@ -180,12 +180,12 @@ def loadCorrectionSet(year):
     ROOT.gInterpreter.Declare('''
         #ifndef MYFUN
         #define MYFUN
-        Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, bool isData, string year){
+        Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, float run, bool isData, string year){
         Vec_f new_jet(jet_pt.size(), 1.0);
         Vec_f raw_jet(jet_pt.size(), 1.0);
         for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) {
              raw_jet[idx] = jet_pt[idx] * (1.0 - jet_rawFactor[idx]);
-             new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, year);
+             new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year);
         }
         return new_jet;
         }
@@ -229,12 +229,11 @@ def readDataQuality(year):
         loadJSON("{}/cert/Cert_294927-306462_13TeV_UL2017_Collisions17_GoldenJSON.txt".format(dirJson))
     if(str(year) == '22016' or year == '12016'):
         loadJSON("{}/cert/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt".format(dirJson))
-    if(str(year) == '12022'):
-        loadJSON("{}/cert/Cert_Collisions2022_355100_357900_eraBCD_Golden.json".format(dirJson))
-    if(str(year) == '22022'):
-        loadJSON("{}/cert/Cert_Collisions2022_359022_362760_eraEFG_Golden.json".format(dirJson))
-    if(str(year) == '12023'):
-        loadJSON("{}/cert/Cert_Collisions2023_366403_369802_eraBC_Golden.json".format(dirJson))
-    if(str(year) == '22023'):
-        loadJSON("{}/cert/Cert_Collisions2023_369803_370790_eraD_Golden.json".format(dirJson))
+    ##
+    if((str(year) == '12022') or (str(year) == '22022')):
+        loadJSON("{}/cert/Cert_Collisions2022_355100_362760_Golden.json".format(dirJson))
+    if((str(year) == '12023') or (str(year) == '22023')):
+        loadJSON("{}/cert/Cert_Collisions2023_366442_370790_Golden.json".format(dirJson))
+    if(str(year) == '22024'):
+        loadJSON("{}/cert/Cert_Collisions2024_378981_386951_Golden.json".format(dirJson))
 

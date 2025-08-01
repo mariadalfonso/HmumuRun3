@@ -100,7 +100,14 @@ def getHisto(mytree, category, item, nbin, low, high):
    ## -------------------   
    if item == 4 : var = "HiggsCandCorrMass"
    if item == 5 : var = "HiggsCandCorrPt"
-   if item == 6 : var = "HiggsCandCorrRapidity"      
+   if item == 6 : var = "HiggsCandCorrRapidity"
+   ##
+   if item == 10 : var = "Muon1_pt"
+   if item == 11 : var = "Muon2_pt"
+   if item == 12 : var = "FsrPH_pt"
+   if item == 13 : var = "FsrPH_eta"
+   if item == 95 : var = "PV_npvsGood"
+
    # for VBF
    if item == 100 : var = "Mjj"   
    if item == 101 : var = "dEtaJJ"

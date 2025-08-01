@@ -16,7 +16,7 @@ class MyCorrections {
 public:
   MyCorrections(int year);
 
-  double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, std::string year);
+  double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year);
   double eval_jesUnc    (double eta, double pt, int type);
   double eval_jer       (double pt, double eta, double rho, double area);
   double eval_jetVeto   (std::string str1, double pt, double eta);
@@ -105,8 +105,8 @@ MyCorrections::MyCorrections(int year) {
     std::string tagName = "";
     if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
     if(year == 22022)  tagName = "Summer22EE_22Sep2023_RunE_V2";
-    if(year == 12023)  tagName = "Summer23Prompt23_RunCv123_V2";
-    if(year == 22023)  tagName = "Summer23BPixPrompt23_RunD_V3";
+    if(year == 12023)  tagName = "Summer23Prompt23_V2";
+    if(year == 22023)  tagName = "Summer23BPixPrompt23_V3";
     JECdata_ = csetJEC->compound().at(tagName+"_DATA_L1L2L3Res_"+jetType);
 
     std::string tagNameMC = "";
@@ -119,7 +119,6 @@ MyCorrections::MyCorrections(int year) {
 
   }
 
-
   // veto Map the jet
   std::string fileNameJetVeto = dirName+"JME/"+subDirName+"jetvetomaps.json.gz";
   auto csetVeto = correction::CorrectionSet::from_file(fileNameJetVeto);
@@ -130,26 +129,18 @@ MyCorrections::MyCorrections(int year) {
   if(year == 22022) tagNameVeto = "Summer22EE_23Sep2023_RunEFG_V1";
   if(year == 12023) tagNameVeto = "Summer23Prompt23_RunC_V1";
   if(year == 22023) tagNameVeto = "Summer23BPixPrompt23_RunD_V1";
-
   vetoMaps_ = csetVeto->at(tagNameVeto);
 
 };
 
-double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, std::string year) {
-
-  /*
-
-  // from Guillelmo 2024 Summer
-    for 2024 MC the jet input parameters are (area, eta, pt, rho, phi);
-
-  if (yearString == “2023_BPix”) return JECDATA_[type]->evaluate({area,eta,phi,pt,rho});
-  else if(yearString == “2024”) return JECDATA_[type]->evaluate({area,eta, pt,rho,phi,run});
-  else return JECDATA_[type]->evaluate({area,eta,pt,rho});
-  */
+double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year) {
 
   if (year == "2024" or year == "22023") {
-    if(isData) return JECdata_->evaluate({area, eta, phi, pt, rho});
-    else JEC_->evaluate({area, eta, phi, pt, rho});
+    if(isData) return JECdata_->evaluate({area, eta,  pt, rho, phi, (float) run});
+    else JEC_->evaluate({area, eta, pt, rho, phi});
+  } else if (year == "12023") {
+    if(isData) return JECdata_->evaluate({area, eta, pt, rho, (float) run});
+    else return JEC_->evaluate({area, eta, pt, rho});
   } else {
     if(isData) return JECdata_->evaluate({area, eta, pt, rho});
     else return JEC_->evaluate({area, eta, pt, rho});
