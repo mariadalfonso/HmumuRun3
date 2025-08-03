@@ -121,13 +121,23 @@ float MinvCorr(const Vec_f& pt, const Vec_f& eta, const Vec_f& phi, const Vec_f&
   // Index of the lowest-dR/ET2 among associated FSR photons
   PtEtaPhiMVector p1(pt[0], eta[0], phi[0], m[0]);
   PtEtaPhiMVector p2(pt[1], eta[1], phi[1], m[1]);
-  PtEtaPhiMVector ph(fsr_pt[0], fsr_eta[0], fsr_phi[0], 0);
-  // fixME add also the second FSR photon if exist
 
-  if (typeVar==0) { return (p1 + p2 + ph).M(); }
-  if (typeVar==1) { return (p1 + p2 + ph).Pt(); }
-  if (typeVar==2) { return (p1 + p2 + ph).Rapidity(); }
-  if (typeVar==3) { return (p1 + p2 + ph).Eta(); }
+  PtEtaPhiMVector p4 = p1 + p2;
+
+  for (int i = 0; i < 2; i++){
+
+    if (fsr_pt[i]/pt[i] > 0.4) continue;
+
+    PtEtaPhiMVector ph(fsr_pt[i], fsr_eta[i], fsr_phi[i], 0);
+    p4 = p4 + ph;
+
+  }
+
+  if (typeVar==0) { return p4.M(); }
+  if (typeVar==1) { return p4.Pt(); }
+  if (typeVar==2) { return p4.Rapidity(); }
+  if (typeVar==3) { return p4.Eta(); }
+
   return 0;
   
 }

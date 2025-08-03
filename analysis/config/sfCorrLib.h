@@ -16,7 +16,7 @@ class MyCorrections {
 public:
   MyCorrections(int year);
 
-  double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year);
+  double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc);
   double eval_jesUnc    (double eta, double pt, int type);
   double eval_jer       (double pt, double eta, double rho, double area);
   double eval_jetVeto   (std::string str1, double pt, double eta);
@@ -42,6 +42,9 @@ private:
   correction::Correction::Ref JERsf_;
   correction::CompoundCorrection::Ref JEC_;
   correction::CompoundCorrection::Ref JECdata_;
+  correction::CompoundCorrection::Ref JECdata22E_;
+  correction::CompoundCorrection::Ref JECdata22F_;
+  correction::CompoundCorrection::Ref JECdata22G_;
   correction::Correction::Ref jesUnc_;
   correction::Correction::Ref vetoMaps_;
 
@@ -104,9 +107,14 @@ MyCorrections::MyCorrections(int year) {
 
     std::string tagName = "";
     if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
-    if(year == 22022)  tagName = "Summer22EE_22Sep2023_RunE_V2";
     if(year == 12023)  tagName = "Summer23Prompt23_V2";
     if(year == 22023)  tagName = "Summer23BPixPrompt23_V3";
+    if(year == 22022)  {
+      tagName = "Summer22EE_22Sep2023_RunF_V2";
+      JECdata22E_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunE_V2")+"_DATA_L1L2L3Res_"+jetType);
+      JECdata22F_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunF_V2")+"_DATA_L1L2L3Res_"+jetType);
+      JECdata22G_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunG_V2")+"_DATA_L1L2L3Res_"+jetType);
+    }
     JECdata_ = csetJEC->compound().at(tagName+"_DATA_L1L2L3Res_"+jetType);
 
     std::string tagNameMC = "";
@@ -133,13 +141,18 @@ MyCorrections::MyCorrections(int year) {
 
 };
 
-double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year) {
+double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc) {
 
   if (year == "2024" or year == "22023") {
     if(isData) return JECdata_->evaluate({area, eta,  pt, rho, phi, (float) run});
     else JEC_->evaluate({area, eta, pt, rho, phi});
   } else if (year == "12023") {
     if(isData) return JECdata_->evaluate({area, eta, pt, rho, (float) run});
+    else return JEC_->evaluate({area, eta, pt, rho});
+  } else if (year == "22022") {
+    if(isData and mc == "-15") return JECdata22E_->evaluate({area, eta, pt, rho});
+    if(isData and mc == "-16") return JECdata22F_->evaluate({area, eta, pt, rho});
+    if(isData and mc == "-17") return JECdata22G_->evaluate({area, eta, pt, rho});
     else return JEC_->evaluate({area, eta, pt, rho});
   } else {
     if(isData) return JECdata_->evaluate({area, eta, pt, rho});

@@ -70,7 +70,7 @@ def createCanvasPads(doLog):
 
 def getHisto(mytree, category, item, nbin, low, high):
 
-   redBlue = (0, 0, 255)
+   darkBlue = (0, 0, 255)
    redDark = (191, 34, 41)
 #   redMed = (255, 40, 0)
    redMed = (237, 41, 57)
@@ -135,7 +135,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    hWH = df_common.Filter("mc==12 or mc==13").Histo1D(("hWH","h",nbin, low, high),"var","weight")
    hZH = df_common.Filter("mc==14").Histo1D(("hZH","h",nbin, low, high),"var","weight")
    hTTH = df_common.Filter("mc==15").Histo1D(("hTTH","h",nbin, low, high),"var","weight")
-
+   hZg = df_common.Filter("mc==20 or mc==21 or mc==22 or mc==23 or mc==24 or mc==25").Histo1D(("hZg","h",nbin, low, high),"var","weight")
    
    if False: hData = df_common.Filter("mc<0").Histo1D(("hData","h",nbin, low, high),"var","weight")
    else:
@@ -148,7 +148,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    if hData: hData.SetLineWidth(2)      
    if hData: hData.SetLineColor(ROOT.kBlack)
 
-   for h, color in zip([hDY, hTT12L, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH], [azure, green, orange, gold,redMed, redDark, redLight, redLight, redDark]):
+   for h, color in zip([hDY, hTT12L, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH, hZg], [azure, green, orange, gold,redMed, redDark, redLight, redLight, redDark, orangeDark]):
        if h:
            h.SetLineWidth(3)
            h.SetLineColor(ROOT.TColor.GetColor(*color))
@@ -166,8 +166,10 @@ def getHisto(mytree, category, item, nbin, low, high):
    hZH_ = MyHisto('hZH', hZH)
    hWH_ = MyHisto('hWH', hWH)
    hTTH_ = MyHisto('hTTH', hTTH)
-   
-   listHisto = [hDY_, hTT12L_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_]
+   #
+   hZg_ = MyHisto('hZg', hZg)
+
+   listHisto = [hDY_, hTT12L_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_, hZg_]
    print(item)
 
    return listHisto

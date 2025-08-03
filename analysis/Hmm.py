@@ -76,7 +76,7 @@ def analysis(files,year,mc,sumW):
               )
 
     # apply JEC
-    dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}" )'.format(year))
+    dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
 
     df = (dfComm.Define("goodMuons","{}".format(GOODMUON)+" and Muon_mediumId and Muon_pfRelIso04_all < 0.25") # add ID and ISO
           .Filter("Sum(goodMuons)>=1 and Sum(Muon_charge[goodMuons])==0","at least two good muons OS") # fix the charge for WH and ZH          
@@ -90,10 +90,11 @@ def analysis(files,year,mc,sumW):
           .Define("Muon2_pt","Muon_pt[goodMuons][0]")
           ## end preselection
           .Define("HiggsCandMass","Minv(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
-          .Define("fsrPhoton_mask", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
-          .Define("goodFRSphoton","fsrPhoton_mask")
-          .Define("FsrPH_pt","FsrPhoton_pt[goodFRSphoton][0]")
-          .Define("FsrPH_eta","FsrPhoton_eta[goodFRSphoton][0]")
+          .Define("goodFRSphoton", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
+          .Define("FsrPH_pt","FsrPhoton_pt[goodFRSphoton]")
+          .Define("FsrPH_eta","FsrPhoton_eta[goodFRSphoton]")
+          .Define("FsrPH_pt_ratio0","FsrPhoton_pt[goodFRSphoton][0]/Muon_pt[goodMuons][0]")
+          .Define("FsrPH_pt_ratio1","FsrPhoton_pt[goodFRSphoton][1]/Muon_pt[goodMuons][1]")
           .Define("HiggsCandCorrMass","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
           .Define("HiggsCandCorrPt","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
           .Define("HiggsCandCorrRapidity","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
@@ -144,6 +145,8 @@ def analysis(files,year,mc,sumW):
             "HiggsCandMass": {"name":"HiggsCandMass","title":"M(mu1,mu2); M(mu1,mu2) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
             "HiggsCandCorrMass": {"name":"HiggsCandCorrMass","title":"M(mu1,mu2,fsr); M(mu1,mu2,fsr) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
             "HiggsCandCorrPt": {"name":"HiggsCandCorrPt","title":"p_{T}(mu1,mu2,fsr); p_{T}(mu1,mu2,fsr) (GeV);N_{Events}","bin":250,"xmin":0.,"xmax":250.},
+            "FsrPH_pt": {"name":"FsrPH_pt","title":"FSR0; FSR (GeV);N_{Events}","bin":200,"xmin":0.,"xmax":20.},
+            "FsrPH_pt_ratio0": {"name":"FsrPH_pt_ratio0","title":"FSR_ratio0; FSR/p_{T}(mu1) (GeV);N_{Events}","bin":100,"xmin":0.,"xmax":10.},
         }
 
         histsVBF = {
@@ -176,6 +179,8 @@ def analysis(files,year,mc,sumW):
                 if mc==14: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_ZH.png")
                 if mc==15: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_TTH.png")
                 if mc==100: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_DY.png")
+                if mc==20: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Zg_VBF.png")
+                if mc==21: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Zg_ggH.png")
 
     if True:
         print("writing snapshot")                
@@ -242,6 +247,7 @@ def loopOnDataset(year):
 
     mc = []
     mc.extend([10,11,12,13,14,15])
+    mc.extend([20,21,22,23,24,25])
     mc.extend([100,101,102])
     mc.extend([201,202,203,204])
 

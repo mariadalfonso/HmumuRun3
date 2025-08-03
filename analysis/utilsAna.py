@@ -13,6 +13,8 @@ def loadUserCode():
     ROOT.gInterpreter.AddIncludePath("./.")
     ROOT.gInterpreter.ProcessLine('#include "./config/functions.h"')
 
+# lumis with golden json
+#https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis#ReReco_ERAS_A_B_C_D_E
 lumis={
     '12022':7.98, # C-D
     '22022':26.67, # E, F, G
@@ -90,13 +92,19 @@ def BuildDict(year):
     
     thisdict = {
         10: (findDIR(dirName+"/"+str(year)+"/VBFHto2Mu_M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.00022),
-        11: (findDIR(dirName+"/"+str(year)+"/GluGluHto2Mu_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.00022),
+        11: (findDIR(dirName+"/"+str(year)+"/GluGluHto2Mu_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.00022),
         12: (findDIR(dirName+"/"+str(year)+"/WminusH_Hto2Mu_WtoAll_M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wm']*0.00022),
         13: (findDIR(dirName+"/"+str(year)+"/WplusH_Hto2Mu_WtoAll_M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wp']*0.00022),
         14: (findDIR(dirName+"/"+str(year)+"/ZH_Hto2Mu_ZtoAll_M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.00022),
-##        15: (findDIR(dirName+"/"+str(year)+"/..../"+campaign),xsecRun3['ggZH']),
         15: (findDIR(dirName+"/"+str(year)+"/TTH_Hto2Mu_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.00022),
-        #
+        ##
+        20: (findDIR(dirName+"/"+str(year)+"/VBFHtoZG_Zto2L_M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.0015),
+        21: (findDIR(dirName+"/"+str(year)+"/GluGluHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.0015),
+        22: (findDIR(dirName+"/"+str(year)+"/WminusH_HtoZG_WtoAll_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['Wm']*0.0015),
+        23: (findDIR(dirName+"/"+str(year)+"/WplusH_HtoZG_WtoAll_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['Wp']*0.0015),
+        24: (findDIR(dirName+"/"+str(year)+"/ZH_ZtoAll_HtoZGto2LG_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZH']*0.0015),
+        25: (findDIR(dirName+"/"+str(year)+"/ttHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.0015),
+        ##
         100: (findDIR(dirName+"/"+str(year)+"/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']),
         101: (findDIR(dirName+"/"+str(year)+"/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7"+campaign),xsecRun3['EWKZ']),
         102: (findDIR(dirName+"/"+str(year)+"/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TT2l2n']),
@@ -180,12 +188,12 @@ def loadCorrectionSet(year):
     ROOT.gInterpreter.Declare('''
         #ifndef MYFUN
         #define MYFUN
-        Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, float run, bool isData, string year){
+        Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, float run, bool isData, string year, string mc){
         Vec_f new_jet(jet_pt.size(), 1.0);
         Vec_f raw_jet(jet_pt.size(), 1.0);
         for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) {
              raw_jet[idx] = jet_pt[idx] * (1.0 - jet_rawFactor[idx]);
-             new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year);
+             new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year, mc );
         }
         return new_jet;
         }

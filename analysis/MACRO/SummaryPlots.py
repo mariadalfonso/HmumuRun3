@@ -34,6 +34,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
       if obj.name == 'hTTH': hTTH = obj.hOBJ
       if obj.name == 'hVBFH': hVBFH = obj.hOBJ
       if obj.name == 'hggH': hggH = obj.hOBJ
+      if obj.name == 'hZg': hZg = obj.hOBJ
       #
       if obj.name == 'hDY': hDY = obj.hOBJ
       if obj.name == 'hTT12L': hTT12L = obj.hOBJ
@@ -46,7 +47,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    allstack = ROOT.THStack()
    BKGstack = ROOT.THStack()
    SIGstack = ROOT.THStack()
-   for h in [hTT12L, hVV, hEWK, hDY]:
+   for h in [hTT12L, hZg, hVV, hEWK, hDY]:
       print('Integral ',h.GetName(), " = ", h.Integral())
       BKGstack.Add(h.GetValue())
 
@@ -54,7 +55,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
       print('Integral ',h.GetName(), " = ", h.Integral())      
       SIGstack.Add(h.GetValue())
 
-   for h in [hZH, hWH, hTTH, hVBFH, hggH, hTT12L, hVV, hEWK, hDY]:
+   for h in [hZH, hWH, hTTH, hVBFH, hggH, hTT12L, hZg, hVV, hEWK, hDY]:
       allstack.Add(h.GetValue())
 
    stack = allstack
@@ -117,7 +118,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    pad1.cd()
    legend = ROOT.TLegend()
    legend.SetX1NDC(0.85)  # left
-   legend.SetY1NDC(0.90)  # bottom
+   legend.SetY1NDC(0.80)  # bottom
    legend.SetX2NDC(0.95)  # right
    legend.SetY2NDC(0.98)  # top
    
@@ -129,6 +130,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY + jets", "f")
    if hTT12L and hDY.Integral()>0: legend.AddEntry(hTT12L.GetValue(), "ttbar 2l + jets", "f")
    if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + jets", "f")
+   if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "Z#gamma + jets", "f")
    if hVBFH and hVBFH.Integral()>0: legend.AddEntry(hVBFH.GetValue(), "VBF H", "f")
    if hggH and hggH.Integral()>0: legend.AddEntry(hggH.GetValue(), "ggH", "f")
    if hData and hData.Integral()>0: legend.AddEntry(hData.GetValue(), "Data" ,"lep")
@@ -147,12 +149,11 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    text.SetTextSize(0.04)
    text.DrawLatex(0.65, 0.93, "#sqrt{s} = 13 TeV,%0.2f fb^{-1}"% (lumis[year]))
 
-
    # Add TLine blind
-   line1 = ROOT.TLine( 110, 0., 110., 500000.)
+   line1 = ROOT.TLine( 110, 0, 110, 500000.)
    line1.SetLineColor(11);
    if item==4: line1.Draw()
-   line2 = ROOT.TLine( 150, 0, 150., 500000.)
+   line2 = ROOT.TLine( 150, 0, 150, 500000.)
    line2.SetLineColor(11);
    if item==4: line2.Draw()
 
