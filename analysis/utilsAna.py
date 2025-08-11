@@ -20,6 +20,7 @@ lumis={
     '22022':26.67, # E, F, G
     '12023':17.794, #C
     '22023':9.451, #D
+    '2024':107.3, #C-I
 }
 
 xsecRun2={
@@ -45,6 +46,13 @@ xsecRun3={
     'ZZto2L2Nu':1.031*1000,
     'ZZto2L2Q':6.788*1000,
     'WZto3LNu':4.924*1000
+}
+
+# from Marini 31 july
+#kfactor = 2094 *3 / (5378 + 1017 + 385.5 ) = 0.9264803481 (MATRIX MLL>50)
+
+kfactor={
+    'Z':0.9265,
 }
 
 def findDIR(directory,useXROOTD=False):
@@ -80,23 +88,25 @@ def findDIR(directory,useXROOTD=False):
     return rootFiles
 
 
-
 def BuildDict(year):
 
     dirName="/ceph/submit/data/group/cms/store/Hmumu/v12/"
+    if (str(year) == '2024'): dirName="/ceph/submit/data/group/cms/store/Hmumu/v15/"
+
     campaign=""
     if (str(year) == '12022'): campaign="/NANOAODSIM/130X_mcRun3_2022_realistic_v*/*"
     if (str(year) == '22022'): campaign="/NANOAODSIM/130X_mcRun3_2022_realistic_postEE_v*/*"
     if (str(year) == '12023'): campaign="/NANOAODSIM/130X_mcRun3_2023_realistic_v*/*"
     if (str(year) == '22023'): campaign="/NANOAODSIM/130X_mcRun3_2023_realistic_postBPix_v*-v*/*"
-    
+    if (str(year) == '2024'): campaign="/NANOAODSIM/150X_mcRun3_2024_realistic_v*-v*/*"
+
     thisdict = {
-        10: (findDIR(dirName+"/"+str(year)+"/VBFHto2Mu_M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.00022),
-        11: (findDIR(dirName+"/"+str(year)+"/GluGluHto2Mu_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.00022),
-        12: (findDIR(dirName+"/"+str(year)+"/WminusH_Hto2Mu_WtoAll_M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wm']*0.00022),
-        13: (findDIR(dirName+"/"+str(year)+"/WplusH_Hto2Mu_WtoAll_M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wp']*0.00022),
-        14: (findDIR(dirName+"/"+str(year)+"/ZH_Hto2Mu_ZtoAll_M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.00022),
-        15: (findDIR(dirName+"/"+str(year)+"/TTH_Hto2Mu_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.00022),
+        10: (findDIR(dirName+"/"+str(year)+"/VBF*Hto2Mu_*M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.00022),
+        11: (findDIR(dirName+"/"+str(year)+"/GluGlu*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.00022),
+        12: (findDIR(dirName+"/"+str(year)+"/WminusH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wm']*0.00022),
+        13: (findDIR(dirName+"/"+str(year)+"/WplusH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wp']*0.00022),
+        14: (findDIR(dirName+"/"+str(year)+"/ZH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.00022),
+        15: (findDIR(dirName+"/"+str(year)+"/TTH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.00022),
         ##
         20: (findDIR(dirName+"/"+str(year)+"/VBFHtoZG_Zto2L_M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.0015),
         21: (findDIR(dirName+"/"+str(year)+"/GluGluHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.0015),
@@ -105,9 +115,11 @@ def BuildDict(year):
         24: (findDIR(dirName+"/"+str(year)+"/ZH_ZtoAll_HtoZGto2LG_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZH']*0.0015),
         25: (findDIR(dirName+"/"+str(year)+"/ttHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.0015),
         ##
+        103: (findDIR(dirName+"/"+str(year)+"/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']*(1./3)),
         100: (findDIR(dirName+"/"+str(year)+"/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']),
         101: (findDIR(dirName+"/"+str(year)+"/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7"+campaign),xsecRun3['EWKZ']),
         102: (findDIR(dirName+"/"+str(year)+"/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TT2l2n']),
+        #
         201: (findDIR(dirName+"/"+str(year)+"/WZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['WZto2L2Q']),
         202: (findDIR(dirName+"/"+str(year)+"/ZZto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto2L2Nu']),
         203: (findDIR(dirName+"/"+str(year)+"/ZZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto2L2Q']),
@@ -141,11 +153,29 @@ def BuildDict(year):
         }
         thisdict.update(dict_)
 
-    # to finalize
     if(year == '22023'):
         dict_ = {
             -31: (findDIR(dirName+str(year)+"/Run2023D/Muon0/*/*/"),-1),
             -32: (findDIR(dirName+str(year)+"/Run2023D/Muon1/*/*/"),-1),                                    
+        }
+        thisdict.update(dict_)
+
+    if(year == '2024'):
+        dict_ = {
+            -41: (findDIR(dirName+str(year)+"/Run2024C/Muon0/*/*/"),-1),
+            -42: (findDIR(dirName+str(year)+"/Run2024C/Muon1/*/*/"),-1),
+            -43: (findDIR(dirName+str(year)+"/Run2024D/Muon0/*/*/"),-1),
+            -44: (findDIR(dirName+str(year)+"/Run2024D/Muon1/*/*/"),-1),
+            -45: (findDIR(dirName+str(year)+"/Run2024E/Muon0/*/*/"),-1),
+            -46: (findDIR(dirName+str(year)+"/Run2024E/Muon1/*/*/"),-1),
+            -47: (findDIR(dirName+str(year)+"/Run2024F/Muon0/*/*/"),-1),
+            -48: (findDIR(dirName+str(year)+"/Run2024F/Muon1/*/*/"),-1),
+            -49: (findDIR(dirName+str(year)+"/Run2024G/Muon0/*/*/"),-1),
+            -50: (findDIR(dirName+str(year)+"/Run2024G/Muon1/*/*/"),-1),
+            -51: (findDIR(dirName+str(year)+"/Run2024H/Muon0/*/*/"),-1),
+            -52: (findDIR(dirName+str(year)+"/Run2024H/Muon1/*/*/"),-1),
+            -53: (findDIR(dirName+str(year)+"/Run2024I/Muon0/*/*/"),-1),
+            -54: (findDIR(dirName+str(year)+"/Run2024I/Muon1/*/*/"),-1),
         }
         thisdict.update(dict_)
 
@@ -183,8 +213,8 @@ def loadCorrectionSet(year):
     ROOT.gInterpreter.Declare('#include "./config/sfCorrLib.h"')
 
     ROOT.gInterpreter.ProcessLine('auto corr_sf = MyCorrections(%d);' % (year))
+
     # to add the JEC scale and uncertainties
-    ROOT.gInterpreter.ProcessLine('auto corr_sf = MyCorrections(%d);' % (year))
     ROOT.gInterpreter.Declare('''
         #ifndef MYFUN
         #define MYFUN
@@ -197,11 +227,30 @@ def loadCorrectionSet(year):
         }
         return new_jet;
         }
+
         Vec_f computeJECuncertainties(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_eta){
         Vec_f new_jet_delta(jet_pt.size(), 1.0);
         int type = 0;
         for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) new_jet_delta[idx] = corrSFs.eval_jesUnc(jet_eta[idx], jet_pt[idx], type );
         return new_jet_delta;
+        }
+
+        Vec_b cleaningJetVetoMapMask(const Vec_f& jet_eta, const Vec_f& jet_phi, const string year) {
+        Vec_b jet_vetoMap_mask(jet_eta.size(), true);
+        for (unsigned int idx = 0; idx < jet_eta.size(); ++idx) {
+        double jetVetoMap = corr_sf.eval_jetVeto(jet_eta[idx], jet_phi[idx]);
+        if(jetVetoMap > 0) jet_vetoMap_mask[idx] = false;
+        }
+        return jet_vetoMap_mask;
+        }
+
+        Vec_b cleaningJetIDMask(Vec_f jet_eta, Vec_f jet_chHEF, Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_neEmEF, Vec_f jet_muEF, Vec_f jet_chMultiplicity, Vec_f jet_neMultiplicity, string year) {
+        Vec_b jetID_mask(jet_eta.size(), true);
+        for (unsigned int idx = 0; idx < jet_eta.size(); ++idx) {
+        double jetID = corr_sf.eval_jetID(jet_eta[idx], jet_chHEF[idx], jet_neHEF[idx], jet_chEmEF[idx], jet_neEmEF[idx], jet_muEF[idx], jet_chMultiplicity[idx], jet_neMultiplicity[idx]);
+        if (jetID < 0) jetID_mask[idx] = false;
+        }
+        return jetID_mask;
         }
         #endif
         '''
@@ -242,6 +291,6 @@ def readDataQuality(year):
         loadJSON("{}/cert/Cert_Collisions2022_355100_362760_Golden.json".format(dirJson))
     if((str(year) == '12023') or (str(year) == '22023')):
         loadJSON("{}/cert/Cert_Collisions2023_366442_370790_Golden.json".format(dirJson))
-    if(str(year) == '22024'):
+    if(str(year) == '2024'):
         loadJSON("{}/cert/Cert_Collisions2024_378981_386951_Golden.json".format(dirJson))
 

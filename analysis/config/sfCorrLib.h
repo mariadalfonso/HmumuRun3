@@ -19,7 +19,8 @@ public:
   double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc);
   double eval_jesUnc    (double eta, double pt, int type);
   double eval_jer       (double pt, double eta, double rho, double area);
-  double eval_jetVeto   (std::string str1, double pt, double eta);
+  double eval_jetID     (float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity);
+  double eval_jetVeto   (double eta, double phi);
   double eval_puSF      (double NumTrueInteractions, std::string weights);
   double eval_photonSF  (std::string year, std::string valType, std::string workingPoint, double eta, double pt);
   double eval_photonPixVetoSF  (std::string year, std::string valType, std::string workingPoint, double eta, double pt);
@@ -47,6 +48,7 @@ private:
   correction::CompoundCorrection::Ref JECdata22G_;
   correction::Correction::Ref jesUnc_;
   correction::Correction::Ref vetoMaps_;
+  correction::Correction::Ref jetTightID_;
 
 };
 
@@ -66,7 +68,7 @@ MyCorrections::MyCorrections(int year) {
   if(year == 22022)  { subDirName += "2022_Summer22EE/"; }
   if(year == 12023)  { subDirName += "2023_Summer23/"; }
   if(year == 22023)  { subDirName += "2023_Summer23BPix/"; }
-  if(year == 2024)   { subDirName += "2024_Winter24/"; }
+  if(year == 2024)   { subDirName += "2024_Summer24/"; }
 
   const std::string fileNameLUM = dirName+"LUM/"+subDirName+"puWeights.json.gz";
 
@@ -79,13 +81,17 @@ MyCorrections::MyCorrections(int year) {
   if(year == 12023) corrNameLUM = "Collisions2023_366403_369802_eraBC_GoldenJson";
   if(year == 22023) corrNameLUM = "Collisions2023_369803_370790_eraD_GoldenJson";
 
-  auto csetPU = correction::CorrectionSet::from_file(fileNameLUM);
-  puSF_ = csetPU->at(corrNameLUM);
+  if(year == 22023 or year == 12023 or year == 22022 or year == 12022) {
+    auto csetPU = correction::CorrectionSet::from_file(fileNameLUM);
+    // 2024 missing
+    puSF_ = csetPU->at(corrNameLUM);
+  }
 
   std::string fileNameMU = dirName+"MUO/"+subDirName+"muon_Z.json.gz";
 
-  auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
   if(year == 2018 or year == 2017 or year == 12016 or year == 22016) {
+    auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
+
     muonTRKSF_ = csetMu->at("NUM_TrackerMuons_DEN_genTracks");
     muonIDTSF_ = csetMu->at("NUM_TightID_DEN_genTracks");
     muonIDMSF_ = csetMu->at("NUM_MediumID_DEN_genTracks");
@@ -94,6 +100,8 @@ MyCorrections::MyCorrections(int year) {
   }
 
   if(year == 22023 or year == 12023 or year == 22022 or year == 12022) {
+    auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
+    // 2024 missing
     muonIDMSF_ = csetMu->at("NUM_MediumID_DEN_TrackerMuons");
     // to add isolation
   }
@@ -101,14 +109,14 @@ MyCorrections::MyCorrections(int year) {
   const std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
   auto csetJEC = correction::CorrectionSet::from_file(fileNameJEC);
 
-  if(year == 12022 or year == 22022 or year == 12023 or year == 22023) {
-
+  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024) {
     const std::string jetType="AK4PFPuppi";
 
     std::string tagName = "";
     if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
     if(year == 12023)  tagName = "Summer23Prompt23_V2";
     if(year == 22023)  tagName = "Summer23BPixPrompt23_V3";
+    if(year == 2024)   tagName = "Summer24Prompt24_V1";
     if(year == 22022)  {
       tagName = "Summer22EE_22Sep2023_RunF_V2";
       JECdata22E_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunE_V2")+"_DATA_L1L2L3Res_"+jetType);
@@ -122,10 +130,18 @@ MyCorrections::MyCorrections(int year) {
     if(year == 22022)  tagNameMC = "Summer22EE_22Sep2023_V2";
     if(year == 12023)  tagNameMC = "Summer23Prompt23_V2";
     if(year == 22023)  tagNameMC = "Summer23BPixPrompt23_V3";
+    if(year == 2024)   tagNameMC = "Summer24Prompt24_V1";
     JEC_ = csetJEC->compound().at(tagNameMC+"_MC_L1L2L3Res_"+jetType);
     jesUnc_ = csetJEC->at(tagNameMC+"_MC_Total_"+jetType);
 
   }
+
+  // jetID
+  std::string fileNameJetID = dirName+"JME/"+subDirName+"jetid.json.gz";
+  auto csetJetID = correction::CorrectionSet::from_file(fileNameJetID);
+  std::string tagNameJetID = "AK4PUPPI_Tight";
+  //  std::string tagNameJetID = "AK4PUPPI_TightLeptonVeto";
+  jetTightID_           = csetJetID->at(tagNameJetID);
 
   // veto Map the jet
   std::string fileNameJetVeto = dirName+"JME/"+subDirName+"jetvetomaps.json.gz";
@@ -137,6 +153,7 @@ MyCorrections::MyCorrections(int year) {
   if(year == 22022) tagNameVeto = "Summer22EE_23Sep2023_RunEFG_V1";
   if(year == 12023) tagNameVeto = "Summer23Prompt23_RunC_V1";
   if(year == 22023) tagNameVeto = "Summer23BPixPrompt23_RunD_V1";
+  if(year == 2024) tagNameVeto = "Summer24Prompt24_RunBCDEFGHI_V1";
   vetoMaps_ = csetVeto->at(tagNameVeto);
 
 };
@@ -172,8 +189,18 @@ double MyCorrections::eval_jer(double double1, double double2, double double3, d
   return JER_->evaluate({double1, double2, double3, double4});
 };
 
-double MyCorrections::eval_jetVeto(std::string str1, double double1, double double2) {
-  return vetoMaps_->evaluate({str1,double1, double2});
+double MyCorrections::eval_jetID(float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity) {
+
+  eta = fabs(eta);
+  int multiplicity = chMultiplicity + neMultiplicity;
+  //"chEmEF" and "muEF" unused in 2024 but still needed
+  return jetTightID_->evaluate({eta, chHEF, neHEF, chEmEF, neEmEF, muEF, chMultiplicity, neMultiplicity, multiplicity});
+
+};
+
+double MyCorrections::eval_jetVeto(double eta, double phi) {
+  std::string typeMaps = "jetvetomap";
+  return vetoMaps_->evaluate({typeMaps,eta, phi});
 };
 
 double MyCorrections::eval_electronSF(std::string year, std::string valType,  std::string workingPoint, double eta, double pt, double minVal) {
@@ -201,11 +228,11 @@ double MyCorrections::eval_muonTRKSF(std::string year, std::string valType, doub
 double MyCorrections::eval_muonIDSF(std::string year, std::string valType, double eta, double pt, std::string workingPoint) {
   eta = std::min(std::abs(eta),2.399);
   pt = std::max(pt,15.001);
-  
+
   if (workingPoint=="T") {
-    return muonIDTSF_->evaluate({year, eta, pt, valType});
+    return muonIDTSF_->evaluate({eta, pt, valType});
   } else if (workingPoint=="M") {
-    return muonIDMSF_->evaluate({year, eta, pt, valType});
+    return muonIDMSF_->evaluate({eta, pt, valType});
   }
   return 1.;
 };

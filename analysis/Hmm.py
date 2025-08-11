@@ -26,18 +26,29 @@ LOOSEmuons = jsonObject['LOOSEmuons']
 BJETS = jsonObject['BJETS']
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
-doVBF = True
+if sys.argv[2]=='isVBF': doVBF = True
+if sys.argv[2]=='isGGH': doVBF = False
 
 def dfwithSYST(df,year):
 
-    dfFinal_withSF = (df
-                      .Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
-                      .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
-                      .Define("SFpu_Dn",'corr_sf.eval_puSF(Pileup_nTrueInt,"down")')
-                      #
-                      .Define("idx_nom_up_down", "indices(3)")
-                      .Define("w_allSF", "w*SFpu_Nom")
-                      )
+    if year=='2024': dfFinal_withSF = df.Define("w_allSF", "w")
+
+    else:
+
+        dfFinal_withSF = (df
+                          .Define("SFmuon_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon_eta[goodMuons][0], Muon_pt[goodMuons][0], "M")'.format(year))
+                          .Define("SFmuon_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon_eta[goodMuons][0], Muon_pt[goodMuons][0], "M")'.format(year))
+                          .Define("SFmuon_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon_eta[goodMuons][0], Muon_pt[goodMuons][0], "M")'.format(year))
+                          #
+                          .Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
+                          .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
+                          .Define("SFpu_Dn",'corr_sf.eval_puSF(Pileup_nTrueInt,"down")')
+                          #
+                          #                      .Define("muoID_weights", "NomUpDownVar(SFmuon_ID_Nom, SFmuon_ID_Up, SFmuon_ID_Dn, w_allSF)")
+                          #                      .Define("pu_weights", "NomUpDownVar(SFpu_Nom, SFpu_Up, SFpu_Dn, w_allSF)")
+                          #                      .Define("idx_nom_up_down", "indices(3)")
+                          .Define("w_allSF", "w*SFpu_Nom*SFmuon_ID_Nom")
+                          )
 
     return dfFinal_withSF
 
@@ -75,19 +86,30 @@ def analysis(files,year,mc,sumW):
               .Filter("triggerAna>0","passing trigger")
               )
 
+
     # apply JEC
     dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
 
+    # compute JetID (note v15 vs v12)
+    if year=="2024":
+        dfComm = dfComm.Define("jetID_mask", 'cleaningJetIDMask(Jet_eta, Jet_chHEF, Jet_neHEF, Jet_chEmEF, Jet_neEmEF, Jet_muEF, Jet_chMultiplicity, Jet_neMultiplicity, "{0}")'.format(year)) #  for nanov15 use the JetID
+    else:
+        dfComm = dfComm.Define("jetID_mask", "cleaningJetSelMask(0, Jet_eta, Jet_neHEF, Jet_chEmEF, Jet_muEF, Jet_neEmEF, Jet_jetId)") # redo JetID for nanoV12,
+
     df = (dfComm.Define("goodMuons","{}".format(GOODMUON)+" and Muon_mediumId and Muon_pfRelIso04_all < 0.25") # add ID and ISO
           .Filter("Sum(goodMuons)>=1 and Sum(Muon_charge[goodMuons])==0","at least two good muons OS") # fix the charge for WH and ZH          
-          .Define("looseEle","{}".format(LOOSEelectrons))
           .Define("looseMu","{}".format(LOOSEmuons))
           .Define("jetMuon_mask", "cleaningMask(Muon_jetIdx[goodMuons],nJet)")
-          .Define("jetID_mask", "cleaningJetSelMask(0, Jet_eta, Jet_neHEF, Jet_chEmEF, Jet_muEF, Jet_neEmEF, Jet_jetId)") # redo JetID for nanoV12
+          # Jet_puIdDisc only for nanov15
+          .Define("jetVeto_mask",'cleaningJetVetoMapMask(Jet_eta,Jet_phi,"{0}")'.format(year))
+          .Filter("Sum(looseMu)==2", "no extra muons")
+          #
+          .Define("looseEle","{}".format(LOOSEelectrons))
+          .Filter("Sum(looseEle)==0", "no extra electrons")
           .Define("BJETS","{}".format(BJETS))
-          .Filter("Sum(looseMu)==2 and Sum(looseEle)==0 and Sum(BJETS)==0", "no extra loose leptons and no bjets")
+          .Filter("Sum(BJETS)==0","no bjets")
           .Define("Muon1_pt","Muon_pt[goodMuons][0]")
-          .Define("Muon2_pt","Muon_pt[goodMuons][0]")
+          .Define("Muon2_pt","Muon_pt[goodMuons][1]")
           ## end preselection
           .Define("HiggsCandMass","Minv(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
           .Define("goodFRSphoton", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
@@ -115,7 +137,7 @@ def analysis(files,year,mc,sumW):
              .Define("jetAll_Phi","Jet_phi[goodJetsAll]")
              .Define("jetAll_Mass","Jet_mass[goodJetsAll]")
              #
-             .Define("index_VBFJets","getVBFIndicies(jetAll_Eta, jetAll_Phi, jetAll_Pt)")
+             .Define("index_VBFJets","getVBFIndicies(jetAll_Pt, jetAll_Eta, jetAll_Phi, jetAll_Mass)")
              .Filter("index_VBFJets[0]!= -1", "both VBF jets")
              .Filter("index_VBFJets[1]!= -1", "both VBF jets")
              .Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f").Filter("Sum(goodJetsAll)>1","two VBF jets")
@@ -138,7 +160,13 @@ def analysis(files,year,mc,sumW):
             df= (df.Define("jetVBF1_partonFlavour","Jet_partonFlavour[goodJetsAll][index_VBFJets[0]]")
                  .Define("jetVBF2_partonFlavour","Jet_partonFlavour[goodJetsAll][index_VBFJets[1]]")
                  )
-        
+
+    if False:
+        print("---------------- SUMMARY -------------")
+        ## this doens't work with the negative weights
+        report = df.Report()
+        report.Print()
+
     if False:
         print("writing histograms")
         hists = {
@@ -182,8 +210,24 @@ def analysis(files,year,mc,sumW):
                 if mc==20: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Zg_VBF.png")
                 if mc==21: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Zg_ggH.png")
 
+
+        myDir='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
+        if doVBF: outputFileHisto = myDir+"histoOUTname_"+str(mc)+"_"+str(year)+"_VBFcat.root"
+        else : outputFileHisto = myDir+"histoOUTname_"+str(mc)+"_"+str(year)+"_ggHcat.root"
+
+        print(outputFileHisto )
+        myfile = ROOT.TFile(outputFileHisto,"RECREATE")
+
+        myfile.ls()
+        for h in histos:
+            print(h.GetName())
+            h.Write()
+
+        myfile.Close()
+        myfile.Write()
+
     if True:
-        print("writing snapshot")                
+        print("writing snapshot")
 
         branchList = ROOT.vector('string')()
         for branchName in [
@@ -237,18 +281,21 @@ def analysis(files,year,mc,sumW):
         now = datetime.now()
         print('==> ends: ',now)
         
-            
+
 
 def loopOnDataset(year):
 
     thisdict = BuildDict(year)
 
+    ## both data and MC
     loadCorrectionSet(int(year))
 
     mc = []
     mc.extend([10,11,12,13,14,15])
-    mc.extend([20,21,22,23,24,25])
-    mc.extend([100,101,102])
+    if year=="12022" or year=="22022" or year=="12023" or year=="22023": mc.extend([20,21,22,23,24,25])
+    if year=="2024": mc.extend([103])
+    else: mc.extend([100])
+    mc.extend([102])
     mc.extend([201,202,203,204])
 
     print(mc)
@@ -267,6 +314,7 @@ def loopOnDataset(year):
     if year=="22022": data = [-15,-16,-17]
     if year=="12023": data = [-23,-24]
     if year=="22023": data = [-31,-32]
+    if year=="2024": data = [-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54]
 
     readDataQuality(year)
 

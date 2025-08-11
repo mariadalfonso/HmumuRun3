@@ -35,6 +35,7 @@ lumis={
     '_22022':26.67, # E, F, G
     '_12023':17.794, #C
     '_22023':9.451, #D
+    '_2024':107.3, #C-I
 }
 
 def deltaPhi(phi1,phi2):
@@ -125,7 +126,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    ## -------------------
 
    df_common = df.Define("var","{}".format(var)).Define("weight","w_allSF")
-   hDY = df_common.Filter("mc==100").Histo1D(("hDY","h",nbin, low, high),"var","weight")
+   hDY = df_common.Filter("mc==100 or mc==103").Histo1D(("hDY","h",nbin, low, high),"var","weight")
    hEWK = df_common.Filter("mc==101").Histo1D(("hEWK","h",nbin, low, high),"var","weight")
    hTT12L = df_common.Filter("mc==102").Histo1D(("hTT12L","h",nbin, low, high),"var","weight")
    hVV = df_common.Filter("mc==201 or mc==202 or mc==203 or mc==204").Histo1D(("hVV","h",nbin, low, high),"var","weight")

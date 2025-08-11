@@ -66,12 +66,12 @@ Vec_b fsrMask(Vec_i indices, int size) {
 
 // https://twiki.cern.ch/twiki/bin/view/CMS/JetID13p6TeV
 // bug fix for v12 nano
+// going to use the json for v15
 
-Vec_b cleaningJetSelMask(unsigned int sel, Vec_f jet_eta, /*Vec_f jet_chHEF, */ Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_neEmEF, Vec_f jet_muEF, /*Vec_f jet_chMultiplicity, Vec_f jet_neMultiplicity, */ Vec_ui jet_jetId /*, int year*/){
+Vec_b cleaningJetSelMask(int sel, Vec_f jet_eta, Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_muEF, Vec_f jet_neEmEF, Vec_ui jet_jetId){
 
   Vec_b jet_Sel_mask(jet_eta.size(), true);
   bool debug = false;
-  //  if(debug) printf("seljetID: %lu %d\n",jet_eta.size(),sel);
   float result = 0.0;
 
   for(unsigned int i=0;i<jet_eta.size();i++) {
@@ -95,7 +95,6 @@ Vec_b cleaningJetSelMask(unsigned int sel, Vec_f jet_eta, /*Vec_f jet_chHEF, */ 
     } // sel == 0 / 1
 
     if(result == 0) jet_Sel_mask[i] = false;
-    //    if(debug) printf("seljetID(%d/%d): %.1f / %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f\n",i, sel, result, jet_eta[i], jet_chHEF[i], jet_neHEF[i], jet_chEmEF[i], jet_neEmEF[i], jet_muEF[i], jet_chMultiplicity[i], jet_neMultiplicity[i]);
   }
 
   return jet_Sel_mask;
@@ -142,7 +141,7 @@ float MinvCorr(const Vec_f& pt, const Vec_f& eta, const Vec_f& phi, const Vec_f&
   
 }
 
-stdVec_i getVBFIndicies(const Vec_f& etas, const Vec_f& phis, const Vec_f& pts){
+stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& masses){
 
   stdVec_i idx_(2, -1);
 
@@ -157,8 +156,16 @@ stdVec_i getVBFIndicies(const Vec_f& etas, const Vec_f& phis, const Vec_f& pts){
     for (int j = i+1; j < n; j++){
       if (pts[j] < pt_limit) continue;
 
-      if (max < abs(etas[i] - etas[j]) && etas[i]*etas[j] < 0) {
-        max = abs(etas[i] - etas[j]);
+      if(std::max(pts[i],pts[j]) < 35 ) continue;
+      if(etas[i]*etas[j] > 0) continue;
+
+      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], masses[i]);
+      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], masses[j]);
+      float MJJ = (pi+pj).M();
+
+      //      if (max < abs(etas[i] - etas[j]) && etas[i]*etas[j] < 0) {
+      if (max < MJJ ) {
+        max = MJJ;
         index0 = i;
         index1 = j;
       }
