@@ -45,8 +45,14 @@ xsecRun3={
     'WZto2L2Q':7.568*1000,
     'ZZto2L2Nu':1.031*1000,
     'ZZto2L2Q':6.788*1000,
-    'WZto3LNu':4.924*1000
+    'WZto3LNu':4.924*1000,
+    'ZZto4L':1.39*1000,
+    'WWW':0.2328*1000,
+    'WWZ':0.1851*1000,
+    'WZZ':0.06206*1000,
+    'ZZZ':0.01591*1000,
 }
+
 
 # from Marini 31 july
 #kfactor = 2094 *3 / (5378 + 1017 + 385.5 ) = 0.9264803481 (MATRIX MLL>50)
@@ -108,14 +114,16 @@ def BuildDict(year):
         14: (findDIR(dirName+"/"+str(year)+"/ZH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.00022),
         15: (findDIR(dirName+"/"+str(year)+"/TTH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.00022),
         ##
-        20: (findDIR(dirName+"/"+str(year)+"/VBFHtoZG_Zto2L_M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.0015),
-        21: (findDIR(dirName+"/"+str(year)+"/GluGluHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.0015),
-        22: (findDIR(dirName+"/"+str(year)+"/WminusH_HtoZG_WtoAll_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['Wm']*0.0015),
-        23: (findDIR(dirName+"/"+str(year)+"/WplusH_HtoZG_WtoAll_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['Wp']*0.0015),
-        24: (findDIR(dirName+"/"+str(year)+"/ZH_ZtoAll_HtoZGto2LG_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZH']*0.0015),
+        20: (findDIR(dirName+"/"+str(year)+"/VBF*HtoZG*to2L*M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.0015),
+        21: (findDIR(dirName+"/"+str(year)+"/GluGlu*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.0015),
+        22: (findDIR(dirName+"/"+str(year)+"/WminusH*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wm']*0.0015),
+        23: (findDIR(dirName+"/"+str(year)+"/WplusH*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wp']*0.0015),
+        24: (findDIR(dirName+"/"+str(year)+"/ZH*HtoZGto2LG_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.0015),
         25: (findDIR(dirName+"/"+str(year)+"/ttHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.0015),
+        26: (findDIR(dirName+"/"+str(year)+"/TTH-HtoZGto2LG_Par-M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.0015),
         ##
         103: (findDIR(dirName+"/"+str(year)+"/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']*(1./3)),
+        104: (findDIR(dirName+"/"+str(year)+"/DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']*(1./3)),
         100: (findDIR(dirName+"/"+str(year)+"/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']),
         101: (findDIR(dirName+"/"+str(year)+"/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7"+campaign),xsecRun3['EWKZ']),
         102: (findDIR(dirName+"/"+str(year)+"/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TT2l2n']),
@@ -124,6 +132,11 @@ def BuildDict(year):
         202: (findDIR(dirName+"/"+str(year)+"/ZZto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto2L2Nu']),
         203: (findDIR(dirName+"/"+str(year)+"/ZZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto2L2Q']),
         204: (findDIR(dirName+"/"+str(year)+"/WZto3LNu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['WZto3LNu']),
+        205: (findDIR(dirName+"/"+str(year)+"/ZZto4L_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto4L']),
+        211: (findDIR(dirName+"/"+str(year)+"/WWW*_TuneCP5_13p6TeV_amcatnlo*-pythia8"+campaign),xsecRun3['WWW']),
+        212: (findDIR(dirName+"/"+str(year)+"/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8"+campaign),xsecRun3['WWZ']),
+        213: (findDIR(dirName+"/"+str(year)+"/WZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8"+campaign),xsecRun3['WZZ']),
+        214: (findDIR(dirName+"/"+str(year)+"/ZZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8"+campaign),xsecRun3['ZZZ']),
     }
     # TODO: add the signal aMCNLO sample, for the training we can use the powheg
 

@@ -26,8 +26,11 @@ LOOSEmuons = jsonObject['LOOSEmuons']
 BJETS = jsonObject['BJETS']
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
+doVBF = False
+doGGH = False
+
 if sys.argv[2]=='isVBF': doVBF = True
-if sys.argv[2]=='isGGH': doVBF = False
+if sys.argv[2]=='isGGH': doGGH = True
 
 def dfwithSYST(df,year):
 
@@ -36,9 +39,12 @@ def dfwithSYST(df,year):
     else:
 
         dfFinal_withSF = (df
-                          .Define("SFmuon_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon_eta[goodMuons][0], Muon_pt[goodMuons][0], "M")'.format(year))
-                          .Define("SFmuon_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon_eta[goodMuons][0], Muon_pt[goodMuons][0], "M")'.format(year))
-                          .Define("SFmuon_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon_eta[goodMuons][0], Muon_pt[goodMuons][0], "M")'.format(year))
+                          .Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon_eta[goodMuons][0], Muon1_pt, "M")'.format(year))
+                          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon_eta[goodMuons][0], Muon1_pt, "M")'.format(year))
+                          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon_eta[goodMuons][0], Muon1_pt, "M")'.format(year))
+                          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon_eta[goodMuons][0], Muon2_pt, "M")'.format(year))
+                          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon_eta[goodMuons][0], Muon2_pt, "M")'.format(year))
+                          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon_eta[goodMuons][0], Muon2_pt, "M")'.format(year))
                           #
                           .Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
                           .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
@@ -47,7 +53,7 @@ def dfwithSYST(df,year):
                           #                      .Define("muoID_weights", "NomUpDownVar(SFmuon_ID_Nom, SFmuon_ID_Up, SFmuon_ID_Dn, w_allSF)")
                           #                      .Define("pu_weights", "NomUpDownVar(SFpu_Nom, SFpu_Up, SFpu_Dn, w_allSF)")
                           #                      .Define("idx_nom_up_down", "indices(3)")
-                          .Define("w_allSF", "w*SFpu_Nom*SFmuon_ID_Nom")
+                          .Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom")
                           )
 
     return dfFinal_withSF
@@ -115,8 +121,8 @@ def analysis(files,year,mc,sumW):
           .Define("goodFRSphoton", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
           .Define("FsrPH_pt","FsrPhoton_pt[goodFRSphoton]")
           .Define("FsrPH_eta","FsrPhoton_eta[goodFRSphoton]")
-          .Define("FsrPH_pt_ratio0","FsrPhoton_pt[goodFRSphoton][0]/Muon_pt[goodMuons][0]")
-          .Define("FsrPH_pt_ratio1","FsrPhoton_pt[goodFRSphoton][1]/Muon_pt[goodMuons][1]")
+          .Define("FsrPH_pt_ratio0","FsrPhoton_pt[goodFRSphoton][0]/Muon1_pt")
+          .Define("FsrPH_pt_ratio1","FsrPhoton_pt[goodFRSphoton][1]/Muon2_pt")
           .Define("HiggsCandCorrMass","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
           .Define("HiggsCandCorrPt","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
           .Define("HiggsCandCorrRapidity","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
@@ -149,10 +155,10 @@ def analysis(files,year,mc,sumW):
              .Define("jetVBF2_Eta","Jet_eta[goodJetsAll][index_VBFJets[1]]")
              .Define("jetVBF2_Phi","Jet_phi[goodJetsAll][index_VBFJets[1]]")
              .Define("jetVBF2_Mass","Jet_mass[goodJetsAll][index_VBFJets[1]]")
-	     .Define("RPt","getRpt(Muon_pt[goodMuons][0],Muon_eta[goodMuons][0],Muon_phi[goodMuons][0],Muon_mass[goodMuons][0],Muon_pt[goodMuons][1],Muon_eta[goodMuons][1],Muon_phi[goodMuons][1],Muon_mass[goodMuons][1],jetVBF1_Pt, jetVBF1_Eta, jetVBF1_Phi, jetVBF1_Mass, jetVBF2_Pt, jetVBF2_Eta, jetVBF2_Phi, jetVBF2_Mass)")
+	     .Define("RPt","getRpt(Muon1_pt,Muon_eta[goodMuons][0],Muon_phi[goodMuons][0],Muon_mass[goodMuons][0],Muon2_pt,Muon_eta[goodMuons][1],Muon_phi[goodMuons][1],Muon_mass[goodMuons][1],jetVBF1_Pt, jetVBF1_Eta, jetVBF1_Phi, jetVBF1_Mass, jetVBF2_Pt, jetVBF2_Eta, jetVBF2_Phi, jetVBF2_Mass)")
              .Define("Mjj","Pair12Minv(jetVBF1_Pt, jetVBF1_Eta, jetVBF1_Phi, jetVBF1_Mass, jetVBF2_Pt, jetVBF2_Eta, jetVBF2_Phi, jetVBF2_Mass)")
              .Define("dEtaJJ","abs(jetVBF1_Eta-jetVBF2_Eta)")
-             .Define("ZepVar","getZep(Muon_pt[goodMuons][0],Muon_eta[goodMuons][0],Muon_phi[goodMuons][0],Muon_mass[goodMuons][0],Muon_pt[goodMuons][1],Muon_eta[goodMuons][1],Muon_phi[goodMuons][1],Muon_mass[goodMuons][1], jetVBF1_Eta, jetVBF2_Eta)")
+             .Define("ZepVar","getZep(Muon1_pt,Muon_eta[goodMuons][0],Muon_phi[goodMuons][0],Muon_mass[goodMuons][0],Muon2_pt,Muon_eta[goodMuons][1],Muon_phi[goodMuons][1],Muon_mass[goodMuons][1], jetVBF1_Eta, jetVBF2_Eta)")
              .Define("minDetaDiMuVBF","minDeta(MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],3), jetVBF1_Eta, jetVBF2_Eta)")             
               )
 
@@ -293,10 +299,11 @@ def loopOnDataset(year):
     mc = []
     mc.extend([10,11,12,13,14,15])
     if year=="12022" or year=="22022" or year=="12023" or year=="22023": mc.extend([20,21,22,23,24,25])
-    if year=="2024": mc.extend([103])
+    if year=="2024": mc.extend([20,21,22,23,24,26])
+    if year=="2024": mc.extend([103,104])
     else: mc.extend([100])
     mc.extend([102])
-    mc.extend([201,202,203,204])
+    mc.extend([201,202,203,204,205,211,212,213,214])
 
     print(mc)
 

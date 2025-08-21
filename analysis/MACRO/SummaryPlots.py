@@ -129,7 +129,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
 
    if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY + jets", "f")
    if hTT12L and hDY.Integral()>0: legend.AddEntry(hTT12L.GetValue(), "ttbar 2l + jets", "f")
-   if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + jets", "f")
+   if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + VVV", "f")
    if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "Z#gamma + jets", "f")
    if hVBFH and hVBFH.Integral()>0: legend.AddEntry(hVBFH.GetValue(), "VBF H", "f")
    if hggH and hggH.Integral()>0: legend.AddEntry(hggH.GetValue(), "ggH", "f")
@@ -172,6 +172,10 @@ def plotVBF():
    plot(106, 100, -5. , 5., True, "jetVBF1_Eta","#eta jetVBF1")
    plot(107, 100, -5. , 5., True, "jetVBF2_Eta","#eta jetVBF2")
 
+def plotVH():
+
+   plot(201, 100, 0. , 100., False, "Lepton_Pt","Lepton_Pt")
+
 def plotMuons():
 
    plot(10, 200, 0. , 200., False, "Muon1_pt", "p^{T}_{#mu^{1}} [GeV]")
@@ -181,9 +185,12 @@ def plotMuons():
 
 if __name__ == "__main__":
 
-   plot(95, 100, 0. , 100., False, "nVTX","nVTX")
+   if category == "_WHcat" :
+      plot(4, 150, 50. , 200., False, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
+   else:
+      plot(4, 150, 50. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
 
-   plot(4, 150, 50. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
+   plot(95, 100, 0. , 100., False, "nVTX","nVTX")
    plot(6, 60, -3 , 3., True, "HCandCorrRapidity", "y_{#mu^{+},#mu^{-}}^{H}")
    if category == "_VBFcat" :
       plot(5, 200, 0. , 200., False, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
@@ -191,5 +198,6 @@ if __name__ == "__main__":
       plot(5, 100, 0. , 100., False, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
 
    plotMuons()
-   
+
    if category == "_VBFcat" : plotVBF()
+   if category == "_WHcat" : plotVH()

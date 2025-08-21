@@ -47,13 +47,16 @@ def loadTree(mytree, directory, category, year ):
    mytree.Add(directory+'snapshot_mc15'+year+category+'.root')
 
    #H Zgamma
+   mytree.Add(directory+'snapshot_mc20'+year+category+'.root')
+   mytree.Add(directory+'snapshot_mc21'+year+category+'.root')
+   mytree.Add(directory+'snapshot_mc22'+year+category+'.root')
+   mytree.Add(directory+'snapshot_mc23'+year+category+'.root')
+   mytree.Add(directory+'snapshot_mc24'+year+category+'.root')
+
    if (year == '_12022' or year == '_22022' or year == '_12023' or year == '_22023'):
-      mytree.Add(directory+'snapshot_mc20'+year+category+'.root')
-      mytree.Add(directory+'snapshot_mc21'+year+category+'.root')
-      mytree.Add(directory+'snapshot_mc22'+year+category+'.root')
-      mytree.Add(directory+'snapshot_mc23'+year+category+'.root')
-      mytree.Add(directory+'snapshot_mc24'+year+category+'.root')
       mytree.Add(directory+'snapshot_mc25'+year+category+'.root')
+   elif year == '_2024':
+      mytree.Add(directory+'snapshot_mc26'+year+category+'.root')
 
 #      mytree.Add(directory+'snapshot_mc101'+year+category+'.root') # EWK
 
@@ -61,12 +64,19 @@ def loadTree(mytree, directory, category, year ):
       mytree.Add(directory+'snapshot_mc100'+year+category+'.root') # DY
    if year == '_2024':
       mytree.Add(directory+'snapshot_mc103'+year+category+'.root') # DY
+      mytree.Add(directory+'snapshot_mc104'+year+category+'.root') # DY
 
    mytree.Add(directory+'snapshot_mc102'+year+category+'.root') # TT12L
 
    mytree.Add(directory+'snapshot_mc201'+year+category+'.root') # VV
    mytree.Add(directory+'snapshot_mc202'+year+category+'.root') # VV
    mytree.Add(directory+'snapshot_mc203'+year+category+'.root') # VV
-   mytree.Add(directory+'snapshot_mc204'+year+category+'.root') # VV   
-   
+   mytree.Add(directory+'snapshot_mc204'+year+category+'.root') # VV
+   mytree.Add(directory+'snapshot_mc205'+year+category+'.root') # VV
+
+   mytree.Add(directory+'snapshot_mc211'+year+category+'.root') # VV
+   mytree.Add(directory+'snapshot_mc212'+year+category+'.root') # VV
+   mytree.Add(directory+'snapshot_mc213'+year+category+'.root') # VV
+   mytree.Add(directory+'snapshot_mc214'+year+category+'.root') # VV
+
    return mytree

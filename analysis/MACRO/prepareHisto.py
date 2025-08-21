@@ -120,16 +120,19 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 107 : var = "jetVBF2_Eta"
    if item == 108 : var = "jetVBF1_Phi"
    if item == 109 : var = "jetVBF2_Phi"
+
+   # for VH
+   if item == 201 : var = "Lepton_Pt"
    
    ## -------------------
    ## FILL the histograms
    ## -------------------
 
    df_common = df.Define("var","{}".format(var)).Define("weight","w_allSF")
-   hDY = df_common.Filter("mc==100 or mc==103").Histo1D(("hDY","h",nbin, low, high),"var","weight")
+   hDY = df_common.Filter("mc==100 or mc==103 or mc==104").Histo1D(("hDY","h",nbin, low, high),"var","weight")
    hEWK = df_common.Filter("mc==101").Histo1D(("hEWK","h",nbin, low, high),"var","weight")
    hTT12L = df_common.Filter("mc==102").Histo1D(("hTT12L","h",nbin, low, high),"var","weight")
-   hVV = df_common.Filter("mc==201 or mc==202 or mc==203 or mc==204").Histo1D(("hVV","h",nbin, low, high),"var","weight")
+   hVV = df_common.Filter("mc==201 or mc==202 or mc==203 or mc==204 or mc==205 or mc==211 or mc==212 or mc==213 or mc==214").Histo1D(("hVV","h",nbin, low, high),"var","weight")
 
    hVBFH = df_common.Filter("(mc==10)").Histo1D(("hVBFH","h",nbin, low, high),"var","weight")
    hggH = df_common.Filter("(mc==11)").Histo1D(("hggH ","h",nbin, low, high),"var","weight")
