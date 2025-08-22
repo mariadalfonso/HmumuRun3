@@ -111,6 +111,7 @@ MyCorrections::MyCorrections(int year) {
 
   if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024) {
     const std::string jetType="AK4PFPuppi";
+    const std::string suffix="_DATA_L1L2L3Res_";
 
     std::string tagName = "";
     if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
@@ -119,11 +120,11 @@ MyCorrections::MyCorrections(int year) {
     if(year == 2024)   tagName = "Summer24Prompt24_V1";
     if(year == 22022)  {
       tagName = "Summer22EE_22Sep2023_RunF_V2";
-      JECdata22E_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunE_V2")+"_DATA_L1L2L3Res_"+jetType);
-      JECdata22F_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunF_V2")+"_DATA_L1L2L3Res_"+jetType);
-      JECdata22G_ = csetJEC->compound().at(std::string("Summer22EE_22Sep2023_RunG_V2")+"_DATA_L1L2L3Res_"+jetType);
+      JECdata22E_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunE_V2"+suffix+jetType);
+      JECdata22F_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunF_V2"+suffix+jetType);
+      JECdata22G_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunG_V2"+suffix+jetType);
     }
-    JECdata_ = csetJEC->compound().at(tagName+"_DATA_L1L2L3Res_"+jetType);
+    JECdata_ = csetJEC->compound().at(tagName+suffix+jetType);
 
     std::string tagNameMC = "";
     if(year == 12022)  tagNameMC = "Summer22_22Sep2023_V2";
@@ -139,7 +140,7 @@ MyCorrections::MyCorrections(int year) {
   // jetID
   std::string fileNameJetID = dirName+"JME/"+subDirName+"jetid.json.gz";
   auto csetJetID = correction::CorrectionSet::from_file(fileNameJetID);
-  std::string tagNameJetID = "AK4PUPPI_Tight";
+  const std::string tagNameJetID = "AK4PUPPI_Tight";
   //  std::string tagNameJetID = "AK4PUPPI_TightLeptonVeto";
   jetTightID_           = csetJetID->at(tagNameJetID);
 
