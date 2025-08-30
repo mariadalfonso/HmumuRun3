@@ -122,7 +122,10 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 109 : var = "jetVBF2_Phi"
 
    # for VH
-   if item == 201 : var = "Lepton_Pt"
+   if item == 201: var = "Lepton_Pt"
+
+   # for ZinvH
+   if item == 301: var = "PuppiMET_pt"
    
    ## -------------------
    ## FILL the histograms
@@ -132,6 +135,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    hDY = df_common.Filter("mc==100 or mc==103 or mc==104").Histo1D(("hDY","h",nbin, low, high),"var","weight")
    hEWK = df_common.Filter("mc==101").Histo1D(("hEWK","h",nbin, low, high),"var","weight")
    hTT12L = df_common.Filter("mc==102").Histo1D(("hTT12L","h",nbin, low, high),"var","weight")
+   hTW2L = df_common.Filter("mc==105 or mc==106").Histo1D(("hTW2L","h",nbin, low, high),"var","weight")
    hVV = df_common.Filter("mc==201 or mc==202 or mc==203 or mc==204 or mc==205 or mc==211 or mc==212 or mc==213 or mc==214").Histo1D(("hVV","h",nbin, low, high),"var","weight")
 
    hVBFH = df_common.Filter("(mc==10)").Histo1D(("hVBFH","h",nbin, low, high),"var","weight")
@@ -152,7 +156,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    if hData: hData.SetLineWidth(2)      
    if hData: hData.SetLineColor(ROOT.kBlack)
 
-   for h, color in zip([hDY, hTT12L, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH, hZg], [azure, green, orange, gold,redMed, redDark, redLight, redLight, redDark, orangeDark]):
+   for h, color in zip([hDY, hTT12L, hTW2L, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH, hZg], [azure, green, greenDark, orange, gold,redMed, redDark, redLight, redLight, redDark, orangeDark]):
        if h:
            h.SetLineWidth(3)
            h.SetLineColor(ROOT.TColor.GetColor(*color))
@@ -162,6 +166,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    #
    hDY_ = MyHisto('hDY', hDY)
    hTT12L_ = MyHisto('hTT12L',hTT12L)
+   hTW2L_ = MyHisto('hTW2L',hTW2L)
    hVV_ = MyHisto('hVV', hVV)
    hEWK_ = MyHisto('hEWK', hEWK)
    #
@@ -173,7 +178,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    #
    hZg_ = MyHisto('hZg', hZg)
 
-   listHisto = [hDY_, hTT12L_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_, hZg_]
+   listHisto = [hDY_, hTT12L_, hTW2L_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_, hZg_]
    print(item)
 
    return listHisto

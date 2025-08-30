@@ -38,6 +38,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
       #
       if obj.name == 'hDY': hDY = obj.hOBJ
       if obj.name == 'hTT12L': hTT12L = obj.hOBJ
+      if obj.name == 'hTW2L': hTW2L = obj.hOBJ
       if obj.name == 'hVV': hVV = obj.hOBJ
       if obj.name == 'hEWK': hEWK = obj.hOBJ
    
@@ -47,7 +48,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    allstack = ROOT.THStack()
    BKGstack = ROOT.THStack()
    SIGstack = ROOT.THStack()
-   for h in [hTT12L, hZg, hVV, hEWK, hDY]:
+   for h in [hTT12L, hTW2L, hZg, hVV, hEWK, hDY]:
       print('Integral ',h.GetName(), " = ", h.Integral())
       BKGstack.Add(h.GetValue())
 
@@ -55,7 +56,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
       print('Integral ',h.GetName(), " = ", h.Integral())      
       SIGstack.Add(h.GetValue())
 
-   for h in [hZH, hWH, hTTH, hVBFH, hggH, hTT12L, hZg, hVV, hEWK, hDY]:
+   for h in [hZH, hWH, hTTH, hVBFH, hggH, hTT12L, hTW2L, hZg, hVV, hEWK, hDY]:
       allstack.Add(h.GetValue())
 
    stack = allstack
@@ -116,24 +117,28 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    lineZero.Draw("same")
    
    pad1.cd()
-   legend = ROOT.TLegend()
-   legend.SetX1NDC(0.85)  # left
-   legend.SetY1NDC(0.80)  # bottom
-   legend.SetX2NDC(0.95)  # right
-   legend.SetY2NDC(0.98)  # top
-   
+   legend = ROOT.TLegend(0.60, 0.60, 0.95, 0.9)  # adjust as needed
+
+   legend.SetNColumns(2)
    legend.SetFillStyle(0)
    legend.SetBorderSize(0)
-   legend.SetTextSize(0.04)
-   legend.SetTextAlign(32)
+   legend.SetTextSize(0.035)
+#   legend.SetTextAlign(32)
+   legend.SetTextAlign(12)  # left align for readability
 
-   if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY + jets", "f")
-   if hTT12L and hDY.Integral()>0: legend.AddEntry(hTT12L.GetValue(), "ttbar 2l + jets", "f")
-   if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + VVV", "f")
-   if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "Z#gamma + jets", "f")
-   if hVBFH and hVBFH.Integral()>0: legend.AddEntry(hVBFH.GetValue(), "VBF H", "f")
-   if hggH and hggH.Integral()>0: legend.AddEntry(hggH.GetValue(), "ggH", "f")
    if hData and hData.Integral()>0: legend.AddEntry(hData.GetValue(), "Data" ,"lep")
+   if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY + jets", "f")
+   if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + VVV", "f")
+   if hTT12L and hTT12L.Integral()>0: legend.AddEntry(hTT12L.GetValue(), "ttbar 2l + jets", "f")
+   if hTW2L and hTW2L.Integral()>0: legend.AddEntry(hTW2L.GetValue(), "tW 2l + jets", "f")
+   if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "Z#gamma + jets", "f")
+   if category in ["_WLcat", "_TTLcat"]:
+      if hTTH and hTTH.Integral()>0: legend.AddEntry(hTTH.GetValue(), "ttH", "f")
+      if hWH and hWH.Integral()>0: legend.AddEntry(hWH.GetValue(), "WH", "f")
+      if hZH and hWH.Integral()>0: legend.AddEntry(hZH.GetValue(), "ZH", "f")
+   else:
+      if hVBFH and hVBFH.Integral()>0: legend.AddEntry(hVBFH.GetValue(), "VBF H", "f")
+      if hggH and hggH.Integral()>0: legend.AddEntry(hggH.GetValue(), "ggH", "f")
    legend.Draw();
 
    
@@ -171,10 +176,15 @@ def plotVBF():
    plot(105, 200, 0. , 200., True, "jetVBF2_Pt","jetVBF2_Pt")   
    plot(106, 100, -5. , 5., True, "jetVBF1_Eta","#eta jetVBF1")
    plot(107, 100, -5. , 5., True, "jetVBF2_Eta","#eta jetVBF2")
+   plot(301, 400, 0. , 400., False, "PuppiMET_Pt","PuppiMET_Pt")
 
 def plotVH():
 
    plot(201, 100, 0. , 100., False, "Lepton_Pt","Lepton_Pt")
+
+def plotZinvH():
+
+   plot(301, 400, 0. , 400., False, "PuppiMET_Pt","PuppiMET_Pt")
 
 def plotMuons():
 
@@ -185,14 +195,14 @@ def plotMuons():
 
 if __name__ == "__main__":
 
-   if category == "_WHcat" :
+   if category == "_WLcat" :
       plot(4, 150, 50. , 200., False, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
    else:
       plot(4, 150, 50. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
 
    plot(95, 100, 0. , 100., False, "nVTX","nVTX")
    plot(6, 60, -3 , 3., True, "HCandCorrRapidity", "y_{#mu^{+},#mu^{-}}^{H}")
-   if category == "_VBFcat" :
+   if category == "_VBFcat" or category == "_Zinvcat":
       plot(5, 200, 0. , 200., False, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
    else:
       plot(5, 100, 0. , 100., False, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
@@ -200,4 +210,5 @@ if __name__ == "__main__":
    plotMuons()
 
    if category == "_VBFcat" : plotVBF()
-   if category == "_WHcat" : plotVH()
+   if category == "_WLcat" : plotVH()
+   if category == "_Zinvcat" : plotZinvH()

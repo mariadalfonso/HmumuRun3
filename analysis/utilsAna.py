@@ -23,13 +23,32 @@ lumis={
     '2024':107.3, #C-I
 }
 
+btagPNetBM={
+    '12022':0.245,
+    '22022':0.2605,
+    '12023':0.1917,
+    '22023':0.1919,
+    '2024':0.245, # found only UparT
+}
+
+btagPNetBL={
+    '12022':0.047,
+    '22022':0.0499,
+    '12023':0.0358,
+    '22023':0.0359,
+    '2024':0.047, # found only UparT https://btv-wiki.docs.cern.ch/ScaleFactors/Run3Summer24/#general-remarks
+}
+
 xsecRun2={
     'ggH':48580,
     'VBFH':3781.7,
 }
 
 # Run3 xsection from https://xsecdb-xsdb-official.app.cern.ch/xsdb/
-#https://arxiv.org/pdf/2402.09955
+# HIGGS https://arxiv.org/pdf/2402.09955
+# https://twiki.cern.ch/twiki/bin/view/LHCPhysics/LHCTopWG
+# top https://twiki.cern.ch/twiki/bin/view/LHCPhysics/TtbarNNLO#Updated_reference_cross_sections
+# top BR https://pdg.lbl.gov/2017/reviews/rpp2017-rev-top-quark.pdf
 xsecRun3={
     'ggH':52230, # 0.4 × σ(13 TeV) + 0.6 × σ(14 TeV)
     'VBFH':4078,
@@ -41,12 +60,13 @@ xsecRun3={
     ###
     'Z':6688.0*1000,
     'EWKZ':1, # TEMP: placeholder for now
-    'TT2l2n':762*1000,
-    'WZto2L2Q':7.568*1000,
-    'ZZto2L2Nu':1.031*1000,
-    'ZZto2L2Q':6.788*1000,
-    'WZto3LNu':4.924*1000,
-    'ZZto4L':1.39*1000,
+    'TT2l2n':923.6*1000*0.105, # needed the 2L BR (NLO)
+    'TW2l2n':87.9*0.5*1000*0.105,
+    'WZto2L2Q':7.568*1000, # NLO
+    'ZZto2L2Nu':1.031*1000, # NLO
+    'ZZto2L2Q':6.788*1000, # NLO
+    'WZto3LNu':4.924*1000, # NLO
+    'ZZto4L':1.39*1000, # NLO
     'WWW':0.2328*1000,
     'WWZ':0.1851*1000,
     'WZZ':0.06206*1000,
@@ -93,105 +113,104 @@ def findDIR(directory,useXROOTD=False):
     print(len(rootFiles))
     return rootFiles
 
-
 def BuildDict(year):
 
     dirName="/ceph/submit/data/group/cms/store/Hmumu/v12/"
     if (str(year) == '2024'): dirName="/ceph/submit/data/group/cms/store/Hmumu/v15/"
 
-    campaign=""
-    if (str(year) == '12022'): campaign="/NANOAODSIM/130X_mcRun3_2022_realistic_v*/*"
-    if (str(year) == '22022'): campaign="/NANOAODSIM/130X_mcRun3_2022_realistic_postEE_v*/*"
-    if (str(year) == '12023'): campaign="/NANOAODSIM/130X_mcRun3_2023_realistic_v*/*"
-    if (str(year) == '22023'): campaign="/NANOAODSIM/130X_mcRun3_2023_realistic_postBPix_v*-v*/*"
-    if (str(year) == '2024'): campaign="/NANOAODSIM/150X_mcRun3_2024_realistic_v*-v*/*"
+
+    campaign_map = {
+        "12022": "/NANOAODSIM/130X_mcRun3_2022_realistic_v*/*",
+        "22022": "/NANOAODSIM/130X_mcRun3_2022_realistic_postEE_v*/*",
+        "12023": "/NANOAODSIM/130X_mcRun3_2023_realistic_v*/*",
+        "22023": "/NANOAODSIM/130X_mcRun3_2023_realistic_postBPix_v*-v*/*",
+        "2024":  "/NANOAODSIM/150X_mcRun3_2024_realistic_v*-v*/*",
+    }
+    campaign = campaign_map.get(year, "")
+
+    # Helper for building paths
+    def path(suffix):
+        return f"{dirName}{year}/{suffix}{campaign}"
 
     thisdict = {
-        10: (findDIR(dirName+"/"+str(year)+"/VBF*Hto2Mu_*M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.00022),
-        11: (findDIR(dirName+"/"+str(year)+"/GluGlu*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.00022),
-        12: (findDIR(dirName+"/"+str(year)+"/WminusH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wm']*0.00022),
-        13: (findDIR(dirName+"/"+str(year)+"/WplusH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wp']*0.00022),
-        14: (findDIR(dirName+"/"+str(year)+"/ZH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.00022),
-        15: (findDIR(dirName+"/"+str(year)+"/TTH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.00022),
+        10: (findDIR(path("/VBF*Hto2Mu_*M-125_TuneCP5*_13p6TeV_powheg-pythia8")),xsecRun3['VBFH']*0.00022),
+        11: (findDIR(path("/GluGlu*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ggH']*0.00022),
+        12: (findDIR(path("/WminusH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['Wm']*0.00022),
+        13: (findDIR(path("/WplusH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['Wp']*0.00022),
+        14: (findDIR(path("/ZH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['ZH']*0.00022),
+        15: (findDIR(path("/TTH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTH']*0.00022),
         ##
-        20: (findDIR(dirName+"/"+str(year)+"/VBF*HtoZG*to2L*M-125_TuneCP5*_13p6TeV_powheg-pythia8"+campaign),xsecRun3['VBFH']*0.0015),
-        21: (findDIR(dirName+"/"+str(year)+"/GluGlu*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ggH']*0.0015),
-        22: (findDIR(dirName+"/"+str(year)+"/WminusH*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wm']*0.0015),
-        23: (findDIR(dirName+"/"+str(year)+"/WplusH*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['Wp']*0.0015),
-        24: (findDIR(dirName+"/"+str(year)+"/ZH*HtoZGto2LG_*M-125_TuneCP5_13p6TeV_powheg*-pythia8"+campaign),xsecRun3['ZH']*0.0015),
-        25: (findDIR(dirName+"/"+str(year)+"/ttHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.0015),
-        26: (findDIR(dirName+"/"+str(year)+"/TTH-HtoZGto2LG_Par-M-125_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TTH']*0.0015),
+        20: (findDIR(path("/VBF*HtoZG*to2L*M-125_TuneCP5*_13p6TeV_powheg-pythia8")),xsecRun3['VBFH']*0.0015),
+        21: (findDIR(path("/GluGlu*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ggH']*0.0015),
+        22: (findDIR(path("/WminusH*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['Wm']*0.0015),
+        23: (findDIR(path("/WplusH*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['Wp']*0.0015),
+        24: (findDIR(path("/ZH*HtoZGto2LG_*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['ZH']*0.0015),
+        25: (findDIR(path("/ttHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTH']*0.0015),
+        26: (findDIR(path("/TTH-HtoZGto2LG_Par-M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTH']*0.0015),
         ##
-        103: (findDIR(dirName+"/"+str(year)+"/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']*(1./3)),
-        104: (findDIR(dirName+"/"+str(year)+"/DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']*(1./3)),
-        100: (findDIR(dirName+"/"+str(year)+"/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8"+campaign),xsecRun3['Z']),
-        101: (findDIR(dirName+"/"+str(year)+"/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7"+campaign),xsecRun3['EWKZ']),
-        102: (findDIR(dirName+"/"+str(year)+"/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['TT2l2n']),
+        103: (findDIR(path("/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
+        104: (findDIR(path("/DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
+        100: (findDIR(path("/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']),
+        101: (findDIR(path("/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
+        102: (findDIR(path("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        105: (findDIR(path("/TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
+        106: (findDIR(path("/TbarWplusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         #
-        201: (findDIR(dirName+"/"+str(year)+"/WZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['WZto2L2Q']),
-        202: (findDIR(dirName+"/"+str(year)+"/ZZto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto2L2Nu']),
-        203: (findDIR(dirName+"/"+str(year)+"/ZZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto2L2Q']),
-        204: (findDIR(dirName+"/"+str(year)+"/WZto3LNu_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['WZto3LNu']),
-        205: (findDIR(dirName+"/"+str(year)+"/ZZto4L_TuneCP5_13p6TeV_powheg-pythia8"+campaign),xsecRun3['ZZto4L']),
-        211: (findDIR(dirName+"/"+str(year)+"/WWW*_TuneCP5_13p6TeV_amcatnlo*-pythia8"+campaign),xsecRun3['WWW']),
-        212: (findDIR(dirName+"/"+str(year)+"/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8"+campaign),xsecRun3['WWZ']),
-        213: (findDIR(dirName+"/"+str(year)+"/WZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8"+campaign),xsecRun3['WZZ']),
-        214: (findDIR(dirName+"/"+str(year)+"/ZZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8"+campaign),xsecRun3['ZZZ']),
+        201: (findDIR(path("/WZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['WZto2L2Q']),
+        202: (findDIR(path("/ZZto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto2L2Nu']),
+        203: (findDIR(path("/ZZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto2L2Q']),
+        204: (findDIR(path("/WZto3LNu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['WZto3LNu']),
+        205: (findDIR(path("/ZZto4L_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto4L']),
+        211: (findDIR(path("/WWW*_TuneCP5_13p6TeV_amcatnlo*-pythia8")),xsecRun3['WWW']),
+        212: (findDIR(path("/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WWZ']),
+        213: (findDIR(path("/WZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WZZ']),
+        214: (findDIR(path("/ZZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['ZZZ']),
     }
     # TODO: add the signal aMCNLO sample, for the training we can use the powheg
 
-    if(year == '12022'):
-        dict_ = {
-            -11: (findDIR(dirName+str(year)+"/Run2022C/SingleMuon/*/*/"),-1),
-            -12: (findDIR(dirName+str(year)+"/Run2022C/DoubleMuon/*/*/"),-1),
-            -13: (findDIR(dirName+str(year)+"/Run2022C/Muon/*/*/"),-1),
-            -14: (findDIR(dirName+str(year)+"/Run2022D/Muon/*/*/"),-1),
-        }
-        thisdict.update(dict_)
 
-    if(year == '22022'):
-        dict_ = {
-            -15: (findDIR(dirName+str(year)+"/Run2022E/Muon/*/*/"),-1),
-            -16: (findDIR(dirName+str(year)+"/Run2022F/Muon/*/*/"),-1),
-            -17: (findDIR(dirName+str(year)+"/Run2022G/Muon/*/*/"),-1),            
+   # Data-taking runs, grouped by year
+    data_runs = {
+        "12022": {
+            -11: "Run2022C/SingleMuon/*/*/",
+            -12: "Run2022C/DoubleMuon/*/*/",
+            -13: "Run2022C/Muon/*/*/",
+            -14: "Run2022D/Muon/*/*/",
+        },
+        "22022": {
+            -15: "Run2022E/Muon/*/*/",
+            -16: "Run2022F/Muon/*/*/",
+            -17: "Run2022G/Muon/*/*/",
+        },
+        "12023": {
+            -23: "Run2023C/Muon0/*/*/",
+            -24: "Run2023C/Muon1/*/*/",
+        },
+        "22023": {
+            -31: "Run2023D/Muon0/*/*/",
+            -32: "Run2023D/Muon1/*/*/",
+        },
+        "2024": {
+            -41: "Run2024C/Muon0/*/*/",
+            -42: "Run2024C/Muon1/*/*/",
+            -43: "Run2024D/Muon0/*/*/",
+            -44: "Run2024D/Muon1/*/*/",
+            -45: "Run2024E/Muon0/*/*/",
+            -46: "Run2024E/Muon1/*/*/",
+            -47: "Run2024F/Muon0/*/*/",
+            -48: "Run2024F/Muon1/*/*/",
+            -49: "Run2024G/Muon0/*/*/",
+            -50: "Run2024G/Muon1/*/*/",
+            -51: "Run2024H/Muon0/*/*/",
+            -52: "Run2024H/Muon1/*/*/",
+            -53: "Run2024I/Muon0/*/*/",
+            -54: "Run2024I/Muon1/*/*/",
         }
-        thisdict.update(dict_)
+    }
 
-    if(year == '12023'):
-        dict_ = {
-#            -21: (findDIR(dirName+str(year)+"/Run2023B/Muon0/*/*/"),-1),
-#            -22: (findDIR(dirName+str(year)+"/Run2023B/Muon1/*/*/"),-1),
-            -23: (findDIR(dirName+str(year)+"/Run2023C/Muon0/*/*/"),-1),
-            -24: (findDIR(dirName+str(year)+"/Run2023C/Muon1/*/*/"),-1),                        
-        }
-        thisdict.update(dict_)
-
-    if(year == '22023'):
-        dict_ = {
-            -31: (findDIR(dirName+str(year)+"/Run2023D/Muon0/*/*/"),-1),
-            -32: (findDIR(dirName+str(year)+"/Run2023D/Muon1/*/*/"),-1),                                    
-        }
-        thisdict.update(dict_)
-
-    if(year == '2024'):
-        dict_ = {
-            -41: (findDIR(dirName+str(year)+"/Run2024C/Muon0/*/*/"),-1),
-            -42: (findDIR(dirName+str(year)+"/Run2024C/Muon1/*/*/"),-1),
-            -43: (findDIR(dirName+str(year)+"/Run2024D/Muon0/*/*/"),-1),
-            -44: (findDIR(dirName+str(year)+"/Run2024D/Muon1/*/*/"),-1),
-            -45: (findDIR(dirName+str(year)+"/Run2024E/Muon0/*/*/"),-1),
-            -46: (findDIR(dirName+str(year)+"/Run2024E/Muon1/*/*/"),-1),
-            -47: (findDIR(dirName+str(year)+"/Run2024F/Muon0/*/*/"),-1),
-            -48: (findDIR(dirName+str(year)+"/Run2024F/Muon1/*/*/"),-1),
-            -49: (findDIR(dirName+str(year)+"/Run2024G/Muon0/*/*/"),-1),
-            -50: (findDIR(dirName+str(year)+"/Run2024G/Muon1/*/*/"),-1),
-            -51: (findDIR(dirName+str(year)+"/Run2024H/Muon0/*/*/"),-1),
-            -52: (findDIR(dirName+str(year)+"/Run2024H/Muon1/*/*/"),-1),
-            -53: (findDIR(dirName+str(year)+"/Run2024I/Muon0/*/*/"),-1),
-            -54: (findDIR(dirName+str(year)+"/Run2024I/Muon1/*/*/"),-1),
-        }
-        thisdict.update(dict_)
-
+    # Add year-specific runs if available
+    if year in data_runs:
+        thisdict.update({k: (findDIR(f"{dirName}{year}/{v}"), -1) for k, v in data_runs[year].items()})
     return thisdict
 
 def SwitchSample(thisdict,argument):
@@ -251,19 +270,23 @@ def loadJSON(fIn):
             ROOT.jsonMap[int(k)] = vec
 
 def readDataQuality(year):
-    print('HELLO readDataQuality', year)
+    print("HELLO readDataQuality", year)
     dirJson = "./config"
-    if(str(year) == '2018'):
-        loadJSON("{}/cert/Cert_314472-325175_13TeV_Legacy2018_Collisions18_JSON.txt".format(dirJson))
-    if(str(year) == '2017'):
-        loadJSON("{}/cert/Cert_294927-306462_13TeV_UL2017_Collisions17_GoldenJSON.txt".format(dirJson))
-    if(str(year) == '22016' or year == '12016'):
-        loadJSON("{}/cert/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt".format(dirJson))
-    ##
-    if((str(year) == '12022') or (str(year) == '22022')):
-        loadJSON("{}/cert/Cert_Collisions2022_355100_362760_Golden.json".format(dirJson))
-    if((str(year) == '12023') or (str(year) == '22023')):
-        loadJSON("{}/cert/Cert_Collisions2023_366442_370790_Golden.json".format(dirJson))
-    if(str(year) == '2024'):
-        loadJSON("{}/cert/Cert_Collisions2024_378981_386951_Golden.json".format(dirJson))
 
+    json_map = {
+        "2018":  "Cert_314472-325175_13TeV_Legacy2018_Collisions18_JSON.txt",
+        "2017":  "Cert_294927-306462_13TeV_UL2017_Collisions17_GoldenJSON.txt",
+        "12016": "Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt",
+        "22016": "Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt",
+        "12022": "Cert_Collisions2022_355100_362760_Golden.json",
+        "22022": "Cert_Collisions2022_355100_362760_Golden.json",
+        "12023": "Cert_Collisions2023_366442_370790_Golden.json",
+        "22023": "Cert_Collisions2023_366442_370790_Golden.json",
+        "2024":  "Cert_Collisions2024_378981_386951_Golden.json",
+    }
+
+    fname = json_map.get(str(year))
+    if fname:
+        loadJSON(f"{dirJson}/cert/{fname}")
+    else:
+        print(f"No JSON mapping found for year={year}")
