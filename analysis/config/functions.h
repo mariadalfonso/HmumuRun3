@@ -33,7 +33,6 @@ Vec_i indices(const int& size, const int& start = 0) {
     return res;
 }
 
-
 Vec_f NomUpDownVar(const float nom, const float up, const float down, float weight) {
 
   Vec_f res(3, 1);
@@ -62,6 +61,12 @@ Vec_b fsrMask(Vec_i indices, int size) {
     mask[idx] = true;
   }
   return mask;
+}
+
+TLorentzVector MakeTLV(const float pt, const float eta, const float phi, const float mass) {
+    TLorentzVector v;
+    v.SetPtEtaPhiM(pt, eta, phi, mass);
+    return v;
 }
 
 // https://twiki.cern.ch/twiki/bin/view/CMS/JetID13p6TeV
@@ -113,21 +118,21 @@ float minDeta(const float& etaDiMu, const float& jetEta1, const float& jetEta2) 
   
 }  
 
-float MinvCorr(const Vec_f& pt, const Vec_f& eta, const Vec_f& phi, const Vec_f& m,
-	       const Vec_f& fsr_pt, const Vec_f& fsr_eta, const Vec_f& fsr_phi,
-	       const int& typeVar) {
+float MinvCorr(const TLorentzVector& p1, const TLorentzVector& p2,
+               const Vec_f& fsr_pt, const Vec_f& fsr_eta, const Vec_f& fsr_phi,
+               const int& typeVar) {
 
   // Index of the lowest-dR/ET2 among associated FSR photons
-  PtEtaPhiMVector p1(pt[0], eta[0], phi[0], m[0]);
-  PtEtaPhiMVector p2(pt[1], eta[1], phi[1], m[1]);
-
-  PtEtaPhiMVector p4 = p1 + p2;
+  TLorentzVector p4 = p1 + p2;
 
   for (int i = 0; i < 2; i++){
 
-    if (fsr_pt[i]/pt[i] > 0.4) continue;
+    if (i==0 and fsr_pt[i]/p1.Pt() > 0.4) continue;
+    if (i==1 and fsr_pt[i]/p2.Pt() > 0.4) continue;
 
-    PtEtaPhiMVector ph(fsr_pt[i], fsr_eta[i], fsr_phi[i], 0);
+    TLorentzVector ph;
+    ph.SetPtEtaPhiM(fsr_pt[i], fsr_eta[i], fsr_phi[i], 0);
+
     p4 = p4 + ph;
 
   }
@@ -138,7 +143,7 @@ float MinvCorr(const Vec_f& pt, const Vec_f& eta, const Vec_f& phi, const Vec_f&
   if (typeVar==3) { return p4.Eta(); }
 
   return 0;
-  
+
 }
 
 stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& masses){
@@ -179,16 +184,10 @@ stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
 }
 
-
-float getZep(const float& mu1_pt, const float& mu1_eta, const float& mu1_phi, const float& mu1_m,
-             const float& mu2_pt, const float& mu2_eta, const float& mu2_phi, const float& mu2_m,
+float getZep(const TLorentzVector& mu1, const TLorentzVector& mu2,
              const float& VBF1_eta, const float& VBF2_eta
              ){
-
-  PtEtaPhiMVector mu1(mu1_pt, mu1_eta, mu1_phi, mu1_m);
-  PtEtaPhiMVector mu2(mu2_pt, mu2_eta, mu2_phi, mu2_m);
-
-  PtEtaPhiMVector HiggsCand = mu1 + mu2;
+  TLorentzVector HiggsCand = mu1 + mu2;
 
   float ZepVar = ( HiggsCand.Rapidity() - (VBF1_eta+VBF2_eta)/2.0)/abs(VBF1_eta - VBF2_eta);
 
@@ -196,23 +195,14 @@ float getZep(const float& mu1_pt, const float& mu1_eta, const float& mu1_phi, co
 
 }
 
-float getRpt(const float& mu1_pt, const float& mu1_eta, const float& mu1_phi, const float& mu1_m,
-             const float& mu2_pt, const float& mu2_eta, const float& mu2_phi, const float& mu2_m,
-             const float& VBF1_pt, const float& VBF1_eta, const float& VBF1_phi, const float& VBF1_mass,
-             const float& VBF2_pt, const float& VBF2_eta, const float& VBF2_phi, const float& VBF2_mass
-             ){
+float getRpt(const TLorentzVector& mu1, const TLorentzVector& mu2,
+	     const TLorentzVector& VBF1Cand, const TLorentzVector& VBF2Cand ){
 
-  PtEtaPhiMVector mu1(mu1_pt, mu1_eta, mu1_phi, mu1_m);
-  PtEtaPhiMVector mu2(mu2_pt, mu2_eta, mu2_phi, mu2_m);  
+  TLorentzVector HiggsCand = mu1 + mu2;
+  TLorentzVector All_Vec = VBF1Cand + VBF2Cand + HiggsCand;
 
-  PtEtaPhiMVector HiggsCand = mu1 + mu2;
+  float Rpt = abs(All_Vec.Pt())/( abs(VBF1Cand.Pt()) + abs(VBF2Cand.Pt()) + abs(HiggsCand.Pt()) );
 
-  PtEtaPhiMVector VBF1Cand(VBF1_pt,VBF1_eta,VBF1_phi,VBF1_mass);
-  PtEtaPhiMVector VBF2Cand(VBF2_pt,VBF2_eta,VBF2_phi,VBF2_mass);
-
-  PtEtaPhiMVector All_Vec = VBF1Cand + VBF2Cand + HiggsCand;
-
-  float Rpt = abs(All_Vec.Pt())/( abs(VBF1_pt) + abs(VBF2_pt) + abs(HiggsCand.Pt()) );
   return Rpt;
 
 }

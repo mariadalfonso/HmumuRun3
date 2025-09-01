@@ -23,15 +23,17 @@ selections = {key: jsonObject[key] for key in ["GOODMUON", "GOODJETSALL", "GOODe
 
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
-mode = sys.argv[2]  # expected: isVBF, isGGH, isWlep, isWhad, isTTlep, isTThad, isZinv
+mode = sys.argv[2]  # expected: isVBF, isGGH, isVlep, isVhad, isTTlep, isTThad, isZinv
 
-# place to write the files and strings
+# --- place to write the files and strings  ---
 myDir = '/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
+
+# --- Histogram output suffixes per mode ---
 mode_map = {
     "isVBF":  "VBFcat",
     "isGGH":  "ggHcat",
     "isZinv": "Zinvcat",
-    "isWlep": "WLcat",
+    "isVlep": "VLcat",
     "isTTlep": "TTLcat",
 }
 
@@ -42,12 +44,12 @@ def dfwithSYST(df,year):
     else:
 
         dfFinal_withSF = (df
-                          .Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon_eta[goodMuons][0], Muon1_pt, "M")'.format(year))
-                          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon_eta[goodMuons][0], Muon1_pt, "M")'.format(year))
-                          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon_eta[goodMuons][0], Muon1_pt, "M")'.format(year))
-                          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon_eta[goodMuons][1], Muon2_pt, "M")'.format(year))
-                          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon_eta[goodMuons][1], Muon2_pt, "M")'.format(year))
-                          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon_eta[goodMuons][1], Muon2_pt, "M")'.format(year))
+                          .Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon1_eta, Muon1_pt, "M")'.format(year))
+                          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon1_eta, Muon1_pt, "M")'.format(year))
+                          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon1_eta, Muon1_pt, "M")'.format(year))
+                          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon2_eta, Muon2_pt, "M")'.format(year))
+                          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_pt, "M")'.format(year))
+                          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_pt, "M")'.format(year))
                           #
                           .Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
                           .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
@@ -179,16 +181,18 @@ def doCategories(df,mc,year):
              .Define("jetVBF2_Eta","Jet_eta[goodJetsAll][index_VBFJets[1]]")
              .Define("jetVBF2_Phi","Jet_phi[goodJetsAll][index_VBFJets[1]]")
              .Define("jetVBF2_Mass","Jet_mass[goodJetsAll][index_VBFJets[1]]")
+             .Define("VBF1Vec", "MakeTLV(Jet_pt[goodJetsAll][index_VBFJets[0]],Jet_eta[goodJetsAll][index_VBFJets[0]], Jet_phi[goodJetsAll][index_VBFJets[0]],Jet_mass[goodJetsAll][index_VBFJets[0]])")
+             .Define("VBF2Vec", "MakeTLV(Jet_pt[goodJetsAll][index_VBFJets[1]],Jet_eta[goodJetsAll][index_VBFJets[1]], Jet_phi[goodJetsAll][index_VBFJets[1]],Jet_mass[goodJetsAll][index_VBFJets[1]])")
              #
              .Define("jetVBF1_hfcentralEtaStripSize","Jet_hfcentralEtaStripSize[goodJetsAll][index_VBFJets[0]]")
              .Define("jetVBF1_hfadjacentEtaStripsSize","Jet_hfadjacentEtaStripsSize[goodJetsAll][index_VBFJets[0]]")
              .Define("jetVBF2_hfcentralEtaStripSize","Jet_hfcentralEtaStripSize[goodJetsAll][index_VBFJets[1]]")
              .Define("jetVBF2_hfadjacentEtaStripsSize","Jet_hfadjacentEtaStripsSize[goodJetsAll][index_VBFJets[1]]")
              #
-	     .Define("RPt","getRpt(Muon1_pt,Muon_eta[goodMuons][0],Muon_phi[goodMuons][0],Muon_mass[goodMuons][0],Muon2_pt,Muon_eta[goodMuons][1],Muon_phi[goodMuons][1],Muon_mass[goodMuons][1],jetVBF1_Pt, jetVBF1_Eta, jetVBF1_Phi, jetVBF1_Mass, jetVBF2_Pt, jetVBF2_Eta, jetVBF2_Phi, jetVBF2_Mass)")
+             .Define("RPt","getRpt(Muon1Vec, Muon2Vec, VBF1Vec, VBF2Vec)")
              .Define("Mjj","Pair12Minv(jetVBF1_Pt, jetVBF1_Eta, jetVBF1_Phi, jetVBF1_Mass, jetVBF2_Pt, jetVBF2_Eta, jetVBF2_Phi, jetVBF2_Mass)")
              .Define("dEtaJJ","abs(jetVBF1_Eta-jetVBF2_Eta)")
-             .Define("ZepVar","getZep(Muon1_pt,Muon_eta[goodMuons][0],Muon_phi[goodMuons][0],Muon_mass[goodMuons][0],Muon2_pt,Muon_eta[goodMuons][1],Muon_phi[goodMuons][1],Muon_mass[goodMuons][1], jetVBF1_Eta, jetVBF2_Eta)")
+             .Define("ZepVar","getZep(Muon1Vec, Muon2Vec, jetVBF1_Eta, jetVBF2_Eta)")
              .Define("minDetaDiMuVBF","minDeta(MinvCorr(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],3), jetVBF1_Eta, jetVBF2_Eta)")
               )
 
@@ -253,6 +257,10 @@ def analysis(files,year,mc,sumW):
 #          .Define("Muon2_pt","Muon_pt[goodMuons][1]")
           .Define("Muon1_pt","Muon_bsConstrainedPt[goodMuons][0]")
           .Define("Muon2_pt","Muon_bsConstrainedPt[goodMuons][1]")
+          .Define("Muon1_eta","Muon_eta[goodMuons][0]")
+          .Define("Muon2_eta","Muon_eta[goodMuons][1]")
+          .Define("Muon1Vec", "MakeTLV(Muon_bsConstrainedPt[goodMuons][0], Muon_eta[goodMuons][0], Muon_phi[goodMuons][0],Muon_mass[goodMuons][0])")
+          .Define("Muon2Vec", "MakeTLV(Muon_bsConstrainedPt[goodMuons][1], Muon_eta[goodMuons][1], Muon_phi[goodMuons][1],Muon_mass[goodMuons][1])")
           ## end preselection
 #          .Define("HiggsCandMass","Minv(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
           .Define("HiggsCandMass","Minv(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
@@ -270,17 +278,11 @@ def analysis(files,year,mc,sumW):
     else:
         df = df.Define("w_allSF", "w")
 
-    df = (df.Define("HiggsCandCorrMass","MinvCorr(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
-          .Define("HiggsCandCorrPt","MinvCorr(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
-          .Define("HiggsCandCorrRapidity","MinvCorr(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
+    df = (df.Define("HiggsCandCorrMass","MinvCorr(Muon1Vec, Muon2Vec, FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
+          .Define("HiggsCandCorrPt","MinvCorr(Muon1Vec, Muon2Vec, FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
+          .Define("HiggsCandCorrRapidity","MinvCorr(Muon1Vec, Muon2Vec, FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
           .Filter("HiggsCandCorrMass>50 and HiggsCandCorrMass<200","HiggsMass within reasonable range 50-200")
           )
-
-#    df = (df.Define("HiggsCandCorrMass","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
-#          .Define("HiggsCandCorrPt","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
-#          .Define("HiggsCandCorrRapidity","MinvCorr(Muon_pt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons], FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
-#          .Filter("HiggsCandCorrMass>50 and HiggsCandCorrMass<200","HiggsMass within reasonable range 50-200")
-#          )
 
     if False:
         print("---------------- SUMMARY -------------")
@@ -322,16 +324,16 @@ def analysis(files,year,mc,sumW):
                 canv.SetLogy()
                 h.Draw("hist")
                 canv.Draw()
-                if mc==10: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_VBF.png")
-                if mc==11: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_ggH.png")
-                if mc==12: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Wm.png")
-                if mc==13: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Wp.png")
-                if mc==14: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_ZH.png")
-                if mc==15: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_TTH.png")
-                if mc==100: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_DY.png")
-                if mc==20: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Zg_VBF.png")
-                if mc==21: canv.SaveAs("~/public_html/HMUMU_July/"+h.GetName()+"_Zg_ggH.png")
-
+                dirPlots="~/public_html/HMUMU_July/SignalPlots"
+                if mc==10: canv.SaveAs(dirPlots+h.GetName()+"_VBF.png")
+                if mc==11: canv.SaveAs(dirPlots+h.GetName()+"_ggH.png")
+                if mc==12: canv.SaveAs(dirPlots+h.GetName()+"_Wm.png")
+                if mc==13: canv.SaveAs(dirPlots+h.GetName()+"_Wp.png")
+                if mc==14: canv.SaveAs(dirPlots+h.GetName()+"_ZH.png")
+                if mc==15: canv.SaveAs(dirPlots+h.GetName()+"_TTH.png")
+                if mc==100: canv.SaveAs(dirPlots+h.GetName()+"_DY.png")
+                if mc==20: canv.SaveAs(dirPlots+h.GetName()+"_Zg_VBF.png")
+                if mc==21: canv.SaveAs(dirPlots+h.GetName()+"_Zg_ggH.png")
 
         if mode not in mode_map:
             raise ValueError(f"Unknown mode: {mode}")
@@ -353,7 +355,8 @@ def analysis(files,year,mc,sumW):
         print("writing snapshot")
 
         branchList = ROOT.vector('string')()
-        for branchName in [
+
+        base_branches = [
                 "mc",
                 "w",
                 "w_allSF",
@@ -372,37 +375,40 @@ def analysis(files,year,mc,sumW):
                 "FsrPH_eta",
                 "PuppiMET_pt",
                 "PuppiMET_phi"
-        ]:
-            branchList.push_back(branchName)
+        ]
 
-        if mode == "isVBF":
-            for branchName in [
-		    "Mjj",
-	            "RPt",
-                    "jetVBF2_Pt",
-                    "jetVBF1_Pt",
-                    "jetVBF2_Eta",
-                    "jetVBF1_Eta",
-                    "jetVBF2_Phi",
-                    "jetVBF1_Phi",                   
-                    "dEtaJJ",
-                    "ZepVar",
-                    "minDetaDiMuVBF",
-                    "jetVBF2_hfcentralEtaStripSize",
-                    "jetVBF1_hfcentralEtaStripSize",
-                    "jetVBF2_hfadjacentEtaStripsSize",
-                    "jetVBF1_hfadjacentEtaStripsSize",
-            ]:
-                branchList.push_back(branchName)
+        # Mode-specific branches
+        mode_branches = {
+            "isVBF": [
+                "Mjj",
+                "RPt",
+                "jetVBF2_Pt",
+                "jetVBF1_Pt",
+                "jetVBF2_Eta",
+                "jetVBF1_Eta",
+                "jetVBF2_Phi",
+                "jetVBF1_Phi",
+                "dEtaJJ",
+                "ZepVar",
+                "minDetaDiMuVBF",
+                "jetVBF2_hfcentralEtaStripSize",
+                "jetVBF1_hfcentralEtaStripSize",
+                "jetVBF2_hfadjacentEtaStripsSize",
+                "jetVBF1_hfadjacentEtaStripsSize",
+            ],
+            "isVlep": [
+                "Lepton_Pt",
+                "category",
+            ],
+        }
 
-        if mode == "isWlep":
-            for branchName in [
-                    "Lepton_Pt",
-                    "isMuorEle"
-            ]:
-                branchList.push_back(branchName)
+        # Add base branches
+        for b in base_branches:
+            branchList.push_back(b)
 
-        #mode = sys.argv[2]  # expected: isVBF, isGGH, isW, isZinv
+        # Add extra depending on mode
+        for b in mode_branches.get(mode, []):
+            branchList.push_back(b)
 
         if mode not in mode_map:
             raise ValueError(f"Unknown mode: {mode}")
@@ -428,7 +434,7 @@ def loopOnDataset(year):
 
     mc = []
     mc.extend([10,11,12,13,14,15])
-    if year=="12022" or year=="22022" or year=="12023" or year=="22023": mc.extend([20,21,22,23,24,25])
+    if year in ["12022", "22022", "12023", "22023"]: mc.extend([20,21,22,23,24,25])
     if year=="2024": mc.extend([20,21,22,23,24,26])
     if year=="2024": mc.extend([103,104])
     else: mc.extend([100])
@@ -467,8 +473,8 @@ if __name__ == "__main__":
     now = datetime.now()
     print('==> very beginning: ',now)
 
-    print('year=',sys.argv[1])
     year=sys.argv[1]
+    print('year=',year)
 
     loopOnDataset(year)
 
