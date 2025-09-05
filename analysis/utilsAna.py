@@ -60,7 +60,8 @@ xsecRun3={
     ###
     'Z':6688.0*1000,
     'EWKZ':1, # TEMP: placeholder for now
-    'TT2l2n':923.6*1000*0.105, # needed the 2L BR (NLO)
+    'TT2l2n':923.6*1000*0.105, # needed the 2L BR (NNLO)
+    'TTln':923.6*1000*0.438,
     'TW2l2n':87.9*0.5*1000*0.105,
     'WZto2L2Q':7.568*1000, # NLO
     'ZZto2L2Nu':1.031*1000, # NLO
@@ -153,6 +154,7 @@ def BuildDict(year):
         100: (findDIR(path("/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']),
         101: (findDIR(path("/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
         102: (findDIR(path("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        107: (findDIR(path("/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTln']),
         105: (findDIR(path("/TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         106: (findDIR(path("/TbarWplusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         #
