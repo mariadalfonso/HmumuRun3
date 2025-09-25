@@ -39,31 +39,28 @@ mode_map = {
 
 def dfwithSYST(df,year):
 
-    if year=='2024': dfFinal_withSF = df.Define("w_allSF", "w")
+    df = (df.Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon1_eta, Muon1_pt, "M")'.format(year))
+          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon1_eta, Muon1_pt, "M")'.format(year))
+          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon1_eta, Muon1_pt, "M")'.format(year))
+          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon2_eta, Muon2_pt, "M")'.format(year))
+          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_pt, "M")'.format(year))
+          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_pt, "M")'.format(year))
+          )
 
+    if year=='12022' or year=='22022' or year=='12023' or year=='22023':
+        df = (df.Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
+              .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
+              .Define("SFpu_Dn",'corr_sf.eval_puSF(Pileup_nTrueInt,"down")')
+        )
+
+
+    # for now missing PU-2024
+    if year=='2024':
+        dfFinal_withSF = (df.Define("w_allSF", "w*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
     else:
-
-        dfFinal_withSF = (df
-                          .Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon1_eta, Muon1_pt, "M")'.format(year))
-                          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon1_eta, Muon1_pt, "M")'.format(year))
-                          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon1_eta, Muon1_pt, "M")'.format(year))
-                          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon2_eta, Muon2_pt, "M")'.format(year))
-                          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_pt, "M")'.format(year))
-                          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_pt, "M")'.format(year))
-                          #
-                          .Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
-                          .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
-                          .Define("SFpu_Dn",'corr_sf.eval_puSF(Pileup_nTrueInt,"down")')
-                          #
-                          #                      .Define("muoID_weights", "NomUpDownVar(SFmuon_ID_Nom, SFmuon_ID_Up, SFmuon_ID_Dn, w_allSF)")
-                          #                      .Define("pu_weights", "NomUpDownVar(SFpu_Nom, SFpu_Up, SFpu_Dn, w_allSF)")
-                          #                      .Define("idx_nom_up_down", "indices(3)")
-                          .Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom")
-                          )
+        dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
 
     return dfFinal_withSF
-
-
 
 def doCategories(df,mc,year):
 
@@ -125,6 +122,12 @@ def doCategories(df,mc,year):
         ("FILTER", selections["METFilters"], "apply MET filters"),
     ]
 
+    # --- VBF-specific filters (add the ones you use in doCategories/isVBF) ---
+#    vbf_filters = [
+#        ("FILTER", "Sum(goodJetsAll)>1", "at least 2 jets"),
+#        ("FILTER", "Mjj>400", "M_{jj} > 400 GeV"),
+#        ("FILTER", "dEtaJJ>2.5", "|dEta_{jj}| > 2.5"),
+#    ]
 
     # --- Category recipes ---
     # PUT first the things that cut most of the events i.e. met in Zinv
@@ -295,6 +298,8 @@ def analysis(files,year,mc,sumW):
 
     # apply JEC
     dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
+    # get the EGM scale
+    dfComm = dfComm.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, run, isData, "{0}")'.format(year))
 
     # compute JetID (note v15 vs v12)
     if year=="2024":

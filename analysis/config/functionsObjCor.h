@@ -4,8 +4,30 @@
 using Vec_b = ROOT::VecOps::RVec<bool>;
 using Vec_f = ROOT::VecOps::RVec<float>;
 
-Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, float run, bool isData, string year, \
-string mc){                                                                                                                                                                                 
+
+Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta, Vec_f ele_r9, Vec_f ele_gain, float run, bool isData, string year){
+
+  std::vector<double> random_numbers(ele_pt.size(), 0.0);
+
+  // this is what's implemented: each event get the same reproducible random_numbers; each electron in the list get a different value
+  // to recheck what should be
+  if (!isData) {
+    std::mt19937 gen(125);
+    std::normal_distribution<> dist(0.0, 1.0);
+    for (auto &x : random_numbers) x = dist(gen);
+  }
+
+  Vec_f new_ele; new_ele.resize(ele_pt.size());
+  for (unsigned int idx = 0; idx < ele_pt.size(); ++idx) {
+    if (isData) new_ele[idx] = ele_pt[idx] * corrSFs.eval_electronScaleData(year, "scale", run, ele_eta[idx], ele_r9[idx], ele_pt[idx], ele_gain[idx]);
+    else new_ele[idx] = ele_pt[idx] * (1 + random_numbers[idx] * corrSFs.eval_electronSmearingSystMC("smear", ele_pt[idx], ele_eta[idx], ele_r9[idx]));
+  }
+  return new_ele;
+
+}
+
+Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, float run, bool isData, string year, string mc){
+
   Vec_f new_jet; new_jet.resize(jet_pt.size());
   Vec_f raw_jet; raw_jet.resize(jet_pt.size());
   for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) {                                                                                                                            

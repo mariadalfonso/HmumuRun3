@@ -25,6 +25,8 @@ public:
   double eval_photonSF  (std::string year, std::string valType, std::string workingPoint, double eta, double pt);
   double eval_photonPixVetoSF  (std::string year, std::string valType, std::string workingPoint, double eta, double pt);
   double eval_electronSF(std::string year, std::string valType, std::string workingPoint, double eta, double pt, double minVal);
+  double eval_electronScaleData(std::string year, const char *valType, int run, const double eta, const double r9, double pt, const double gain);
+  double eval_electronSmearingSystMC(const char *valType, double pt, const double eta, const double r9);
   double eval_muonTRKSF (std::string year, std::string valType, double eta, double pt);
   double eval_muonIDSF  (std::string year, std::string valType, double eta, double pt, std::string workingPoint);
   double eval_muonISOSF (std::string year, std::string valType, double eta, double pt, std::string workingPoint);
@@ -33,7 +35,9 @@ private:
   correction::Correction::Ref puSF_;
   correction::Correction::Ref photonSF_;
   correction::Correction::Ref photonPixVetoSF_;
-  correction::Correction::Ref electronSF_;
+  correction::Correction::Ref electronIDSF_;
+  correction::CompoundCorrection::Ref electronScaleData_;
+  correction::Correction::Ref electronSmearAndSystMC_;
   correction::Correction::Ref muonTRKSF_;
   correction::Correction::Ref muonIDMSF_;
   correction::Correction::Ref muonISOLSF_;
@@ -99,19 +103,22 @@ MyCorrections::MyCorrections(int year) {
     muonISOLSF_ = csetMu->at("NUM_LooseRelIso_DEN_MediumID");
   }
 
-  if(year == 22023 or year == 12023 or year == 22022 or year == 12022) {
+  if(year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
     auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
-    // 2024 missing
     muonIDMSF_ = csetMu->at("NUM_MediumID_DEN_TrackerMuons");
     // to add isolation
   }
+
+  //////////////
+  ////  JME
+  //////////////
 
   const std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
   auto csetJEC = correction::CorrectionSet::from_file(fileNameJEC);
 
   if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024) {
     const std::string jetType="AK4PFPuppi";
-    const std::string suffix="_DATA_L1L2L3Res_";
+    const std::string suffix = "_DATA_L1L2L3Res_";
 
     std::string tagName = "";
     if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
@@ -157,6 +164,32 @@ MyCorrections::MyCorrections(int year) {
   if(year == 2024) tagNameVeto = "Summer24Prompt24_RunBCDEFGHI_V1";
   vetoMaps_ = csetVeto->at(tagNameVeto);
 
+
+  //////////////
+  ////  EGM https://twiki.cern.ch/twiki/bin/view/CMS/EgammSFandSSRun3
+  //////////////
+
+  std::string fileNameIDELE   = dirName+"EGM/"+subDirName+"electron.json.gz";
+  if(year == 2024) fileNameIDELE = dirName+"EGM/"+subDirName+"electronID_v1.json.gz";
+  auto csetIDELE = correction::CorrectionSet::from_file(fileNameIDELE);
+
+  const std::string tagNameEleID = "Electron-ID-SF"; // both reco and ID
+  csetIDELE->at(tagNameEleID);
+
+  std::string fileNameEnergyEtDependentELE = dirName+"EGM/"+subDirName+"electronSS_EtDependent.json.gz";
+  if(year == 2024) fileNameEnergyEtDependentELE = dirName+"EGM/"+subDirName+"electronSS_EtDependent_v1.json.gz";
+  auto csetEnergyEtDependentELE = correction::CorrectionSet::from_file(fileNameEnergyEtDependentELE);
+
+  std::string suffix = "";
+  if     (year == 12022) suffix = "2022preEE";
+  else if(year == 22022) suffix = "2022postEE";
+  else if(year == 12023) suffix = "2023preBPIX";
+  else if(year == 22023) suffix = "2023postBPIX";
+  else if(year == 2024) suffix = "2024";
+
+  electronScaleData_ = csetEnergyEtDependentELE->compound().at("EGMScale_Compound_Ele_"+suffix);
+  electronSmearAndSystMC_ = csetEnergyEtDependentELE->at("EGMSmearAndSyst_ElePTsplit_"+suffix);
+
 };
 
 double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc) {
@@ -176,7 +209,7 @@ double MyCorrections::eval_jetCORR(double area, double eta, double phi, double p
     if(isData) return JECdata_->evaluate({area, eta, pt, rho});
     else return JEC_->evaluate({area, eta, pt, rho});
   }
-    
+
   return 1.0;
 
 };
@@ -207,7 +240,21 @@ double MyCorrections::eval_jetVeto(double eta, double phi) {
 double MyCorrections::eval_electronSF(std::string year, std::string valType,  std::string workingPoint, double eta, double pt, double minVal) {
   //  pt = std::max(pt,10.001); for wp80 is 10 while for the above10 is 20
   pt = std::max(pt,minVal);
-  return electronSF_->evaluate({year, valType, workingPoint, eta, pt});
+  return electronIDSF_->evaluate({year, valType, workingPoint, eta, pt});
+};
+
+double MyCorrections::eval_electronScaleData(std::string year, const char *valType, int run, const double eta, const double r9, double pt, const double gain) {
+  // "scale"
+  pt = std::max(pt,15.000);
+  if (year == "12022" or year == "22022" or year == "12023" or year == "22023") return electronScaleData_->evaluate({valType, (float) run, eta, r9, abs(eta), pt, gain});
+  if (year == "2024") return electronScaleData_->evaluate({valType, (float) run, eta, r9, pt, gain});
+  return 0.0;
+};
+
+double MyCorrections::eval_electronSmearingSystMC(const char *valType, double pt, const double eta, const double r9) {
+  // "smear"
+  pt = std::max(pt,15.000);
+  return electronSmearAndSystMC_->evaluate({valType,pt,r9,abs(eta)});
 };
 
 double MyCorrections::eval_photonSF(std::string year, std::string valType,  std::string workingPoint, double eta, double pt) {
