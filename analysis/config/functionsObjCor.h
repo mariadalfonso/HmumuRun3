@@ -3,7 +3,29 @@
 
 using Vec_b = ROOT::VecOps::RVec<bool>;
 using Vec_f = ROOT::VecOps::RVec<float>;
+using Vec_i = ROOT::VecOps::RVec<int>;
+using Vec_ui = ROOT::VecOps::RVec<unsigned int>;
 
+Vec_f computeMUcorrection(Vec_f mu_pt, Vec_f mu_eta, Vec_f mu_phi, Vec_i mu_charge, Vec_ui mu_nTrackerLayers, bool isData, float event, float luminosityBlock ){
+
+  Vec_f new_mu(mu_pt.size());
+
+  for (unsigned int idx = 0; idx < mu_pt.size(); ++idx) {
+
+    // Data apply scale correction
+    // MC apply scale shift and resolution smearing
+
+    if (isData) new_mu[idx] = pt_scale(isData, mu_pt[idx], mu_eta[idx], mu_phi[idx], mu_charge[idx]);
+    else {
+      auto pt_scale_corr = pt_scale(isData, mu_pt[idx], mu_eta[idx], mu_phi[idx], mu_charge[idx]);
+      new_mu[idx] = pt_resol(pt_scale_corr, mu_eta[idx], mu_phi[idx], float(mu_nTrackerLayers[idx]), event, luminosityBlock);
+    }
+
+  }
+
+  return new_mu;
+
+}
 
 Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta, Vec_f ele_r9, Vec_f ele_gain, float run, bool isData, string year){
 

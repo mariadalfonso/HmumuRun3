@@ -5,7 +5,6 @@ import sys
 import json
 import os
 
-
 def loadUserCode():
     print('loadUserCode()')
     ROOT.gSystem.AddDynamicPath("./.")
@@ -13,14 +12,15 @@ def loadUserCode():
     ROOT.gInterpreter.AddIncludePath("./.")
     ROOT.gInterpreter.ProcessLine('#include "./config/functions.h"')
 
+
 # lumis with golden json
 #https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis#ReReco_ERAS_A_B_C_D_E
 lumis={
     '12022':7.98, # C-D
     '22022':26.67, # E, F, G
-    '12023':17.794, #C
-    '22023':9.451, #D
-    '2024':107.3, #C-I
+    '12023':17.794, # C
+    '22023':9.451, # D
+    '2024':107.3, # C-I
 }
 
 btagPNetBM={
@@ -248,8 +248,20 @@ def loadCorrectionSet(year):
 
     ROOT.gInterpreter.ProcessLine('auto corr_sf = MyCorrections(%d);' % (year))
 
-    ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
+    print('loadMuonScale()')
 
+    subDirName = ""
+    if year == 12022: subDirName = "2022_Summer22"
+    if year == 22022: subDirName = "2022_Summer22EE"
+    if year == 12023: subDirName = "2023_Summer23"
+    if year == 22023: subDirName = "2023_Summer23BPix"
+    if year == 2024: subDirName = "2024_Summer24"
+
+    ROOT.gROOT.ProcessLine(
+        f'auto cset = correction::CorrectionSet::from_file("/cvmfs/cms.cern.ch/rsync/cms-nanoAOD/jsonpog-integration/POG/MUO/'+subDirName+'/muon_scalesmearing.json.gz");'
+    )
+    ROOT.gInterpreter.ProcessLine('#include "./config/MuonScaRe.cc"')
+    ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
 
 def loadJSON(fIn):
 

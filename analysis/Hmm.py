@@ -300,6 +300,9 @@ def analysis(files,year,mc,sumW):
     dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
     # get the EGM scale
     dfComm = dfComm.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, run, isData, "{0}")'.format(year))
+    # apply muonScale
+    if year in ["12022", "22022", "12023", "22023"]:
+        dfComm = dfComm.Redefine("Muon_bsConstrainedPt",'computeMUcorrection(Muon_bsConstrainedPt, Muon_eta, Muon_phi, Muon_charge, Muon_nTrackerLayers, isData, event, luminosityBlock)')
 
     # compute JetID (note v15 vs v12)
     if year=="2024":
