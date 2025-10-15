@@ -102,11 +102,16 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 4 : var = "HiggsCandCorrMass"
    if item == 5 : var = "HiggsCandCorrPt"
    if item == 6 : var = "HiggsCandCorrRapidity"
+   if item == 7 : var = "HiggsCandMassErr/HiggsCandCorrMass"
    ##
    if item == 10 : var = "Muon1_pt"
    if item == 11 : var = "Muon2_pt"
-   if item == 12 : var = "FsrPH_pt"
-   if item == 13 : var = "FsrPH_eta"
+   if item == 12 : var = "Muon1_eta"
+   if item == 13 : var = "Muon2_eta"
+   if item == 14 : var = "Muon1_sip3d"
+   if item == 15 : var = "Muon2_sip3d"
+   if item == 16 : var = "FsrPH_pt"
+   if item == 17 : var = "FsrPH_eta"
    if item == 95 : var = "PV_npvsGood"
 
    # for VBF
@@ -121,21 +126,30 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 108 : var = "jetVBF1_Phi"
    if item == 109 : var = "jetVBF2_Phi"
 
-   # for VH
+   # for VH lep
    if item == 201: var = "Lepton_Pt"
+   if item == 210: var = "category"
+
+   # for VH had
+   if item == 251: var = "goodWjj_mass[0]"
+   if item == 252: var = "FatJet_pNet_WvsQCD_discr[0]"
+   if item == 253: var = "FatJet_pNet_mass[0]"
 
    # for ZinvH
    if item == 301: var = "PuppiMET_pt"
-   
+   if item == 302: var = "PuppiMET_pt/HiggsCandCorrPt"
+
    ## -------------------
    ## FILL the histograms
    ## -------------------
 
    df_common = df.Define("var","{}".format(var)).Define("weight","w_allSF")
+   #.Filter("int(category)==3")
+   #.Filter("abs(HiggsCandCorrMass-125)<15")
    hDY = df_common.Filter("mc==100 or mc==103 or mc==104").Histo1D(("hDY","h",nbin, low, high),"var","weight")
    hEWK = df_common.Filter("mc==101").Histo1D(("hEWK","h",nbin, low, high),"var","weight")
-   hTT12L = df_common.Filter("mc==102").Histo1D(("hTT12L","h",nbin, low, high),"var","weight")
-   hTW2L = df_common.Filter("mc==105 or mc==106").Histo1D(("hTW2L","h",nbin, low, high),"var","weight")
+   hTT2L = df_common.Filter("mc==102").Histo1D(("hTT2L","h",nbin, low, high),"var","weight")
+   hTop = df_common.Filter("mc==105 or mc==106 or mc==107 or mc==221 or mc==222 or mc==223 or mc==224 or mc==225").Histo1D(("hTop","h",nbin, low, high),"var","weight")
    hVV = df_common.Filter("mc==201 or mc==202 or mc==203 or mc==204 or mc==205 or mc==211 or mc==212 or mc==213 or mc==214").Histo1D(("hVV","h",nbin, low, high),"var","weight")
 
    hVBFH = df_common.Filter("(mc==10)").Histo1D(("hVBFH","h",nbin, low, high),"var","weight")
@@ -143,7 +157,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    hWH = df_common.Filter("mc==12 or mc==13").Histo1D(("hWH","h",nbin, low, high),"var","weight")
    hZH = df_common.Filter("mc==14").Histo1D(("hZH","h",nbin, low, high),"var","weight")
    hTTH = df_common.Filter("mc==15").Histo1D(("hTTH","h",nbin, low, high),"var","weight")
-   hZg = df_common.Filter("mc==20 or mc==21 or mc==22 or mc==23 or mc==24 or mc==25").Histo1D(("hZg","h",nbin, low, high),"var","weight")
+   hZg = df_common.Filter("mc==20 or mc==21 or mc==22 or mc==23 or mc==24 or mc==25 or mc==26").Histo1D(("hZg","h",nbin, low, high),"var","weight")
    
    if False: hData = df_common.Filter("mc<0").Histo1D(("hData","h",nbin, low, high),"var","weight")
    else:
@@ -156,7 +170,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    if hData: hData.SetLineWidth(2)      
    if hData: hData.SetLineColor(ROOT.kBlack)
 
-   for h, color in zip([hDY, hTT12L, hTW2L, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH, hZg], [azure, green, greenDark, orange, gold,redMed, redDark, redLight, redLight, redDark, orangeDark]):
+   for h, color in zip([hDY, hTT2L, hTop, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH, hZg], [azure, green, greenDark, orange, gold,redMed, redDark, redLight, redLight, redDark, orangeDark]):
        if h:
            h.SetLineWidth(3)
            h.SetLineColor(ROOT.TColor.GetColor(*color))
@@ -165,8 +179,8 @@ def getHisto(mytree, category, item, nbin, low, high):
    if hData: hData_ = MyHisto('hData', hData)
    #
    hDY_ = MyHisto('hDY', hDY)
-   hTT12L_ = MyHisto('hTT12L',hTT12L)
-   hTW2L_ = MyHisto('hTW2L',hTW2L)
+   hTT2L_ = MyHisto('hTT2L',hTT2L)
+   hTop_ = MyHisto('hTop',hTop)
    hVV_ = MyHisto('hVV', hVV)
    hEWK_ = MyHisto('hEWK', hEWK)
    #
@@ -178,7 +192,7 @@ def getHisto(mytree, category, item, nbin, low, high):
    #
    hZg_ = MyHisto('hZg', hZg)
 
-   listHisto = [hDY_, hTT12L_, hTW2L_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_, hZg_]
+   listHisto = [hDY_, hTT2L_, hTop_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_, hZg_]
    print(item)
 
    return listHisto

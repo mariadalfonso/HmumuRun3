@@ -69,6 +69,16 @@ Vec_b fsrMask(Vec_i indices, int size) {
   return mask;
 }
 
+Vec_b fatJetMask(Vec_i FatJet_muonIdx3SJ, int muon1_idx, int muon2_idx) {
+
+  Vec_b mask(FatJet_muonIdx3SJ.size(), true);
+  for (int idx : FatJet_muonIdx3SJ) {
+    if(idx < 0) continue;
+    if(idx == muon1_idx or idx == muon2_idx) mask[idx] = false;
+  }
+  return mask;
+}
+
 TLorentzVector MakeTLV(const float pt, const float eta, const float phi, const float mass) {
     TLorentzVector v;
     v.SetPtEtaPhiM(pt, eta, phi, mass);
@@ -80,6 +90,32 @@ TLorentzVector MakeTLV(const float pt, const float eta, const float phi, const f
 // above generic RDF analysis functinos
 // below analysis oriented functions
 
+int topology(float eta1, float eta2) {
+
+  int topology = 0;
+  if (abs(eta1)<1.4 and abs(eta2)<1.4) topology = 1; // this is BB
+  if (abs(eta1)<1.4 and abs(eta2)>1.4) topology = 2; // this is BE
+  if (abs(eta1)>1.4 and abs(eta2)<1.4) topology = 3; // this is EB
+  if (abs(eta1)>1.4 and abs(eta2)>1.4) topology = 4; // this is EE
+
+  return topology;
+}
+
+
+
+int hardest_pt_idx(const Vec_f pts) {
+
+  int idx = -1;
+  float maxpt = -1.0f;
+  for (size_t i=0; i<pts.size(); ++i) {
+    if (pts[i] > maxpt) {
+      maxpt = pts[i];
+      idx = i;
+    }
+  }
+  return idx;
+
+}
 
 // https://twiki.cern.ch/twiki/bin/view/CMS/JetID13p6TeV
 // bug fix for v12 nano
@@ -117,17 +153,16 @@ Vec_b cleaningJetSelMask(int sel, Vec_f jet_eta, Vec_f jet_neHEF, Vec_f jet_chEm
   return jet_Sel_mask;
 }
 
-float Minv(const Vec_f& pt, const Vec_f& eta, const Vec_f& phi, const Vec_f& m) {
-  PtEtaPhiMVector p1(pt[0], eta[0], phi[0], m[0]);
-  PtEtaPhiMVector p2(pt[1], eta[1], phi[1], m[1]);
+float Minv(const TLorentzVector& p1, const TLorentzVector& p2) {
   return (p1 + p2).M();
 }
 
+float MinvErr(const float pt1, const float err1, const float pt2, const float err2) {
+  return sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
+}
 
 float minDeta(const float& etaDiMu, const float& jetEta1, const float& jetEta2) {
-
   return   std::min(abs(etaDiMu-jetEta1),abs(etaDiMu-jetEta2));
-  
 }  
 
 float MinvCorr(const TLorentzVector& p1, const TLorentzVector& p2,

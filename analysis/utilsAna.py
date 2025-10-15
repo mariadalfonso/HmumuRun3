@@ -49,6 +49,7 @@ xsecRun2={
 # https://twiki.cern.ch/twiki/bin/view/LHCPhysics/LHCTopWG
 # top https://twiki.cern.ch/twiki/bin/view/LHCPhysics/TtbarNNLO#Updated_reference_cross_sections
 # top BR https://pdg.lbl.gov/2017/reviews/rpp2017-rev-top-quark.pdf
+# SM https://twiki.cern.ch/twiki/bin/viewauth/CMS/MATRIXCrossSectionsat13p6TeV
 xsecRun3={
     'ggH':52230, # 0.4 × σ(13 TeV) + 0.6 × σ(14 TeV)
     'VBFH':4078,
@@ -58,7 +59,8 @@ xsecRun3={
     'TTH':570,
     #'ggZH':XXX,
     ###
-    'Z':6688.0*1000,
+#    'Z':6688.0*1000,
+    'Z':6244.8*1000, # TO USE TURBO XSECION 6244.8
     'EWKZ':1, # TEMP: placeholder for now
     'TT2l2n':923.6*1000*0.105, # needed the 2L BR (NNLO)
     'TTln':923.6*1000*0.438,
@@ -72,6 +74,11 @@ xsecRun3={
     'WWZ':0.1851*1000,
     'WZZ':0.06206*1000,
     'ZZZ':0.01591*1000,
+    'TTW':0.2505*1000,
+    'TTLNu-EWK':0.01769*1000,
+    'TTLL_MLL-4to50':0.03949*1000,
+    'TTLL_MLL-50':0.08646*1000,
+    'TTZ-ZtoQQ':0.6603*1000,
 }
 
 
@@ -152,7 +159,7 @@ def BuildDict(year):
         103: (findDIR(path("/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
         104: (findDIR(path("/DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
         100: (findDIR(path("/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']),
-        101: (findDIR(path("/EWK_2L2J_TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
+        101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
         102: (findDIR(path("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
         107: (findDIR(path("/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTln']),
         105: (findDIR(path("/TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
@@ -167,6 +174,11 @@ def BuildDict(year):
         212: (findDIR(path("/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WWZ']),
         213: (findDIR(path("/WZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WZZ']),
         214: (findDIR(path("/ZZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['ZZZ']),
+        221: (findDIR(path("/TTLNu-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TTW']),
+        222: (findDIR(path("/TTLNu-EWK_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLNu-EWK']),
+        223: (findDIR(path("/TTLL_*MLL-4to50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-4to50']),
+        224: (findDIR(path("/TTLL_*MLL-50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-50']),
+        225: (findDIR(path("/TTZ-ZtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TTZ-ZtoQQ']),
     }
     # TODO: add the signal aMCNLO sample, for the training we can use the powheg
 
@@ -250,17 +262,24 @@ def loadCorrectionSet(year):
 
     print('loadMuonScale()')
 
-    subDirName = ""
-    if year == 12022: subDirName = "2022_Summer22"
-    if year == 22022: subDirName = "2022_Summer22EE"
-    if year == 12023: subDirName = "2023_Summer23"
-    if year == 22023: subDirName = "2023_Summer23BPix"
-    if year == 2024: subDirName = "2024_Summer24"
+    if year==12022 or year==22022 or year==12023 or year==22023:
 
-    ROOT.gROOT.ProcessLine(
-        f'auto cset = correction::CorrectionSet::from_file("/cvmfs/cms.cern.ch/rsync/cms-nanoAOD/jsonpog-integration/POG/MUO/'+subDirName+'/muon_scalesmearing.json.gz");'
-    )
-    ROOT.gInterpreter.ProcessLine('#include "./config/MuonScaRe.cc"')
+        subDirName = ""
+        if year == 12022: subDirName = "Run3-22CDSep23-Summer22-NanoAODv12"
+        if year == 22022: subDirName = "Run3-22EFGSep23-Summer22EE-NanoAODv12"
+        if year == 12023: subDirName = "Run3-23CSep23-Summer23-NanoAODv12"
+	if year == 22023: subDirName = "Run3-23DSep23-Summer23BPix-NanoAODv12"
+        if year == 2024: subDirName = "Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15"
+
+        print('loadMuonScale()')
+        ROOT.gROOT.ProcessLine(
+            f'auto cset = correction::CorrectionSet::from_file("/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/'+subDirName+'/latest/muon_scalesmearing.json.gz");'
+        )
+        ROOT.gInterpreter.ProcessLine('#include "./config/MuonScaRe.cc"')
+        ROOT.gInterpreter.Declare('#include "./config/functionsMuCorr.h"')
+
+    ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
+
     ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
 
 def loadJSON(fIn):
@@ -285,7 +304,8 @@ def loadJSON(fIn):
 
 def readDataQuality(year):
     print("HELLO readDataQuality", year)
-    dirJson = "./config"
+    if year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024: dirJson = "/cvmfs/cms-griddata.cern.ch/cat/metadata/DC/Collisions22/latest/"
+    else: dirJson = "./config"
 
     json_map = {
         "2018":  "Cert_314472-325175_13TeV_Legacy2018_Collisions18_JSON.txt",

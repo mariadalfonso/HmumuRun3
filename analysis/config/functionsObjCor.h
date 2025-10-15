@@ -27,14 +27,15 @@ Vec_f computeMUcorrection(Vec_f mu_pt, Vec_f mu_eta, Vec_f mu_phi, Vec_i mu_char
 
 }
 
-Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta, Vec_f ele_r9, Vec_f ele_gain, float run, bool isData, string year){
+Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta, Vec_f ele_r9, Vec_f ele_gain, float event, float run, bool isData, string year){
 
   std::vector<double> random_numbers(ele_pt.size(), 0.0);
 
   // this is what's implemented: each event get the same reproducible random_numbers; each electron in the list get a different value
   // to recheck what should be
   if (!isData) {
-    std::mt19937 gen(125);
+    unsigned int seed = static_cast<unsigned int>(event + 0.5);
+    std::mt19937 gen(seed);
     std::normal_distribution<> dist(0.0, 1.0);
     for (auto &x : random_numbers) x = dist(gen);
   }

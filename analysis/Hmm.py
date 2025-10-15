@@ -45,6 +45,13 @@ def dfwithSYST(df,year):
           .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon2_eta, Muon2_pt, "M")'.format(year))
           .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_pt, "M")'.format(year))
           .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_pt, "M")'.format(year))
+          #
+          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_pt, "T")'.format(year))
+          .Define("SFmuon1_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon1_eta, Muon1_pt, "T")'.format(year))
+          .Define("SFmuon1_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon1_eta, Muon1_pt, "T")'.format(year))
+          .Define("SFmuon2_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon2_eta, Muon2_pt, "T")'.format(year))
+          .Define("SFmuon2_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon2_eta, Muon2_pt, "T")'.format(year))
+          .Define("SFmuon2_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon2_eta, Muon2_pt, "T")'.format(year))
           )
 
     if year=='12022' or year=='22022' or year=='12023' or year=='22023':
@@ -56,9 +63,11 @@ def dfwithSYST(df,year):
 
     # for now missing PU-2024
     if year=='2024':
-        dfFinal_withSF = (df.Define("w_allSF", "w*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
-    else:
-        dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
+        dfFinal_withSF = (df.Define("w_allSF", "w*SFmuon1_ID_Nom*SFmuon2_ID_Nom*SFmuon1_ISO_Nom*SFmuon2_ISO_Nom"))
+#        dfFinal_withSF = (df.Define("w_allSF", "w*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
+     else:
+        dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom*SFmuon1_ISO_Nom*SFmuon2_ISO_Nom"))
+#         dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
 
     return dfFinal_withSF
 
@@ -70,18 +79,28 @@ def doCategories(df,mc,year):
     BJETSmedium = selections["BJETS"].format(btagPNetBM[year])
     BJETSloose  = selections["BJETS"].format(btagPNetBL[year])
 
+    muonSel = selections["GOODMUON"].format("")  
+    if mode == "isVlep" or mode == "isTTlep": muonSel = selections["GOODMUON"].format(" and Muon_sip3d<5")
+    print("GOODMUON = ",muonSel)
+
     #fix the muonPT it's 25 GeV for the one triggered
-    df = (df.Define("goodMuons","{}".format(selections["GOODMUON"]))
+    df = (df.Define("goodMuons","{}".format(muonSel))
           .Filter("Sum(goodMuons)>=1","at least two good muons")
           .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
           .Filter("index_Mu[0]!= -1", "both Muons OS")
           .Filter("index_Mu[1]!= -1", "both Muons OS")
           .Define("Muon1_pt","Muon_bsConstrainedPt[goodMuons][index_Mu[0]]")
           .Define("Muon2_pt","Muon_bsConstrainedPt[goodMuons][index_Mu[1]]")
+          .Filter("(Muon1_pt > 26 || Muon2_pt > 26)","at least one >26 GeV to satisfy the trigger")
           .Define("Muon1_eta","Muon_eta[goodMuons][index_Mu[0]]")
           .Define("Muon2_eta","Muon_eta[goodMuons][index_Mu[1]]")
-          .Define("Muon1Vec", "MakeTLV(Muon_bsConstrainedPt[goodMuons][index_Mu[0]], Muon_eta[goodMuons][index_Mu[0]], Muon_phi[goodMuons][index_Mu[0]],Muon_mass[goodMuons][index_Mu[0]])")
-          .Define("Muon2Vec", "MakeTLV(Muon_bsConstrainedPt[goodMuons][index_Mu[1]], Muon_eta[goodMuons][index_Mu[1]], Muon_phi[goodMuons][index_Mu[1]],Muon_mass[goodMuons][index_Mu[1]])")
+          .Define("Muon1_phi","Muon_phi[goodMuons][index_Mu[0]]")
+          .Define("Muon2_phi","Muon_phi[goodMuons][index_Mu[1]]")
+          .Define("Muon1_sip3d","Muon_sip3d[goodMuons][index_Mu[0]]")
+          .Define("Muon2_sip3d","Muon_sip3d[goodMuons][index_Mu[1]]")
+          .Define("classify","topology(Muon1_eta, Muon2_eta)")
+          .Define("Muon1Vec", "MakeTLV(Muon1_pt, Muon1_eta, Muon1_phi, Muon_mass[goodMuons][index_Mu[0]])")
+          .Define("Muon2Vec", "MakeTLV(Muon2_pt, Muon2_eta, Muon2_phi, Muon_mass[goodMuons][index_Mu[0]])")
           ###
           .Define("jetMuon_mask", "cleaningMask(Muon_jetIdx[goodMuons],nJet)")
           # Jet_puIdDisc only for nanov15
@@ -89,6 +108,11 @@ def doCategories(df,mc,year):
           .Define("BJETS", f"{BJETSmedium}")
           .Define("BJETSloose", f"{BJETSloose}")
           )
+
+    if mc>0:
+        df = (df.Define("Muon1_genPartFlav","Muon_genPartFlav[goodMuons][index_Mu[0]]")
+              .Define("Muon2_genPartFlav","Muon_genPartFlav[goodMuons][index_Mu[1]]")
+              )
 
     # --- Reusable blocks ---
 
@@ -172,7 +196,7 @@ def doCategories(df,mc,year):
         category_map = {
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",  # W→e  (WH)
             2: f"({n_looseEle}==2 && {q_looseEle}==0 && {q_goodMu}==0 && {n_looseMu}==2)",                  # Z→ee (ZH)
-            3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3)",               # W→μ  (WH) #&& {freeOfZ} for the WH
+            3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",  # W→μ  (WH)
             4: f"({n_looseEle}==0 && {n_goodMu}==4 && {q_goodMu}==0 && {n_looseMu}==4)",                    # Z→μμ (ZH)
         }
 
@@ -187,6 +211,7 @@ def doCategories(df,mc,year):
              .Define("category", f"(int)({expr})")
              .Filter("category > 0", "Has valid category") #“discard events with no category”
              .Define("Lepton_Pt","(category ==1 or category ==2) ? Electron_pt[goodElectrons][0]:0")
+             .Define("Lepton_sip3d","(category ==1 or category ==2) ? Electron_sip3d[goodElectrons][0]:0")
              )
 
     elif mode == "isTTlep":
@@ -214,7 +239,10 @@ def doCategories(df,mc,year):
              .Define("category", f"(int)({expr})")
              .Filter("category > 0", "Has valid category")
              .Define("Lepton_Pt","(category ==1 or category ==2) ? Electron_pt[goodElectrons][0]:0")
-             .Define("Jet1_Pt","Jet_pt[goodJetsAll]")
+             .Define("Lepton_sip3d","(category ==1 or category ==2) ? Electron_sip3d[goodElectrons][0]:0")
+             .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
+             .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
+             .Filter("Jet1_Pt>35")
              )
 
     elif mode == "isTThad":
@@ -298,8 +326,9 @@ def analysis(files,year,mc,sumW):
 
     # apply JEC
     dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
+    dfComm = dfComm.Redefine("FatJet_pt",'computeJECcorrection(corr_sf, FatJet_pt, FatJet_rawFactor, FatJet_eta, FatJet_phi, FatJet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
     # get the EGM scale
-    dfComm = dfComm.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, run, isData, "{0}")'.format(year))
+    dfComm = dfComm.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, event, run, isData, "{0}")'.format(year))
     # apply muonScale
     if year in ["12022", "22022", "12023", "22023"]:
         dfComm = dfComm.Redefine("Muon_bsConstrainedPt",'computeMUcorrection(Muon_bsConstrainedPt, Muon_eta, Muon_phi, Muon_charge, Muon_nTrackerLayers, isData, event, luminosityBlock)')
@@ -313,7 +342,8 @@ def analysis(files,year,mc,sumW):
     df = doCategories(dfComm,mc,year)
 
     # Zgamma has these: |dz| < 1.0 cm, |dxy| < 0.5 cm, SIP3D < 4
-    df = (df.Define("HiggsCandMass","Minv(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_mass[goodMuons])")
+    df = (df.Define("HiggsCandMass","Minv(Muon1Vec,Muon2Vec)")
+          .Define("HiggsCandMassErr","MinvErr(Muon1_pt, Muon_bsConstrainedPtErr[goodMuons][index_Mu[0]], Muon2_pt, Muon_bsConstrainedPtErr[goodMuons][index_Mu[1]])")
           .Define("goodFRSphoton", "fsrMask(Muon_fsrPhotonIdx[goodMuons],nFsrPhoton)")
           .Define("FsrPH_pt","FsrPhoton_pt[goodFRSphoton]")
           .Define("FsrPH_eta","FsrPhoton_eta[goodFRSphoton]")
@@ -422,8 +452,16 @@ def analysis(files,year,mc,sumW):
                 "HiggsCandCorrMass",
                 "HiggsCandCorrPt",
                 "HiggsCandCorrRapidity",
+                "HiggsCandMassErr",
+                "classify",
                 "Muon1_pt",
                 "Muon2_pt",
+                "Muon1_eta",
+                "Muon2_eta",
+                "Muon1_phi",
+                "Muon2_phi",
+                "Muon1_sip3d",
+                "Muon2_sip3d",
                 "FsrPH_pt",
                 "FsrPH_eta",
                 "PuppiMET_pt",
@@ -451,12 +489,29 @@ def analysis(files,year,mc,sumW):
             ],
             "isVlep": [
                 "Lepton_Pt",
+                "Lepton_sip3d",
                 "category",
             ],
             "isTTlep": [
                 "Lepton_Pt",
+                "Lepton_sip3d",
                 "category",
                 "Jet1_Pt"
+            ],
+        }
+
+        mode_MConly_branches = {
+            "isVBF": [
+                "jetVBF1_partonFlavour",
+                "jetVBF2_partonFlavour",
+            ],
+            "isVlep": [
+                "Muon1_genPartFlav",
+                "Muon2_genPartFlav",
+            ],
+            "isTTlep": [
+                "Muon1_genPartFlav",
+                "Muon2_genPartFlav",
             ],
         }
 
@@ -467,6 +522,11 @@ def analysis(files,year,mc,sumW):
         # Add extra depending on mode
         for b in mode_branches.get(mode, []):
             branchList.push_back(b)
+
+        # Add extra depending on mode
+        if mc > 0:
+            for b in mode_MConly_branches.get(mode, []):
+                branchList.push_back(b)
 
         if mode not in mode_map:
             raise ValueError(f"Unknown mode: {mode}")
@@ -494,11 +554,16 @@ def loopOnDataset(year):
     mc.extend([10,11,12,13,14,15])
     if year in ["12022", "22022", "12023", "22023"]: mc.extend([20,21,22,23,24,25])
     if year=="2024": mc.extend([20,21,22,23,24,26])
-    if year=="2024": mc.extend([103,104])
-    else: mc.extend([100])
-    mc.extend([102,107,105,106])
-    mc.extend([201,202,203,204,205])
-    mc.extend([211,212,213,214])
+    if year=="2024": mc.extend([103,104])   #DY
+    else: mc.extend([100])    #DY
+    mc.extend([101])    #DY EWK
+    mc.extend([102])    #TT2l
+    mc.extend([201,202,203,204,205]) #VV
+    mc.extend([211,212,213,214])     #VVV
+    if mode == "isVlep" or mode == "isTTlep" or mode == "isVhad" or mode == "isGGH":
+        mc.extend([107,105,106]) # tt1l, tW
+        if year in ["12022", "22022", "12023", "22023"]: mc.extend([221,222,223,224,225]) #ttV
+        if year=="2024": mc.extend([222,223,224])    #ttV
 
     print(mc)
 

@@ -17,6 +17,7 @@ public:
   MyCorrections(int year);
 
   double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc);
+  double eval_fatJetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc);
   double eval_jesUnc    (double eta, double pt, int type);
   double eval_jer       (double pt, double eta, double rho, double area);
   double eval_jetID     (float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity);
@@ -38,11 +39,16 @@ private:
   correction::Correction::Ref electronIDSF_;
   correction::CompoundCorrection::Ref electronScaleData_;
   correction::Correction::Ref electronSmearAndSystMC_;
+
   correction::Correction::Ref muonTRKSF_;
   correction::Correction::Ref muonIDMSF_;
   correction::Correction::Ref muonISOLSF_;
   correction::Correction::Ref muonIDTSF_;
   correction::Correction::Ref muonISOTSF_;
+  correction::Correction::Ref muonTIso_;
+  correction::Correction::Ref muonLIso_;
+  correction::Correction::Ref muonTrgSF_;
+
   correction::Correction::Ref JER_;
   correction::Correction::Ref JERsf_;
   correction::CompoundCorrection::Ref JEC_;
@@ -50,20 +56,36 @@ private:
   correction::CompoundCorrection::Ref JECdata22E_;
   correction::CompoundCorrection::Ref JECdata22F_;
   correction::CompoundCorrection::Ref JECdata22G_;
+  correction::CompoundCorrection::Ref fatJEC_;
+  correction::CompoundCorrection::Ref fatJECdata_;
+  correction::CompoundCorrection::Ref fatJECdata22E_;
+  correction::CompoundCorrection::Ref fatJECdata22F_;
+  correction::CompoundCorrection::Ref fatJECdata22G_;
   correction::Correction::Ref jesUnc_;
+  correction::Correction::Ref fatjesUnc_;
   correction::Correction::Ref vetoMaps_;
   correction::Correction::Ref jetTightID_;
 
 };
 
-
 MyCorrections::MyCorrections(int year) {
 
-  std::string dirName = "/cvmfs/cms.cern.ch/rsync/cms-nanoAOD/jsonpog-integration/POG/";
+  std::string dirName = "/cvmfs/cms-griddata.cern.ch/cat/metadata/";
 
   std::string subDirName = "";
   std::string dataName = "";
 
+  if(year == 2018)  { subDirName += "Run2-2018-UL-NanoAODv9/latest/"; dataName = "UL18"; }
+  if(year == 2017)  { subDirName += "Run2-2017-UL-NanoAODv9/latest/"; dataName = "UL17"; }
+  if(year == 22016)  { subDirName += "Run2-2016postVFP-UL-NanoAODv9/latest/"; dataName = "UL16"; }
+  if(year == 12016)  { subDirName += "Run2-2016preVFP-UL-NanoAODv9/latest/"; dataName = "UL16APV"; }
+  if(year == 12022)  { subDirName += "Run3-22CDSep23-Summer22-NanoAODv12/latest/"; }
+  if(year == 22022)  { subDirName += "Run3-22EFGSep23-Summer22EE-NanoAODv12/latest/"; }
+  if(year == 12023)  { subDirName += "Run3-23CSep23-Summer23-NanoAODv12/latest/"; }
+  if(year == 22023)  { subDirName += "Run3-23DSep23-Summer23BPix-NanoAODv12/latest/"; }
+  if(year == 2024)   { subDirName += "Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/"; }
+
+  /*
   if(year == 2018)  { subDirName += "2018_UL/"; dataName = "UL18"; }
   if(year == 2017)  { subDirName += "2017_UL/"; dataName = "UL17"; }
   if(year == 22016)  { subDirName += "2016postVFP_UL/"; dataName = "UL16"; }
@@ -73,7 +95,7 @@ MyCorrections::MyCorrections(int year) {
   if(year == 12023)  { subDirName += "2023_Summer23/"; }
   if(year == 22023)  { subDirName += "2023_Summer23BPix/"; }
   if(year == 2024)   { subDirName += "2024_Summer24/"; }
-
+  */
   const std::string fileNameLUM = dirName+"LUM/"+subDirName+"puWeights.json.gz";
 
   std::string corrNameLUM = "";  
@@ -93,6 +115,8 @@ MyCorrections::MyCorrections(int year) {
 
   std::string fileNameMU = dirName+"MUO/"+subDirName+"muon_Z.json.gz";
 
+  //// muon WP https://muon-wiki.docs.cern.ch/guidelines/recommendations/#particle-flow-isolation
+
   if(year == 2018 or year == 2017 or year == 12016 or year == 22016) {
     auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
 
@@ -105,8 +129,14 @@ MyCorrections::MyCorrections(int year) {
 
   if(year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
     auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
+
     muonIDMSF_ = csetMu->at("NUM_MediumID_DEN_TrackerMuons");
-    // to add isolation
+    muonTIso_ = csetMu->at("NUM_TightPFIso_DEN_MediumID"); //NUM_TightPFIso_DEN_MediumID
+    muonLIso_ = csetMu->at("NUM_LoosePFIso_DEN_MediumID"); //NUM_LoosePFIso_DEN_MediumID
+    if(year == 22023 or year == 12023 or year == 22022 or year == 12022) {
+      // 2024 missing
+      muonTrgSF_ = csetMu->at("NUM_IsoMu24_DEN_CutBasedIdMedium_and_PFIsoMedium");
+    }
   }
 
   //////////////
@@ -121,26 +151,59 @@ MyCorrections::MyCorrections(int year) {
     const std::string suffix = "_DATA_L1L2L3Res_";
 
     std::string tagName = "";
-    if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V2";
+    if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V3";
     if(year == 12023)  tagName = "Summer23Prompt23_V2";
     if(year == 22023)  tagName = "Summer23BPixPrompt23_V3";
     if(year == 2024)   tagName = "Summer24Prompt24_V1";
     if(year == 22022)  {
-      tagName = "Summer22EE_22Sep2023_RunF_V2";
-      JECdata22E_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunE_V2"+suffix+jetType);
-      JECdata22F_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunF_V2"+suffix+jetType);
-      JECdata22G_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunG_V2"+suffix+jetType);
+      tagName = "Summer22EE_22Sep2023_RunF_V3";
+      JECdata22E_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunE_V3"+suffix+jetType);
+      JECdata22F_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunF_V3"+suffix+jetType);
+      JECdata22G_ = csetJEC->compound().at("Summer22EE_22Sep2023_RunG_V3"+suffix+jetType);
     }
     JECdata_ = csetJEC->compound().at(tagName+suffix+jetType);
 
     std::string tagNameMC = "";
-    if(year == 12022)  tagNameMC = "Summer22_22Sep2023_V2";
-    if(year == 22022)  tagNameMC = "Summer22EE_22Sep2023_V2";
+    if(year == 12022)  tagNameMC = "Summer22_22Sep2023_V3";
+    if(year == 22022)  tagNameMC = "Summer22EE_22Sep2023_V3";
     if(year == 12023)  tagNameMC = "Summer23Prompt23_V2";
     if(year == 22023)  tagNameMC = "Summer23BPixPrompt23_V3";
     if(year == 2024)   tagNameMC = "Summer24Prompt24_V1";
     JEC_ = csetJEC->compound().at(tagNameMC+"_MC_L1L2L3Res_"+jetType);
     jesUnc_ = csetJEC->at(tagNameMC+"_MC_Total_"+jetType);
+
+  }
+
+  // 2024 not yet there
+  if(year == 12022 or year == 22022 or year == 12023 or year == 22023) {
+
+    const std::string fileNameFatJEC = dirName+"JME/"+subDirName+"fatJet_jerc.json.gz";
+    auto csetFatJEC = correction::CorrectionSet::from_file(fileNameFatJEC);
+
+    const std::string jetType="AK8PFPuppi";
+    const std::string suffix = "_DATA_L1L2L3Res_";
+
+    std::string tagName = "";
+    if(year == 12022)  tagName = "Summer22_22Sep2023_RunCD_V3";
+    if(year == 12023)  tagName = "Summer23Prompt23_V2";
+    if(year == 22023)  tagName = "Summer23BPixPrompt23_V3";
+    if(year == 2024)   tagName = "Summer24Prompt24_V1";
+    if(year == 22022)  {
+      tagName = "Summer22EE_22Sep2023_RunF_V3";
+      fatJECdata22E_ = csetFatJEC->compound().at("Summer22EE_22Sep2023_RunE_V3"+suffix+jetType);
+      fatJECdata22F_ = csetFatJEC->compound().at("Summer22EE_22Sep2023_RunF_V3"+suffix+jetType);
+      fatJECdata22G_ = csetFatJEC->compound().at("Summer22EE_22Sep2023_RunG_V3"+suffix+jetType);
+    }
+    fatJECdata_ = csetFatJEC->compound().at(tagName+suffix+jetType);
+
+    std::string tagNameMC = "";
+    if(year == 12022)  tagNameMC = "Summer22_22Sep2023_V3";
+    if(year == 22022)  tagNameMC = "Summer22EE_22Sep2023_V3";
+    if(year == 12023)  tagNameMC = "Summer23Prompt23_V2";
+    if(year == 22023)  tagNameMC = "Summer23BPixPrompt23_V3";
+    if(year == 2024)   tagNameMC = "Summer24Prompt24_V1";
+    fatJEC_ = csetFatJEC->compound().at(tagNameMC+"_MC_L1L2L3Res_"+jetType);
+    fatjesUnc_ = csetFatJEC->at(tagNameMC+"_MC_Total_"+jetType);
 
   }
 
@@ -163,7 +226,6 @@ MyCorrections::MyCorrections(int year) {
   if(year == 22023) tagNameVeto = "Summer23BPixPrompt23_RunD_V1";
   if(year == 2024) tagNameVeto = "Summer24Prompt24_RunBCDEFGHI_V1";
   vetoMaps_ = csetVeto->at(tagNameVeto);
-
 
   //////////////
   ////  EGM https://twiki.cern.ch/twiki/bin/view/CMS/EgammSFandSSRun3
@@ -208,6 +270,28 @@ double MyCorrections::eval_jetCORR(double area, double eta, double phi, double p
   } else {
     if(isData) return JECdata_->evaluate({area, eta, pt, rho});
     else return JEC_->evaluate({area, eta, pt, rho});
+  }
+
+  return 1.0;
+
+};
+
+double MyCorrections::eval_fatJetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc) {
+
+  if (year == "2024" or year == "22023") {
+    if(isData) return fatJECdata_->evaluate({area, eta,  pt, rho, phi, (float) run});
+    else fatJEC_->evaluate({area, eta, pt, rho, phi});
+  } else if (year == "12023") {
+    if(isData) return fatJECdata_->evaluate({area, eta, pt, rho, (float) run});
+    else return fatJEC_->evaluate({area, eta, pt, rho});
+  } else if (year == "22022") {
+    if(isData and mc == "-15") return fatJECdata22E_->evaluate({area, eta, pt, rho});
+    if(isData and mc == "-16") return fatJECdata22F_->evaluate({area, eta, pt, rho});
+    if(isData and mc == "-17") return fatJECdata22G_->evaluate({area, eta, pt, rho});
+    else return fatJEC_->evaluate({area, eta, pt, rho});
+  } else {
+    if(isData) return fatJECdata_->evaluate({area, eta, pt, rho});
+    else return fatJEC_->evaluate({area, eta, pt, rho});
   }
 
   return 1.0;
@@ -274,7 +358,9 @@ double MyCorrections::eval_muonTRKSF(std::string year, std::string valType, doub
 };
 
 double MyCorrections::eval_muonIDSF(std::string year, std::string valType, double eta, double pt, std::string workingPoint) {
-  eta = std::min(std::abs(eta),2.399);
+  if (year == "22023" or year == "2024") eta = eta;
+  else eta = std::min(std::abs(eta),2.399);
+
   pt = std::max(pt,15.001);
 
   if (workingPoint=="T") {
@@ -286,12 +372,17 @@ double MyCorrections::eval_muonIDSF(std::string year, std::string valType, doubl
 };
 
 double MyCorrections::eval_muonISOSF(std::string year, std::string valType, double eta, double pt, std::string workingPoint) {
-  eta = std::min(std::abs(eta),2.399);
+
+  if (year == "22023" or year == "2024") eta = eta;
+  else eta = std::min(std::abs(eta),2.399);
+
   pt = std::max(pt,15.001);
-  
+
   if (workingPoint=="T") {
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024") return muonTIso_->evaluate({ eta, pt, valType});
     return muonISOTSF_->evaluate({year, eta, pt, valType});
   } else if (workingPoint=="L") {
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024") return muonLIso_->evaluate({eta, pt, valType});
     return muonISOLSF_->evaluate({year, eta, pt, valType});
   }
   return 1.;
