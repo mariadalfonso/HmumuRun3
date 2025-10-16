@@ -58,7 +58,9 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
       print('Integral ',h.GetName(), " = ", h.Integral())      
       SIGstack.Add(h.GetValue())
 
-   labels = ["", "H_{#mu#mu}+e", "H_{#mu#mu}+ee", "H_{#mu#mu}+#mu", "H_{#mu#mu}+#mu#mu"]
+
+   labelsH = ["", "n_top", "n_W", "resolved (3jets)"]
+   labelsL = ["", "H_{#mu#mu}+e", "H_{#mu#mu}+ee", "H_{#mu#mu}+#mu", "H_{#mu#mu}+#mu#mu"]
 
    for h in [hWH, hTTH, hZH, hVBFH, hggH, hTT2L, hTop, hZg, hVV, hEWK, hDY]:
 
@@ -67,7 +69,12 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
 
       if item==210:
          # Set labels for the 4 bins
-         for i, lab in enumerate(labels, start=1):
+         for i, lab in enumerate(labelsL, start=1):
+            h.GetXaxis().SetBinLabel(i, lab)
+
+      if item==211:
+         # Set labels for the 4 bins
+         for i, lab in enumerate(labelsH, start=1):
             h.GetXaxis().SetBinLabel(i, lab)
 
       allstack.Add(h.GetValue())
@@ -200,9 +207,15 @@ def plotVHlep():
 
 def plotVHhad():
 
-   plot(251, 100, 30. , 130., True, "goodWjj_mass","goodWjj_mass")
-   plot(252, 100, 30. , 130., False, "FatJet_pNet_mass","FatJet_pNet_mass")
-   plot(253, 100, 0. , 1., True, "FatJet_pNet_WvsQCD","FatJet_pNet_WvsQCD")
+   plot(251, 50, 60. , 110., True, "goodWjj_mass","goodWjj_mass")
+   plot(252, 100, 0. , 1., True, "goodWjj_discr","goodWjj_discr")
+   plot(256, 40, 150. , 550., True, "goodWjj_pt","goodWjj_pt")
+
+def plotTThad():
+
+   plot(211, 4, 0. , 4., False, "category","category")
+   plot(254, 150, 10. , 160., False, "Jet1_Pt","Jet1_Pt")
+   plot(255, 150, 50. , 200., True, "WTopJetMass","WTopJetMass")
 
 def plotZinvH():
 
@@ -218,6 +231,8 @@ def plotMuons():
    plot(14, 100, -0. , 20., True, "Muon1_sip3d", "Muon1_sip3d")
    plot(15, 100, -0. , 20., True, "Muon2_sip3d", "Muon2_sip3d")
 #   plot(16, 200, 0.1 , 20.1, False, "FsrPH_pt", "p^{T}_{#gammaFSR} [GeV]")
+   plot(18, 60, -3.14 , 3.14, False, "Muon1_phi", "#phi_{#mu^{1}}")
+   plot(19, 60, -3.14 , 3.14, False, "Muon2_phi", "#phi_{#mu^{2}}")
 
 
 if __name__ == "__main__":
@@ -238,8 +253,8 @@ if __name__ == "__main__":
    else:
       plot(5, 100, 0. , 100., True, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
 
-   if category == "_VHcat": plotVHhad()
-
    if category == "_VBFcat" : plotVBF()
-   if category == "_VLcat" or category == "_TTLcat" or category == "_TTHcat": plotVHlep()
+   if category == "_VLcat" or category == "_TTLcat": plotVHlep()
+   if category == "_VHcat": plotVHhad()
+   if category == "_TTHcat": plotTThad()
    if category == "_Zinvcat" : plotZinvH()

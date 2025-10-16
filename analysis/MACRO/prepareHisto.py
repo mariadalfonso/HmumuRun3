@@ -112,6 +112,8 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 15 : var = "Muon2_sip3d"
    if item == 16 : var = "FsrPH_pt"
    if item == 17 : var = "FsrPH_eta"
+   if item == 18 : var = "Muon1_phi"
+   if item == 19 : var = "Muon2_phi"
    if item == 95 : var = "PV_npvsGood"
 
    # for VBF
@@ -129,11 +131,15 @@ def getHisto(mytree, category, item, nbin, low, high):
    # for VH lep
    if item == 201: var = "Lepton_Pt"
    if item == 210: var = "category"
+   if item == 211: var = "category"
 
    # for VH had
    if item == 251: var = "goodWjj_mass[0]"
-   if item == 252: var = "FatJet_pNet_WvsQCD_discr[0]"
-   if item == 253: var = "FatJet_pNet_mass[0]"
+   if item == 256: var = "goodWjj_pt[0]"
+   if item == 252: var = "goodWjj_discr[0]"
+#   if item == 253: var = "FatJet_pNet_mass[0]"
+   if item == 254: var = "Jet1_Pt"
+   if item == 255: var = "WTopJetMass"
 
    # for ZinvH
    if item == 301: var = "PuppiMET_pt"

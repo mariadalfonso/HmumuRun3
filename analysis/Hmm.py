@@ -19,7 +19,7 @@ with open("/home/submit/mariadlf/Hrare/CMSSW_10_6_27_new/src/HmumuRun3/analysis/
     jsonObject = json.load(jsonFile)
     jsonFile.close()
 
-selections = {key: jsonObject[key] for key in ["GOODMUON", "GOODJETSALL", "GOODelectrons", "LOOSEelectrons", "LOOSEmuons", "BJETS", "METFilters", "TRIGGER" ]}
+selections = {key: jsonObject[key] for key in ["GOODMUON", "GOODJETSALL", "GOODelectrons", "LOOSEelectrons", "LOOSEmuons", "BJETS", "METFilters", "TRIGGER", "GOODboson" ]}
 
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
@@ -33,6 +33,7 @@ mode_map = {
     "isGGH":   "ggHcat",
     "isZinv":  "Zinvcat",
     "isVlep":  "VLcat",
+    "isVhad":  "VHcat",
     "isTTlep": "TTLcat",
     "isTThad": "TTHcat",
 }
@@ -52,22 +53,20 @@ def dfwithSYST(df,year):
           .Define("SFmuon2_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon2_eta, Muon2_pt, "T")'.format(year))
           .Define("SFmuon2_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon2_eta, Muon2_pt, "T")'.format(year))
           .Define("SFmuon2_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon2_eta, Muon2_pt, "T")'.format(year))
-          )
+        )
 
-    if year=='12022' or year=='22022' or year=='12023' or year=='22023':
+    if year=='12022' or year=='22022' or year=='12023' or year=='22023' or year=='2024':
         df = (df.Define("SFpu_Nom",'corr_sf.eval_puSF(Pileup_nTrueInt,"nominal")')
               .Define("SFpu_Up",'corr_sf.eval_puSF(Pileup_nTrueInt,"up")')
               .Define("SFpu_Dn",'corr_sf.eval_puSF(Pileup_nTrueInt,"down")')
         )
 
-
     # for now missing PU-2024
     if year=='2024':
+#        dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom*SFmuon1_ISO_Nom*SFmuon2_ISO_Nom"))
         dfFinal_withSF = (df.Define("w_allSF", "w*SFmuon1_ID_Nom*SFmuon2_ID_Nom*SFmuon1_ISO_Nom*SFmuon2_ISO_Nom"))
-#        dfFinal_withSF = (df.Define("w_allSF", "w*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
-     else:
+    else:
         dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom*SFmuon1_ISO_Nom*SFmuon2_ISO_Nom"))
-#         dfFinal_withSF = (df.Define("w_allSF", "w*SFpu_Nom*SFmuon1_ID_Nom*SFmuon2_ID_Nom"))
 
     return dfFinal_withSF
 
@@ -80,7 +79,7 @@ def doCategories(df,mc,year):
     BJETSloose  = selections["BJETS"].format(btagPNetBL[year])
 
     muonSel = selections["GOODMUON"].format("")  
-    if mode == "isVlep" or mode == "isTTlep": muonSel = selections["GOODMUON"].format(" and Muon_sip3d<5")
+    if mode == "isVlep" or mode == "isTTlep"or mode == "isZinv": muonSel = selections["GOODMUON"].format(" and Muon_sip3d<5")
     print("GOODMUON = ",muonSel)
 
     #fix the muonPT it's 25 GeV for the one triggered
@@ -160,9 +159,9 @@ def doCategories(df,mc,year):
         "isVBF":       mu_veto + ele_veto + bjet_veto, # TO add the met veto
         "isZinv":      mu_veto + ele_veto + bjet_veto + met_filters,
         "isVlep":      bjet_veto,
-#        "isWhad":      ele_vet + bjet_veto,
+        "isVhad":      mu_veto + ele_veto + bjet_veto,  # TO add the met veto
         "isTTlep":     bjet,
-        "isTThad":    mu_veto + ele_veto + bjet,
+        "isTThad":     mu_veto + ele_veto + bjet,
     }
 
    # --- Apply category ---
@@ -180,17 +179,23 @@ def doCategories(df,mc,year):
     # ---  SPECIFIC THINGS for each MODE
     # ---------
 
-    '''
-    elif mode == "isGGH":
-
-    elif mode == "isZinv":
+    if mode == "isZinv":
         df= (df.Filter("PuppiMET_pt>150","MET > 150")
              .Define("METFilters","{}".format(selections["METFilters"]))
              .Filter("METFilters>0","Pass MET filters")
              )
-    '''
 
-    if mode == "isVlep":
+    elif mode == "isVhad":
+
+        df= (df.Define("fatjet_muon_clean","fatJetMask(FatJet_muonIdx3SJ, index_Mu[0], index_Mu[1])")
+             .Define("goodWjj","{}".format(selections["GOODboson"]))
+             .Define("nGoodWjj","Sum(goodWjj)*1.0f").Filter("Sum(goodWjj)>0","at least one W jet")
+             .Define("goodWjj_mass","FatJet_particleNet_massCorr[goodWjj]*FatJet_mass[goodWjj]")
+             .Define("goodWjj_discr","FatJet_particleNetWithMass_WvsQCD[goodWjj]")
+             .Define("goodWjj_pt","FatJet_pt[goodWjj]")
+             )
+
+    elif mode == "isVlep":
 
         # Define leptonic category conditions
         category_map = {
@@ -207,7 +212,12 @@ def doCategories(df,mc,year):
         # At least one μ+μ− pair must have an invariant mass between 110 and 150 GeV
         # In 3μ events, the non-Higgs-candidate μ+μ− pair (μμOS) must not have an invariant mass between 81 and 101 GeV, to suppress WZ and Z+jets backgrounds
         # in 4μ events, if 2 inZ are found then discard
-        df= (df.Define("goodElectrons","{}".format(selections["GOODelectrons"]))
+
+        eleSel = selections["GOODelectrons"].format("")
+        if year=='2024': eleSel = selections["GOODelectrons"].format(" and Electron_pfRelIso04_all < 0.15")
+        else: eleSel = selections["GOODelectrons"].format(" and Electron_pfRelIso03_all < 0.15")
+
+        df= (df.Define("goodElectrons","{}".format(eleSel))
              .Define("category", f"(int)({expr})")
              .Filter("category > 0", "Has valid category") #“discard events with no category”
              .Define("Lepton_Pt","(category ==1 or category ==2) ? Electron_pt[goodElectrons][0]:0")
@@ -233,23 +243,47 @@ def doCategories(df,mc,year):
         # 3 muons The charge of the three leptons must add up to ±1
         # At least one μ+μ− pair must have an invariant mass between 110 and 150 GeV
         # In 3μ events, the non-Higgs-candidate μ+μ− pair (μμOS) must not have an invariant mass between 81 and 101 GeV, to suppress WZ and Z+jets backgrounds
-        df= (df.Define("goodElectrons","{}".format(selections["GOODelectrons"]))
+
+        eleSel = selections["GOODelectrons"].format("")
+        if year=='2024': eleSel = selections["GOODelectrons"].format(" and Electron_pfRelIso04_all < 0.15")
+        else: eleSel = selections["GOODelectrons"].format(" and Electron_pfRelIso03_all < 0.15")
+
+        df= (df.Define("goodElectrons","{}".format(eleSel))
              .Define("jetElectron_mask", "cleaningMask(Electron_jetIdx[goodElectrons],nJet)")
              .Define("goodJetsAll","{}".format(JETSwithEleVeto))
              .Define("category", f"(int)({expr})")
              .Filter("category > 0", "Has valid category")
              .Define("Lepton_Pt","(category ==1 or category ==2) ? Electron_pt[goodElectrons][0]:0")
              .Define("Lepton_sip3d","(category ==1 or category ==2) ? Electron_sip3d[goodElectrons][0]:0")
+             #
              .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
              .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
              .Filter("Jet1_Pt>35")
              )
 
     elif mode == "isTThad":
-        df= (df.Define("goodJetsAll","{}".format(selections["GOODJETSALL"].format("")))
-             .Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f").Filter("Sum(goodJetsAll)>2","at least three jets")
-             ## add leading jet pt>50 and triplet mass mjjj 100-300
-             ## look the toponium and the ttHcc
+
+        myTOP = "FatJet_pt>400 && FatJet_particleNetWithMass_TvsQCD> 0.75 && FatJet_particleNet_massCorr*FatJet_mass>(175-80) && FatJet_particleNet_massCorr*FatJet_mass<(175+80)"
+        myW = "FatJet_pt>200 && FatJet_pt<400 && FatJet_particleNetWithMass_WvsQCD> 0.75 && FatJet_particleNet_massCorr*FatJet_mass>(80-40) && FatJet_particleNet_massCorr*FatJet_mass<(80+40)"
+        n_top = f"Sum({myTOP})"
+        n_W = f"Sum({myW})"
+
+        category_map = {
+            1: f"({n_top}>=1)",     # with  TOP pt > 400 GeV
+            2: f"({n_W}>=1 && {n_top}>=0)",       # with W pt > 200 GeV
+            3: f"({n_top}==0 && {n_W}==0)",    # fully resolved   at least three jets
+        }
+
+        # Build a single expression with nested ternaries
+        expr = f"({category_map[1]}) ? 1 : (({category_map[2]}) ? 2 : (({category_map[3]}) ? 3 : 0))"
+
+        df= (df.Define("goodJetsAll","{}".format(selections["GOODJETSALL"].format(""))) # check eta distribution
+             .Define("category", f"(int)({expr})")
+             .Filter("category > 0", "Has valid category")
+             .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
+             .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
+             .Define("WTopJetMass","FatJet_particleNet_massCorr*FatJet_mass")
+             .Filter("category==1 || category==2 || (category==3 && Jet1_Pt>50 && Sum(goodJetsAll)>2)")
              )
 
     elif mode == "isVBF":
@@ -323,10 +357,10 @@ def analysis(files,year,mc,sumW):
               .Filter("{}".format(selections["TRIGGER"]),"passing trigger")
               )
 
-
     # apply JEC
     dfComm = dfComm.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
     dfComm = dfComm.Redefine("FatJet_pt",'computeJECcorrection(corr_sf, FatJet_pt, FatJet_rawFactor, FatJet_eta, FatJet_phi, FatJet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
+
     # get the EGM scale
     dfComm = dfComm.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, event, run, isData, "{0}")'.format(year))
     # apply muonScale
@@ -352,7 +386,7 @@ def analysis(files,year,mc,sumW):
           .Define("HiggsCandCorrMass","MinvCorr(Muon1Vec,Muon2Vec,FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],0)")
           .Define("HiggsCandCorrPt","MinvCorr(Muon1Vec,Muon2Vec,FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],1)")
           .Define("HiggsCandCorrRapidity","MinvCorr(Muon1Vec,Muon2Vec,FsrPhoton_pt[goodFRSphoton], FsrPhoton_eta[goodFRSphoton],FsrPhoton_phi[goodFRSphoton],2)")
-          .Filter("HiggsCandCorrMass>50 and HiggsCandCorrMass<200","HiggsMass within reasonable range 50-200")
+          .Filter("(HiggsCandCorrMass>50 and HiggsCandCorrMass<200)","HiggsMass within reasonable range 50-200")
           )
 
     if mode == "isVBF":
@@ -379,8 +413,8 @@ def analysis(files,year,mc,sumW):
             "HiggsCandMass": {"name":"HiggsCandMass","title":"M(mu1,mu2); M(mu1,mu2) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
             "HiggsCandCorrMass": {"name":"HiggsCandCorrMass","title":"M(mu1,mu2,fsr); M(mu1,mu2,fsr) (GeV);N_{Events}","bin":250,"xmin":50.,"xmax":300.},
             "HiggsCandCorrPt": {"name":"HiggsCandCorrPt","title":"p_{T}(mu1,mu2,fsr); p_{T}(mu1,mu2,fsr) (GeV);N_{Events}","bin":250,"xmin":0.,"xmax":250.},
-            "FsrPH_pt": {"name":"FsrPH_pt","title":"FSR0; FSR (GeV);N_{Events}","bin":200,"xmin":0.,"xmax":20.},
-            "FsrPH_pt_ratio0": {"name":"FsrPH_pt_ratio0","title":"FSR_ratio0; FSR/p_{T}(mu1) (GeV);N_{Events}","bin":100,"xmin":0.,"xmax":10.},
+#            "FsrPH_pt": {"name":"FsrPH_pt","title":"FSR0; FSR (GeV);N_{Events}","bin":200,"xmin":0.,"xmax":20.},
+#            "FsrPH_pt_ratio0": {"name":"FsrPH_pt_ratio0","title":"FSR_ratio0; FSR/p_{T}(mu1) (GeV);N_{Events}","bin":100,"xmin":0.,"xmax":10.},
 #            "PuppiMET_pt": {"name":"PuppiMET_pt","title":"PuppiMET_pt; PuppiMET (GeV);N_{Events}","bin":300,"xmin":0.,"xmax":300.},
         }
 
@@ -496,9 +530,20 @@ def analysis(files,year,mc,sumW):
                 "Lepton_Pt",
                 "Lepton_sip3d",
                 "category",
-                "Jet1_Pt"
+                "Jet1_Pt",
+            ],
+            "isTThad": [
+                "Jet1_Pt",
+                "category",
+                "WTopJetMass"
+            ],
+            "isVhad": [
+                "goodWjj_mass",
+                "goodWjj_discr",
+                "goodWjj_pt"
             ],
         }
+
 
         mode_MConly_branches = {
             "isVBF": [
@@ -560,12 +605,11 @@ def loopOnDataset(year):
     mc.extend([102])    #TT2l
     mc.extend([201,202,203,204,205]) #VV
     mc.extend([211,212,213,214])     #VVV
-    if mode == "isVlep" or mode == "isTTlep" or mode == "isVhad" or mode == "isGGH":
+
+    if mode == "isVlep" or mode == "isTTlep" or mode == "isVhad" or mode == "isGGH" or mode == "isTThad":
         mc.extend([107,105,106]) # tt1l, tW
         if year in ["12022", "22022", "12023", "22023"]: mc.extend([221,222,223,224,225]) #ttV
         if year=="2024": mc.extend([222,223,224])    #ttV
-
-    print(mc)
 
     for sampleNOW in mc:
         files, xsec = SwitchSample(thisdict, sampleNOW)
@@ -582,6 +626,7 @@ def loopOnDataset(year):
         "22023": [-31, -32],
         "2024":  list(range(-41, -55, -1)),  # generates -41 to -54
     }
+
     data = data_map.get(year, [])
 #    data = []
 

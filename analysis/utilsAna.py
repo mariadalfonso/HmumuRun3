@@ -124,8 +124,7 @@ def findDIR(directory,useXROOTD=False):
 def BuildDict(year):
 
     dirName="/ceph/submit/data/group/cms/store/Hmumu/v12/"
-    if (str(year) == '2024'): dirName="/ceph/submit/data/group/cms/store/Hmumu/v15/"
-
+    if (str(year) == '2024' or str(year) == '2025'): dirName="/ceph/submit/data/group/cms/store/Hmumu/v15/"
 
     campaign_map = {
         "12022": "/NANOAODSIM/130X_mcRun3_2022_realistic_v*/*",
@@ -219,7 +218,22 @@ def BuildDict(year):
             -52: "Run2024H/Muon1/*/*/",
             -53: "Run2024I/Muon0/*/*/",
             -54: "Run2024I/Muon1/*/*/",
-        }
+        },
+        "2025": {
+            -61: "Run2025B/Muon0/*/*/",
+            -62: "Run2025B/Muon1/*/*/",
+            -63: "Run2025C/Muon0/*/*/",
+            -64: "Run2025C/Muon1/*/*/",
+            -65: "Run2025D/Muon0/*/*/",
+            -66: "Run2025D/Muon1/*/*/",
+            -67: "Run2025E/Muon0/*/*/",
+            -68: "Run2025E/Muon1/*/*/",
+            -69: "Run2025F/Muon0/*/*/",
+            -70: "Run2025F/Muon1/*/*/",
+#            -51: "Run2025G/Muon0/*/*/",
+#            -52: "Run2025G/Muon1/*/*/",
+         }
+
     }
 
     # Add year-specific runs if available
