@@ -26,6 +26,28 @@ lumis={
     '_2024':107.3, #C-I
 }
 
+def safe_add_tree(file_list, filepath, treename="events"):
+    """Safely add ROOT files to a list if they contain the TTree."""
+    import os
+    if not os.path.exists(filepath):
+        print(f"⚠️ File not found: {filepath}")
+        return False
+
+    f = ROOT.TFile.Open(filepath)
+    if not f or f.IsZombie():
+        print(f"⚠️ Could not open: {filepath}")
+        return False
+
+    if not f.GetListOfKeys().Contains(treename):
+        print(f"⚠️ No TTree '{treename}' in {filepath}")
+        f.Close()
+        return False
+
+    f.Close()
+    file_list.append(filepath)
+    print(f"✅ Added {filepath}")
+    return True
+
 def getFWHM(h):
 
       max_bin = h.GetMaximumBin()
@@ -58,43 +80,71 @@ def getFWHM(h):
 
       return fwhm_left_x,fwhm_right_x
 
-def getHisto(item, nbin, low, high, doLog, category, year, doSignal):
+def getHisto(nbin, low, high, doLog, category, year, doSignal):
 
    print("getHisto getting called")
 
    year = '_'+str(year)
    dirLOCAL_='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
+   files = []
    
    mytree = ROOT.TChain('events')   
-   if (category == '_ggHcat'): mytree.Add(dirLOCAL_+'snapshot_mc10'+year+category+'.root')  #ggH
-   if (category == '_VBFcat'): mytree.Add(dirLOCAL_+'snapshot_mc11'+year+category+'.root')  #VBF
+   # Map category → file tags
+   signal_files = {
+         "_ggHcat":  ["10"],             # ggH
+         "_VBFcat":  ["11"],             # VBF
+         "_VLcat":   ["12", "13", "14"], # VH
+         "_VHcat":   ["12", "13", "14"], # VH
+         "_Zinvcat": ["12", "13", "14"], # Zinv
+         "_TTLcat":  ["15"],             # TTH
+         "_TTHcat":  ["15"],             # TTH
+   }
 
-   mytree.SetBranchStatus("*", 0)
-   mytree.SetBranchStatus("HiggsCandCorrMass", 1)
-   mytree.SetBranchStatus("mc", 1)
-   mytree.SetBranchStatus("w_allSF", 1)
-   mytree.SetBranchStatus("lumiIntegrated", 1)
+   # Add files safely
+   for tag in signal_files.get(category, []):
+         path = f"{dirLOCAL_}snapshot_mc_{tag}{year}{category}.root"
+         safe_add_tree(files, path)
 
-   ROOT.gROOT.cd() 
-   h = ROOT.TH1F("hSig", "hSig", nbin, low, high)
-   h.SetDirectory(0)
-   h1 = ROOT.TH1F("hBkg", "hBkg", nbin, low, high)
-   h1.SetDirectory(0)   
+   # Year-specific samples
+   data_samples = {
+       "_12022": ["-11", "-12", "-13", "-14"],
+       "_22022": ["-15", "-16", "-17"],
+       "_12023": ["-23", "-24"],
+       "_22023": ["-31", "-32"],
+       "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 … -54
+   }
+
+   # Add files safely
+   for tag in data_samples.get(year, []):
+         path = f"{dirLOCAL_}snapshot_mc_{tag}{year}{category}.root"
+         safe_add_tree(files, path)
 
    #-------------- BELOW RDF
 
-   nEntries = mytree.GetEntries()
-   print('nEntries=',nEntries)
+   # --- Build the RDataFrame ---
+   df = ROOT.RDataFrame("events", files)
+   print(f"✅ Loaded {df.Count().GetValue()} entries from {len(files)} files")
    
-   for i in range(nEntries):
-         mytree.GetEntry(i)
-         var = mytree.HiggsCandCorrMass
-         wei = mytree.w_allSF * mytree.lumiIntegrated
-         if doSignal:
-               if mytree.mc==10 or mytree.mc==11  and not math.isnan(var):
-                     h.Fill( var, wei )
-         else:
-               if (mytree.mc==100) and not math.isnan(var): # DY mc=100
-                     h.Fill( var, wei )               
+   # --- Filters ---
+   # Sanity check: skip NaN masses
+   df = df.Filter("!isnan(HiggsCandCorrMass)", "Valid mass")
 
-   return h
+   # Select signal or background
+   if doSignal:
+         df_sel = df.Filter("mc == 10 || mc == 11 || mc == 12 || mc == 13 || mc == 14 || mc == 15", "Signal (ggH, VBF)")
+         df_sel = df_sel.Define("weight", "w_allSF * lumiIntegrated")
+   else:
+#         df_sel = df.Filter("mc == 100", "Background (DY)")
+         df_sel = df.Filter("mc < 0", "data ")
+         df_sel = df_sel.Define("weight", "w_allSF")
+
+   # --- Histogram creation ---
+   h = df_sel.Histo1D(
+         (f"h_{category}_{year}", f"{category} {year}", nbin, low, high),
+         "HiggsCandCorrMass",
+         "weight"
+   )
+
+   # Convert to TH1 for later ROOT use
+   h.GetValue().SetDirectory(0)
+   return h.GetValue()
