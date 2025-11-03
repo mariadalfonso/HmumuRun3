@@ -26,10 +26,19 @@ category_suffix = {
     "_TTLcat":  "TTLcat",
 }
 
-def finalWorkspace(data, model, norm, doMultiPdf=False, tag='',storedPdfs=''):
+# TO DO BETTER
+mc_list = {
+    "_ggHcat":  ["ggH","qqH"],
+    "_VBFcat":  ["qqH"],
+    "_VHcat":   ["VH"],
+    "_VLcat":   ["VH"],
+    "_Zinvcat": ["Zinvcat"],
+    "_TTHcat":  ["TTHcat"],
+    "_TTLcat":  ["TTLcat"],
+}
 
-    # Create a empty workspace
-    w = ROOT.RooWorkspace("w", "workspace")
+def finalWorkspace(w, data, model, norm, doMultiPdf=False, tag='',storedPdfs=''):
+
 
     if doMultiPdf:
         pdf_cat = ROOT.RooCategory("pdfindex"+tag,"pdfindex"+tag)
@@ -49,6 +58,7 @@ def finalWorkspace(data, model, norm, doMultiPdf=False, tag='',storedPdfs=''):
     w.Print()
 
     return w
+
 
 def setVar(tag, lowBlind='-1', highBlind='-1'):
 
@@ -71,139 +81,145 @@ def  fitSig(tag , year):
     doSignal = True
     doLog = False
 
-    data_full = getHisto(10*int(xhighRange - xlowRange), xlowRange, xhighRange, doLog, tag, year, doSignal)
-    print('getHisto  DONE')
+    # Create a empty workspace (one for all signal)
+    w = ROOT.RooWorkspace("w", "workspace")
+
+    for sig in mc_list[tag]:
     
-    data = ROOT.RooDataHist('datahist', 'data', ROOT.RooArgList(x), data_full)
+        data_full = getHisto(10*int(xhighRange - xlowRange), xlowRange, xhighRange, doLog, tag, year, doSignal, sig)
+        print('getHisto  DONE')
 
-    # -----------------------------------------------------------------------------
-    
-    cb_mu = ROOT.RooRealVar('cb_mu'+tag, 'cb_mu', 125., 125-10. , 125+10.)
-    cb_sigma = ROOT.RooRealVar('cb_sigma'+tag, 'cb_sigma', 3, 0.5, 6.)
-    cb_alphaL = ROOT.RooRealVar('cb_alphaL'+tag, 'cb_alphaL', 2., 0., 5.)
-    cb_alphaR = ROOT.RooRealVar('cb_alphaR'+tag, 'cb_alphaR', 2., 0., 5.)
-    cb_nL = ROOT.RooRealVar('cb_nL'+tag, 'cb_nL', 0., 5.)
-    cb_nR = ROOT.RooRealVar('cb_nR'+tag, 'cb_nR', 0., 10.)
-
-    pdf_crystalball = ROOT.RooDoubleCBFast('crystal_ball'+tag, 'crystal_ball', x, cb_mu, cb_sigma, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
-    model = pdf_crystalball
-
-    # -----------------------------------------------------------------------------
-
-    model.fitTo(data,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"))
-    
-    # Here we will plot the results
-    if True:
-        # Create canvas with two pads
-        canvas = ROOT.TCanvas("canvas", "canvas", 800, 800)
-        pad1 = ROOT.TPad("pad1", "Top Pad", 0, 0.35, 1, 1)
-        pad2 = ROOT.TPad("pad2", "Bottom Pad", 0, 0, 1, 0.35)
-
-        pad1.SetBottomMargin(0.03)
-        pad2.SetTopMargin(0.05)
-        pad2.SetBottomMargin(0.3)
-
-        pad1.Draw()
-        pad2.Draw()
-
-        # ========== TOP PAD ==========
-        pad1.cd()
-
-        titleSTR = "mH"+tag+"_"+str(year)
-        plotFrameWithNormRange = x.frame(ROOT.RooFit.Title(titleSTR))
-
-        # Plot only the blinded data, and then plot the PDF over the full range as well as both sidebands
-        data.plotOn(plotFrameWithNormRange, ROOT.RooFit.Name("fit_data"))
-        model.plotOn(plotFrameWithNormRange, ROOT.RooFit.LineColor(2), ROOT.RooFit.Range("full"), ROOT.RooFit.NormRange("full"), ROOT.RooFit.LineStyle(10), ROOT.RooFit.Name("fit_curve"))
-        model.paramOn(plotFrameWithNormRange, ROOT.RooFit.Layout(0.75,0.99,0.85))
-        plotFrameWithNormRange.getAttText().SetTextSize(0.02);
-
-        plotFrameWithNormRange.Draw()
-
-        # ========== BOTTOM PAD (ratio plot) ==========
-        pad2.cd()
-
-        # Compute residuals = (data - fit) / fit
-        # Get RooHist of data and RooCurve of model
-        plotFrameWithNormRange.Print("v")
-        dataHist = plotFrameWithNormRange.getHist("fit_data")
-        fitCurve = plotFrameWithNormRange.getCurve("fit_curve")
-
-        # Create a new histogram for the ratio
-        ratioHist = ROOT.TH1D("ratio", "", dataHist.GetN(), xlowRange, xhighRange)
-
-        for i in range(dataHist.GetN()):
-            x_val = dataHist.GetX()[i]
-            y_data = dataHist.GetY()[i]
-            y_fit = fitCurve.Eval(x_val)
-
-            if y_fit != 0:
-                ratio = (y_data - y_fit) / y_fit
-            else:
-                ratio = 0
-
-            ratioHist.SetBinContent(i + 1, ratio)
-            ratioHist.SetBinError(i + 1, dataHist.GetErrorY(i) / y_fit if y_fit != 0 else 0)
-
-        ratioHist.GetYaxis().SetTitle("Ratio")
-        ratioHist.GetYaxis().SetTitleSize(0.08)
-        ratioHist.GetYaxis().SetLabelSize(0.08)
-        ratioHist.GetYaxis().SetTitleOffset(0.4)
-        ratioHist.GetXaxis().SetTitle("m_{#mu,#mu}")
-        ratioHist.GetXaxis().SetTitleSize(0.1)
-        ratioHist.GetXaxis().SetLabelSize(0.08)
-        ratioHist.GetYaxis().SetRangeUser(-1.0,1.0)
-        ratioHist.SetLineColor(ROOT.kBlack)
-        ratioHist.SetMarkerStyle(20)
-        ratioHist.Draw("EP")
-
-        # Draw horizontal line at 0
-        line = ROOT.TLine(xlowRange, 0.0, xhighRange, 0.0)
-        line.SetLineColor(ROOT.kRed)
-        line.SetLineWidth(2)
-        line.SetLineStyle(2)
-        line.Draw()
-
-        # ========== Save the canvas ==========
-        canvas.Draw()
-        htmldir = "~/public_html/HMUMU_FITS/OCT"
-        canvas.SaveAs(htmldir+"/signal_"+tag+"_"+str(year)+".png")
-        chi2_ndf = plotFrameWithNormRange.chiSquare()
-        print("Chi² / ndf =", chi2_ndf)
+        data = ROOT.RooDataHist('datahist', 'data', ROOT.RooArgList(x), data_full)
 
         # -----------------------------------------------------------------------------
 
-    # -----------------------------------------------------------------------------
+        cb_mu = ROOT.RooRealVar('cb_mu'+tag+'_'+sig, 'cb_mu', 125., 125-10. , 125+10.)
+        cb_sigma = ROOT.RooRealVar('cb_sigma'+tag+'_'+sig, 'cb_sigma', 3, 0.5, 6.)
+        cb_alphaL = ROOT.RooRealVar('cb_alphaL'+tag+'_'+sig, 'cb_alphaL', 2., 0., 5.)
+        cb_alphaR = ROOT.RooRealVar('cb_alphaR'+tag+'_'+sig, 'cb_alphaR', 2., 0., 5.)
+        cb_nL = ROOT.RooRealVar('cb_nL'+tag+'_'+sig, 'cb_nL', 0., 5.)
+        cb_nR = ROOT.RooRealVar('cb_nR'+tag+'_'+sig, 'cb_nR', 0., 10.)
 
-    binLow = data_full.GetBin(1) #contains the first bin with low-edge
-    binUp = data_full.GetBin(int(xhighRange-xlowRange)*10)  # second to last bin contains the upper-edge
+        pdf_crystalball = ROOT.RooDoubleCBFast('crystal_ball'+tag+'_'+sig, 'crystal_ball', x, cb_mu, cb_sigma, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
+        model = pdf_crystalball
 
-    norm_SR = data_full.Integral(binLow, binUp)
+        # -----------------------------------------------------------------------------
 
-    Sig_norm = ROOT.RooRealVar(model.GetName()+ "_norm", model.GetName()+ "_norm", norm_SR) # no range means contants            
+        model.fitTo(data,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"))
 
-    # -----------------------------------------------------------------------------
-    # -----------------------------------------------------------------------------
-    # Create workspace, import data and model
-    
-    cb_mu.setConstant()
-    cb_sigma.setConstant()
-    cb_alphaL.setConstant()
-    cb_alphaR.setConstant()
-    cb_nL.setConstant()
-    cb_nR.setConstant()
-    Sig_norm.setConstant()
+        # Here we will plot the results
+        if True:
+            # Create canvas with two pads
+            canvas = ROOT.TCanvas("canvas", "canvas", 800, 800)
+            pad1 = ROOT.TPad("pad1", "Top Pad", 0, 0.35, 1, 1)
+            pad2 = ROOT.TPad("pad2", "Bottom Pad", 0, 0, 1, 0.35)
 
-    w = finalWorkspace(data, model, Sig_norm)
-    
+            pad1.SetBottomMargin(0.03)
+            pad2.SetTopMargin(0.05)
+            pad2.SetBottomMargin(0.3)
+
+            pad1.Draw()
+            pad2.Draw()
+
+            # ========== TOP PAD ==========
+            pad1.cd()
+
+            titleSTR = "mH"+tag+'_'+sig+"_"+str(year)
+            plotFrameWithNormRange = x.frame(ROOT.RooFit.Title(titleSTR))
+
+            # Plot only the blinded data, and then plot the PDF over the full range as well as both sidebands
+            data.plotOn(plotFrameWithNormRange, ROOT.RooFit.Name("fit_data"))
+            model.plotOn(plotFrameWithNormRange, ROOT.RooFit.LineColor(2), ROOT.RooFit.Range("full"), ROOT.RooFit.NormRange("full"), ROOT.RooFit.LineStyle(10), ROOT.RooFit.Name("fit_curve"))
+            model.paramOn(plotFrameWithNormRange, ROOT.RooFit.Layout(0.75,0.99,0.85))
+            plotFrameWithNormRange.getAttText().SetTextSize(0.02);
+
+            plotFrameWithNormRange.Draw()
+
+            # ========== BOTTOM PAD (ratio plot) ==========
+            pad2.cd()
+
+            # Compute residuals = (data - fit) / fit
+            # Get RooHist of data and RooCurve of model
+            plotFrameWithNormRange.Print("v")
+            dataHist = plotFrameWithNormRange.getHist("fit_data")
+            fitCurve = plotFrameWithNormRange.getCurve("fit_curve")
+
+            # Create a new histogram for the ratio
+            ratioHist = ROOT.TH1D("ratio", "", dataHist.GetN(), xlowRange, xhighRange)
+
+            for i in range(dataHist.GetN()):
+                x_val = dataHist.GetX()[i]
+                y_data = dataHist.GetY()[i]
+                y_fit = fitCurve.Eval(x_val)
+
+                if y_fit != 0:
+                    ratio = (y_data - y_fit) / y_fit
+                else:
+                    ratio = 0
+
+                ratioHist.SetBinContent(i + 1, ratio)
+                ratioHist.SetBinError(i + 1, dataHist.GetErrorY(i) / y_fit if y_fit != 0 else 0)
+
+            ratioHist.GetYaxis().SetTitle("Ratio")
+            ratioHist.GetYaxis().SetTitleSize(0.08)
+            ratioHist.GetYaxis().SetLabelSize(0.08)
+            ratioHist.GetYaxis().SetTitleOffset(0.4)
+            ratioHist.GetXaxis().SetTitle("m_{#mu,#mu}")
+            ratioHist.GetXaxis().SetTitleSize(0.1)
+            ratioHist.GetXaxis().SetLabelSize(0.08)
+            ratioHist.GetYaxis().SetRangeUser(-1.0,1.0)
+            ratioHist.SetLineColor(ROOT.kBlack)
+            ratioHist.SetMarkerStyle(20)
+            ratioHist.Draw("EP")
+
+            # Draw horizontal line at 0
+            line = ROOT.TLine(xlowRange, 0.0, xhighRange, 0.0)
+            line.SetLineColor(ROOT.kRed)
+            line.SetLineWidth(2)
+            line.SetLineStyle(2)
+            line.Draw()
+
+            # ========== Save the canvas ==========
+            canvas.Draw()
+            htmldir = "~/public_html/HMUMU_FITS/OCT"
+            canvas.SaveAs(htmldir+"/signal_"+tag+'_'+sig+"_"+str(year)+".png")
+            chi2_ndf = plotFrameWithNormRange.chiSquare()
+            print("Chi² / ndf =", chi2_ndf)
+
+        # -----------------------------------------------------------------------------
+        # -----------------------------------------------------------------------------
+
+        binLow = data_full.GetBin(1) #contains the first bin with low-edge
+        binUp = data_full.GetBin(int(xhighRange-xlowRange)*10)  # second to last bin contains the upper-edge
+
+        norm_SR = data_full.Integral(binLow, binUp)
+
+        Sig_norm = ROOT.RooRealVar(model.GetName()+ "_norm", model.GetName()+ "_norm", norm_SR) # no range means contants
+
+        # -----------------------------------------------------------------------------
+        # -----------------------------------------------------------------------------
+        # Create workspace, import data and model
+
+        cb_mu.setConstant()
+        cb_sigma.setConstant()
+        cb_alphaL.setConstant()
+        cb_alphaR.setConstant()
+        cb_nL.setConstant()
+        cb_nR.setConstant()
+        Sig_norm.setConstant()
+
+        w = finalWorkspace(w, data, model, Sig_norm)
+
     # -----------------------------------------------------------------------------
     # -----------------------------------------------------------------------------
     # Save workspace in file
 
-    w.writeToFile(workspaceName+"/Signal_workspace.root")
-
+    w.writeToFile(workspaceName+"/Signal"+tag+"_"+str(year)+"_workspace.root")
 
 def  fitBkg(tag, year):
+
+    # Create a empty workspace (one for all signal)
+    w = ROOT.RooWorkspace("w", "workspace")
 
     lowBlind = 120
     highBlind = 130
@@ -441,14 +457,13 @@ def  fitBkg(tag, year):
     # Create workspace, import data and model
     # Save workspace in file
 
-    w = finalWorkspace(data, models[tag]["model1"], BKG_norm, doMultiPdf, tag, storedPdfs)
+    w = finalWorkspace(w, data, models[tag]["model1"], BKG_norm, doMultiPdf, tag, storedPdfs)
 
     if not blinded:
-        w.writeToFile(workspaceName+"/Bkg"+tag+"_"+"_"+str(year)+"_workspace.root")
+        w.writeToFile(workspaceName+"/Bkg"+tag+"_"+str(year)+"_workspace.root")
 
 if __name__ == "__main__":
 
-    '''
     for year in ['2024']:
         fitBkg('_ggHcat',year)
         fitBkg('_VBFcat',year)
@@ -457,7 +472,6 @@ if __name__ == "__main__":
         fitBkg('_Zinvcat',year)
         fitBkg('_VLcat',year)
         fitBkg('_VHcat',year)
-    '''
 
     for year in ['12022','22022','12023','22023','2024']:
         fitSig('_ggHcat',year)
