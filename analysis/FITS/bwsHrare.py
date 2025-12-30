@@ -12,6 +12,7 @@ parser.add_option("","--inputFileBKG",type='string',help="Input ROOT file bkg mo
 
 parser.add_option("-c","--whichCat",type='string',help="Which category (Wcat, Zcat Zinvcatm, VBFcat)", default="Wcat")
 parser.add_option("-b","--whichBIN",type='string',help="Which bin of BDT (_bin1 or empty)", default="")
+parser.add_option("-y","--whichYear",type='string',help="Which year", default="2024")
 parser.add_option("-o","--output",type='string',help="Output ROOT file. [%default]", default="workspace_STAT_Rho_2018.root")
 parser.add_option("-d","--datCardName",type='string',help="Output txt file. [%default]", default="datacard_STAT_2024.txt")
 
@@ -30,46 +31,42 @@ MultiPdf=True
 
 if MultiPdf:
     BkgPdf={
-        'TTLcat': 'multipdf'+opts.whichBIN,
-        'TTHcat': 'multipdf'+opts.whichBIN,        
-        'VLcat': 'multipdf'+opts.whichBIN,
-        'VHcat': 'multipdf'+opts.whichBIN,
-        'Zinvcat': 'multipdf'+opts.whichBIN,
-        'VBFcat': 'multipdf'+opts.whichBIN,
-        'ggHcat': 'multipdf'+opts.whichBIN,
+        'TTLcat': 'multipdf',
+        'TTHcat': 'multipdf',
+        'VLcat': 'multipdf',
+        'VHcat': 'multipdf',
+        'Zinvcat': 'multipdf',
+        'VBFcat': 'multipdf',
+        'ggHcat': 'multipdf',
     }
 else:
     #OLD
     BkgPdf={
-        'Vcat': 'exp1'+opts.whichBIN,
-        'Wcat': 'exp1'+opts.whichBIN,
-        'Zcat': 'exp1'+opts.whichBIN,
-        'VBFcat': 'bxg'+opts.whichBIN,
-        'Zinvcat': 'exp1'+opts.whichBIN,
-        'VBFcatlow': 'bxg'+opts.whichBIN,
-        'GFcat': 'bxg'+opts.whichBIN,
+        'Vcat': 'exp1',
+        'Wcat': 'exp1',
+        'Zcat': 'exp1',
+        'VBFcat': 'bxg',
+        'Zinvcat': 'exp1',
+        'VBFcatlow': 'bxg',
+        'GFcat': 'bxg',
     }
 
 SigPdf={
-    'TTLcat': 'crystal_ball'+opts.whichBIN,
-    'TTHcat': 'crystal_ball'+opts.whichBIN,        
-    'VLcat': 'crystal_ball'+opts.whichBIN,
-    'VHcat': 'crystal_ball'+opts.whichBIN,
-    'Zinvcat': 'crystal_ball'+opts.whichBIN,
-    'VBFcat': 'crystal_ball'+opts.whichBIN,
-    'ggHcat': 'crystal_ball'+opts.whichBIN,
+    'TTLcat': 'crystal_ball',
+    'TTHcat': 'crystal_ball',
+    'VLcat': 'crystal_ball',
+    'VHcat': 'crystal_ball',
+    'Zinvcat': 'crystal_ball',
+    'VBFcat': 'crystal_ball',
+    'ggHcat': 'crystal_ball',
 }
 
 # these are the various signal datasets: TO UPDATES
 ENUM={
     'ggH': 0,
     'qqH': -1,
-    'WH': -2,
-    'ZH': -3,
-    'ZinvH': -4,
-    'WHl': -5,
-    'ZHl': -6,
-    'TTH': -7,
+    'VH': -2,
+    'ttH': -3,
 }
 
 #OLD
@@ -134,42 +131,51 @@ category_suffix = {
 
 suffix = category_suffix["_"+opts.whichCat]
 
+# Define defaults so they always exist
+sigAll = []
+mcAll  = []
+category = []
+
+
+#    n_ggH = w.var(f"{myVar}_ggH_N_SM")
+#    n_qqH = w.var(f"{myVar}_qqH_N_SM")
+#    n_VH  = w.var(f"{myVar}_VH_N_SM")
+#    n_ttH = w.var(f"{myVar}_ttH_N_SM")
+
 if opts.whichCat=='ggHcat':
-    sigAll = ['ggH','qqH']
-    mcAll = ['ggH','qqH','bkgGF']
+    sigAll = ['ggH','qqH','VH','ttH']
+    mcAll = ['ggH','qqH','VH','ttH','bkgGF']
     category = ['ggHcat']
 
-'''
-if opts.whichCat=='Vcat':
-    sigAll = ['WH','ZH','ZHl','TTH']
-    mcAll = ['WH','ZH','ZHl','TTH','bkgV']
-    category = ['Vcat']
-
-if opts.whichCat=='Wcat':
-    sigAll = ['WH','ZHl']
-    mcAll = ['WH','ZHl','bkg']
-    category = ['Wcat']
-
-if opts.whichCat=='Zcat':
-    sigAll = ['ZH']
-    mcAll = ['ZH','bkg']
-    category = ['Zcat']
-
 if opts.whichCat=='VBFcat':
-    sigAll = ['VBFH']
-    mcAll = ['VBFH','bkgVBF']
+    sigAll = ['ggH','qqH','VH','ttH']
+    mcAll = ['ggH','qqH','VH','ttH','bkgVBF']
     category = ['VBFcat']
 
-if opts.whichCat=='VBFcatlow':
-    sigAll = ['VBFH']
-    mcAll = ['VBFH','bkgVBFlow']
-    category = ['VBFcatlow']
+if opts.whichCat=='VLcat':
+    sigAll = ['ggH','qqH','VH','ttH']
+    mcAll = ['ggH','qqH','VH','ttH','bkgV']
+    category = ['VLcat']
+
+if opts.whichCat=='VHcat':
+    sigAll = ['ggH','qqH','VH','ttH']
+    mcAll = ['ggH','qqH','VH','ttH','bkgV']
+    category = ['VHcat']
+
+if opts.whichCat=='TTLcat':
+    sigAll = ['qqH','VH','ttH']
+    mcAll = ['qqH','VH','ttH','bkgtth']
+    category = ['TTLcat']
+
+if opts.whichCat=='TTHcat':
+    sigAll = ['ggH','qqH','VH','ttH']
+    mcAll = ['ggH','qqH','VH','ttH','bkgtth']
+    category = ['TTHcat']
 
 if opts.whichCat=='Zinvcat':
-    sigAll = ['WHl','ZinvH']
-    mcAll = ['WHl','ZinvH','bkg']
+    sigAll = ['ggH','qqH','VH','ttH']
+    mcAll = ['ggH','qqH','VH','ttH','bkgV']
     category = ['Zinvcat']
-'''
 
 ################### OPEN OUTPUT ############
 w = ROOT.RooWorkspace("w","w")
@@ -194,27 +200,11 @@ datacard.write("-------------------------------------\n")
 xlowRange = 110
 xhighRange = 150
 
-if opts.whichCat=='ggHcat':
-    w.factory(f"mh{suffix}[110,150]") # RooRealVar
-    mh=w.var(f"mh{suffix}")
-else:
-    print('mg not specified')
-    
-'''    
-elif opts.whichCat=='Vcat':
-    w.factory("mhVcat[100,150]"); # RooRealVar
-    mh=w.var("mhVcat")
-elif opts.whichCat=='VBFcat':
-    w.factory("mhVBFcat[100,170]"); # RooRealVar
-    mh=w.var("mhVBFcat")
-elif opts.whichCat=='VBFcatlow':
-    w.factory("mhVBFcatlow[100,170]"); # RooRealVar
-    mh=w.var("mhVBFcatlow")
-'''
+w.factory(f"mh{suffix}[110,150]") # RooRealVar
+mh=w.var(f"mh{suffix}")
 
 arglist_obs = ROOT.RooArgList(mh)
 argset_obs = ROOT.RooArgSet(mh)
-
 
 ################# Import SIGNAL/BKG CONTRIBUTIONS ##############
 
@@ -228,23 +218,29 @@ if fBkgIn == None:
     print("ERROR: file",opts.inputFileBKG,"doesn't exist")
     exit(1)        
 
+#Backgrounds are given a positive number, while 0 and negative numbers are used for signal processes. Different process identifiers must be used for different processes.
+
 for cat in category:
+    tag = cat+"_"+opts.whichBIN+"_"+opts.whichYear
     for proc in mcAll:
         print('doing', proc)
-        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow':
+        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow' or proc=='bkgtth':
             if opts.inputFileBKG != "":
                 wInput=fBkgIn.Get("w")
-                if opts.whichCat=='Vcat': name = BkgPdf[cat]+"_"+cat+"_"+'bkg'
-                else: name = BkgPdf[cat]+"_"+cat+"_"+'bkg'
+                if opts.whichCat=='Vcat': name = BkgPdf[cat]+"_"+tag+"_"+'bkg'
+                else: name = BkgPdf[cat]+"_"+tag+"_"+'bkg'
                 nameNorm = name+"_norm"
         else:
             if opts.inputFileSig != "":
                 wInput=fSigIn.Get("w")
-                name = SigPdf[cat]+"_"+cat+"_"+proc
-                nameNorm = name+"_norm"
+                name = SigPdf[cat]+"_"+tag+"_"+proc
+                nameNorm = name+"_N_SM"
+
+                rVar = wInput.var("r")
+                if rVar == None: raise IOError("Unable to get func r ")
+                getattr(w,'import')(rVar)
                 
         print("proc=",proc," cat=",cat," name=",name)
-
         
         func = wInput.pdf(name)
         if func == None: raise IOError("Unable to get func" + name)
@@ -263,14 +259,14 @@ for cat in category:
 
     wInput=fBkgIn.Get("w")
     wInput.Print()
-    hist_data = wInput.data("datahist"+opts.whichBIN+'_'+cat)
-    hist_data.SetName("observed_data")
+    hist_data = wInput.data("datahist_"+tag)
+    hist_data.SetName("observed_data_"+tag)
     getattr(w,'import')(hist_data)
     datacard.write("shapes")
     datacard.write("\tdata_obs" )
     datacard.write("\t"+cat )
     datacard.write("\t"+opts.output )
-    datacard.write("\tw:"+"observed_data")
+    datacard.write("\tw:"+"observed_data_"+tag)
     datacard.write("\n")
 
     
@@ -302,7 +298,7 @@ datacard.write("process\t\t")
 for cat in category:
     for idx,proc in enumerate(mcAll): ## TRICK, put the only signal first
         print(idx,proc,(-1)*idx)
-        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow': datacard.write("\t1")
+        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgtth' or proc=='bkgVBF': datacard.write("\t1")
         else:
 #            newIDX=(-1)*idx
             newIDX=ENUM[proc]
@@ -312,7 +308,7 @@ datacard.write("rate\t\t")
 for cat in category:
     for proc in mcAll:
 #        datacard.write("\t1")
-        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow': datacard.write("\t1")
+        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgtth' or proc=='bkgVBF': datacard.write("\t1")
         else:
             datacard.write("\t1")
 #	datacard.write("\t1")
@@ -328,7 +324,7 @@ datacard.write("lumi_13p6TeV \tlnN ")
 
 for cat in category:
     for proc in mcAll:
-        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow': datacard.write("\t-")
+        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgtth': datacard.write("\t-")
         else:
             if opts.whichCat=='GFcat' or opts.whichCat=='VBFcatlow': datacard.write("\t%.3f"%(1.025) )
             else: datacard.write("\t%.3f"%(1.016) )
@@ -340,7 +336,7 @@ if doSyst:
     for cat in category:
         for proc in mcAll:
             datacard.write("\t-")            
-            if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow': datacard.write("\t-")
+            if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgtth': datacard.write("\t-")
             else:
                 datacard.write("\t%.3f"%(1.01) )
 
@@ -352,7 +348,8 @@ if doSyst:
 datacard.write("-------------------------------------\n")
 
 if MultiPdf:
-    pdfindexSTR='pdfindex'+opts.whichBIN+"_"+opts.whichCat
+    tag = cat+"_"+opts.whichBIN+"_"+opts.whichYear
+    pdfindexSTR='pdfindex_'+tag
     datacard.write("\n")
     datacard.write("%s discrete\n"%pdfindexSTR)
 

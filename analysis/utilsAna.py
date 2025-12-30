@@ -12,6 +12,10 @@ def loadUserCode():
     ROOT.gInterpreter.AddIncludePath("./.")
     ROOT.gInterpreter.ProcessLine('#include "./config/functions.h"')
 
+def loadtmvahelper():
+    print('loadtmvahelper()')
+    ROOT.gInterpreter.ProcessLine('#include "./config/tmva_helper_xml.h"')
+    ROOT.gInterpreter.ProcessLine('#include "./config/tmva_helper_xgb.h"')
 
 # lumis with golden json
 #https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis#ReReco_ERAS_A_B_C_D_E
@@ -20,7 +24,8 @@ lumis={
     '22022':26.67, # E, F, G
     '12023':17.794, # C
     '22023':9.451, # D
-    '2024':107.3, # C-I
+    '2024':108.95, # C-I
+    '2025':115.54 # C-G
 }
 
 btagPNetBM={
@@ -29,6 +34,7 @@ btagPNetBM={
     '12023':0.1917,
     '22023':0.1919,
     '2024':0.245, # found only UparT
+    '2025':0.245, # copy the 2024 value
 }
 
 btagPNetBL={
@@ -37,6 +43,7 @@ btagPNetBL={
     '12023':0.0358,
     '22023':0.0359,
     '2024':0.047, # found only UparT https://btv-wiki.docs.cern.ch/ScaleFactors/Run3Summer24/#general-remarks
+    '2025':0.047, # copy the 2024 value
 }
 
 xsecRun2={
@@ -154,16 +161,29 @@ def BuildDict(year):
         24: (findDIR(path("/ZH*HtoZGto2LG_*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['ZH']*0.0015),
         25: (findDIR(path("/ttHtoZG_Zto2L_M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTH']*0.0015),
         26: (findDIR(path("/TTH-HtoZGto2LG_Par-M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTH']*0.0015),
-        ##
+        ## DY-QCD
         103: (findDIR(path("/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
         104: (findDIR(path("/DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
         100: (findDIR(path("/DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']),
-        101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
-        102: (findDIR(path("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        108: (findDIR(path("/DYto2Mu_*MLL-50to120_TuneCP5_13p6TeV_powheg-pythia8")),2219*1000), # NLO from xsecDB
+        110: (findDIR(path("/DYto2Mu_*MLL-120to200_TuneCP5_13p6TeV_powheg-pythia8")),21.65*1000), # NLO from xsecDB
+        109: (findDIR(path("/DYto2Mu-2Jets*MLL-105*o160_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),49.21*1000), # NLO from xsecDB
+        111: (findDIR(path("/DYto2L-2Jets_MLL-50_0J_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),5378*1000), # LO from xsecDB
+        112: (findDIR(path("/DYto2L-2Jets_MLL-50_1J_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),1017*1000), # LO from xsecDB
+        113: (findDIR(path("/DYto2L-2Jets_MLL-50_2J_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),375*1000), # LO from xsecDB
+        114: (findDIR(path("/DYto2L-2Jets_MLL-50_PTLL-100_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),58*1000), # taken from Hinv these are temporary
+        115: (findDIR(path("/DYto2L-2Jets_MLL-50_PTLL-200_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),6.6*1000), # taken from Hinv these are temporary
+        116: (findDIR(path("/DYto2L-2Jets_MLL-50_PTLL-400_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),0.38*1000), # taken from Hinv these are temporary
+        117: (findDIR(path("/DYto2L-2Jets_MLL-50_PTLL-600_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),0.067*1000), # taken from Hinv these are temporary
+        ## DY-EWK
+        101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']), # when ready add the 105-120 Hrewig7 powheg dipole
+        ## TTBAR
+        102: (findDIR(path("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']), # this is the default
         107: (findDIR(path("/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTln']),
         105: (findDIR(path("/TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         106: (findDIR(path("/TbarWplusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
-        #
+        118: (findDIR(path("/TTto2L2Nu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TW2l2n']),
+        ## DI/TRI- BOSON
         201: (findDIR(path("/WZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['WZto2L2Q']),
         202: (findDIR(path("/ZZto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto2L2Nu']),
         203: (findDIR(path("/ZZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto2L2Q']),
@@ -177,7 +197,7 @@ def BuildDict(year):
         222: (findDIR(path("/TTLNu-EWK_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLNu-EWK']),
         223: (findDIR(path("/TTLL_*MLL-4to50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-4to50']),
         224: (findDIR(path("/TTLL_*MLL-50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-50']),
-        225: (findDIR(path("/TTZ-ZtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TTZ-ZtoQQ']),
+        225: (findDIR(path("/TTZ-ZtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFX*-pythia8")),xsecRun3['TTZ-ZtoQQ']),
     }
     # TODO: add the signal aMCNLO sample, for the training we can use the powheg
 
@@ -189,19 +209,26 @@ def BuildDict(year):
             -12: "Run2022C/DoubleMuon/*/*/",
             -13: "Run2022C/Muon/*/*/",
             -14: "Run2022D/Muon/*/*/",
+            -113: "Run2022C/ParkingDoubleMuonLowMass*/*/*/",
+            -114: "Run2022D/ParkingDoubleMuonLowMass*/*/*/",
         },
         "22022": {
             -15: "Run2022E/Muon/*/*/",
             -16: "Run2022F/Muon/*/*/",
             -17: "Run2022G/Muon/*/*/",
+            -115: "Run2022E/ParkingDoubleMuonLowMass*/*/*/",
+            -116: "Run2022F/ParkingDoubleMuonLowMass*/*/*/",
+            -117: "Run2022G/ParkingDoubleMuonLowMass*/*/*/",
         },
         "12023": {
             -23: "Run2023C/Muon0/*/*/",
             -24: "Run2023C/Muon1/*/*/",
+            -123: "Run2023C/ParkingDoubleMuonLowMass*/*/*/",
         },
         "22023": {
             -31: "Run2023D/Muon0/*/*/",
             -32: "Run2023D/Muon1/*/*/",
+            -131: "Run2023D/ParkingDoubleMuonLowMass*/*/*/",
         },
         "2024": {
             -41: "Run2024C/Muon0/*/*/",
@@ -218,22 +245,34 @@ def BuildDict(year):
             -52: "Run2024H/Muon1/*/*/",
             -53: "Run2024I/Muon0/*/*/",
             -54: "Run2024I/Muon1/*/*/",
+            -141: "Run2024C/ParkingDoubleMuonLowMass*/*/*/",
+            -142: "Run2024D/ParkingDoubleMuonLowMass*/*/*/",
+            -143: "Run2024E/ParkingDoubleMuonLowMass*/*/*/",
+            -144: "Run2024F/ParkingDoubleMuonLowMass*/*/*/",
+            -145: "Run2024G/ParkingDoubleMuonLowMass*/*/*/",
+            -146: "Run2024H/ParkingDoubleMuonLowMass*/*/*/",
+            -147: "Run2024I/ParkingDoubleMuonLowMass*/*/*/",
         },
         "2025": {
-            -61: "Run2025B/Muon0/*/*/",
-            -62: "Run2025B/Muon1/*/*/",
-            -63: "Run2025C/Muon0/*/*/",
-            -64: "Run2025C/Muon1/*/*/",
-            -65: "Run2025D/Muon0/*/*/",
-            -66: "Run2025D/Muon1/*/*/",
-            -67: "Run2025E/Muon0/*/*/",
-            -68: "Run2025E/Muon1/*/*/",
-            -69: "Run2025F/Muon0/*/*/",
-            -70: "Run2025F/Muon1/*/*/",
-#            -51: "Run2025G/Muon0/*/*/",
-#            -52: "Run2025G/Muon1/*/*/",
+            -61: "Run2025B/Muon0/*/*/*/*/*",
+            -62: "Run2025B/Muon1/*/*/*/*/*",
+            -63: "Run2025C/Muon0/*/*/*/*/*",
+            -64: "Run2025C/Muon1/*/*/*/*/*",
+            -65: "Run2025D/Muon0/*/*/*/*/*",
+            -66: "Run2025D/Muon1/*/*/*/*/*",
+            -67: "Run2025E/Muon0/*/*/*/*/*",
+            -68: "Run2025E/Muon1/*/*/*/*/*",
+            -69: "Run2025F/Muon0/*/*/*/*/*",
+            -70: "Run2025F/Muon1/*/*/*/*/*",
+            -71: "Run2025G/Muon0/*/*/*/*/*",
+            -72: "Run2025G/Muon1/*/*/*/*/*",
+            -161: "Run2025B/ParkingDoubleMuonLowMass*/*/*/*/*/*", # this is Prompt
+            -162: "Run2025C/ParkingDoubleMuonLowMass*/*/*/*/*/*",
+            -163: "Run2025D/ParkingDoubleMuonLowMass*/*/*/*/*/*",
+            -164: "Run2025E/ParkingDoubleMuonLowMass*/*/*/*/*/*",
+            -165: "Run2025F/ParkingDoubleMuonLowMass*/*/*/*/*/*",
+            -166: "Run2025G/ParkingDoubleMuonLowMass*/*/*/*/*/*",
          }
-
     }
 
     # Add year-specific runs if available
@@ -276,23 +315,20 @@ def loadCorrectionSet(year):
 
     print('loadMuonScale()')
 
-    if year==12022 or year==22022 or year==12023 or year==22023:
+    subDirName = ""
+    if year == 12022: subDirName = "Run3-22CDSep23-Summer22-NanoAODv12"
+    if year == 22022: subDirName = "Run3-22EFGSep23-Summer22EE-NanoAODv12"
+    if year == 12023: subDirName = "Run3-23CSep23-Summer23-NanoAODv12"
+    if year == 22023: subDirName = "Run3-23DSep23-Summer23BPix-NanoAODv12"
+    if year == 2024: subDirName = "Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15"
 
-        subDirName = ""
-        if year == 12022: subDirName = "Run3-22CDSep23-Summer22-NanoAODv12"
-        if year == 22022: subDirName = "Run3-22EFGSep23-Summer22EE-NanoAODv12"
-        if year == 12023: subDirName = "Run3-23CSep23-Summer23-NanoAODv12"
-	if year == 22023: subDirName = "Run3-23DSep23-Summer23BPix-NanoAODv12"
-        if year == 2024: subDirName = "Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15"
-
+    if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024):
         print('loadMuonScale()')
         ROOT.gROOT.ProcessLine(
             f'auto cset = correction::CorrectionSet::from_file("/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/'+subDirName+'/latest/muon_scalesmearing.json.gz");'
         )
         ROOT.gInterpreter.ProcessLine('#include "./config/MuonScaRe.cc"')
         ROOT.gInterpreter.Declare('#include "./config/functionsMuCorr.h"')
-
-    ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
 
     ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
 
@@ -318,8 +354,10 @@ def loadJSON(fIn):
 
 def readDataQuality(year):
     print("HELLO readDataQuality", year)
-    if year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024: dirJson = "/cvmfs/cms-griddata.cern.ch/cat/metadata/DC/Collisions22/latest/"
-    else: dirJson = "./config"
+#    if year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024: dirJson = "/cvmfs/cms-griddata.cern.ch/cat/metadata/DC/Collisions22/latest/"
+#    else: dirJson = "./config"
+
+    dirJson = "./config"
 
     json_map = {
         "2018":  "Cert_314472-325175_13TeV_Legacy2018_Collisions18_JSON.txt",
@@ -331,6 +369,7 @@ def readDataQuality(year):
         "12023": "Cert_Collisions2023_366442_370790_Golden.json",
         "22023": "Cert_Collisions2023_366442_370790_Golden.json",
         "2024":  "Cert_Collisions2024_378981_386951_Golden.json",
+        "2025":  "Cert_Collisions2025_391658_398860_Golden.json",
     }
 
     fname = json_map.get(str(year))

@@ -10,11 +10,10 @@ from prepareHisto import getHisto, createCanvasPads, lumis
 ROOT.gStyle.SetOptStat(0)
 ROOT.gROOT.SetBatch()
 
-category = '_'+sys.argv[1]
+category = sys.argv[1]
 year = '_'+sys.argv[2]
 
-myOutDir  = "/home/submit/mariadlf/public_html/HMUMU_OCT/"
-#dirLOCAL_ = '/home/submit/mariadlf/Hrare/CMSSW_10_6_27_new/src/HmumuRun3/analysis/ROOTFILES/'
+myOutDir  = "/home/submit/mariadlf/public_html/HMUMU_NOV/"
 dirLOCAL_ = '/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
 
 mytree = ROOT.TChain('events')
@@ -122,6 +121,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    ratio.GetYaxis().SetTitle("data/MC")
    ratio.GetYaxis().SetRangeUser(0.5,1.5)
    if item==4: ratio.GetYaxis().SetRangeUser(0.75,1.25)
+#   if item==4: ratio.GetYaxis().SetRangeUser(0.90,1.10)
    if 'CR' in dirLOCAL_: ratio.GetYaxis().SetRangeUser(0.,2.5)
    if (item==205): ratio.GetYaxis().SetRangeUser(0.,2.)
    ratio.GetXaxis().SetTitleOffset(4.)
@@ -148,12 +148,13 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    legend.SetTextAlign(12)  # left align for readability
 
    if hData and hData.Integral()>0: legend.AddEntry(hData.GetValue(), "Data" ,"lep")
-   if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY + jets", "f")
+   if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY+jets (QCD)", "f")
+   if hEWK and hEWK.Integral()>0: legend.AddEntry(hEWK.GetValue(), "DY+jets (EWK)", "f")
    if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + VVV", "f")
    if hTT2L and hTT2L.Integral()>0: legend.AddEntry(hTT2L.GetValue(), "ttbar 2l+ jets", "f")
    if hTop and hTop.Integral()>0: legend.AddEntry(hTop.GetValue(), "tt1l, tW, ttV", "f")
-   if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "Z#gamma + jets", "f")
-   if category in ["_VLcat", "_TTLcat", "_TTHcat", "_VHcat"]:
+   if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "H#rightarrowZ#gamma + jets", "f")
+   if category in ["VLcat", "TTLcat", "TTHcat", "VHcat", "Zinvcat"]:
       if hTTH and hTTH.Integral()>0: legend.AddEntry(hTTH.GetValue(), "ttH", "f")
       if hWH and hWH.Integral()>0: legend.AddEntry(hWH.GetValue(), "WH", "f")
       if hZH and hZH.Integral()>0: legend.AddEntry(hZH.GetValue(), "ZH", "f")
@@ -173,7 +174,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
 #   text.DrawLatex(0.15 + 0.10, 0.93, "Simulation")
    text.DrawLatex(0.15 + 0.10, 0.93, "Internal")
    text.SetTextSize(0.04)
-   text.DrawLatex(0.65, 0.93, "#sqrt{s} = 13 TeV,%0.2f fb^{-1}"% (lumis[year]))
+   text.DrawLatex(0.65, 0.93, "#sqrt{s} = 13.6 TeV,%0.2f fb^{-1}"% (lumis[year]))
 
    # Add TLine blind
    line1 = ROOT.TLine( 110, 0, 110, 500000.)
@@ -184,7 +185,8 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    if item==4: line2.Draw()
 
    string = category+year
-   c.SaveAs(myOutDir+"Stack"+plotString+string+".png")
+#   c.SaveAs(myOutDir+"Stack"+plotString+string+"_bothBB.png")
+   c.SaveAs(myOutDir+"Stack"+plotString+"_"+string+".png")
    print(plotString+".png")
 
 def plotVBF():
@@ -197,25 +199,39 @@ def plotVBF():
    plot(105, 200, 0. , 200., True, "jetVBF2_Pt","jetVBF2_Pt")   
    plot(106, 100, -5. , 5., True, "jetVBF1_Eta","#eta jetVBF1")
    plot(107, 100, -5. , 5., True, "jetVBF2_Eta","#eta jetVBF2")
-   plot(301, 400, 0. , 400., False, "PuppiMET_Pt","PuppiMET_Pt")
+   plot(301, 100, 0. , 500., False, "PuppiMET_Pt","PuppiMET_Pt")
 
 def plotVHlep():
 
    plot(201, 100, 10. , 100., False, "Lepton_Pt","Lepton_Pt")
    plot(210, 5, 0. , 5., False, "category","category")
    plot(301, 300, 0. , 300., True, "PuppiMET_Pt","PuppiMET_Pt")
+   plot(212, 150, 0. , 150., False, "mt","mt")
+
+def plotTTHlep():
+
+   plot(201, 100, 10. , 100., False, "Lepton_Pt","Lepton_Pt")
+   plot(210, 5, 0. , 5., False, "category","category")
+   plot(301, 100, 0. , 500., True, "PuppiMET_Pt","PuppiMET_Pt")
+   plot(212, 150, 0. , 150., False, "mt","mt")
+   plot(260, 150, 10. , 160., False, "Jet1_Pt","Jet1_Pt")
+   plot(263, 200, 0. , 1000., True, "HT","HT")
 
 def plotVHhad():
 
    plot(251, 50, 60. , 110., True, "goodWjj_mass","goodWjj_mass")
-   plot(252, 100, 0. , 1., True, "goodWjj_discr","goodWjj_discr")
-   plot(256, 40, 150. , 550., True, "goodWjj_pt","goodWjj_pt")
+   plot(252, 50, 0.75, 1., True, "goodWjj_discr","goodWjj_discr")
+   plot(253, 40, 150. , 550., True, "goodWjj_pt","goodWjj_pt")
+   plot(254, 50, 0. , 5., True, "goodWjjPtOverHpt","goodWjjPtOverHpt")
 
 def plotTThad():
 
    plot(211, 4, 0. , 4., False, "category","category")
-   plot(254, 150, 10. , 160., False, "Jet1_Pt","Jet1_Pt")
-   plot(255, 150, 50. , 200., True, "WTopJetMass","WTopJetMass")
+   plot(260, 150, 10. , 160., False, "Jet1_Pt","Jet1_Pt")
+   plot(261, 150, 50. , 200., True, "WTopJetMass","WTopJetMass")
+   plot(262, 50, 0.5 , 1., False, "WTopJetDiscr","WTopJetDiscr")
+   plot(263, 200, 0. , 1000., True, "HT","HT")
+   plot(264, 10, 0. , 10., True, "Njets","Njets")
 
 def plotZinvH():
 
@@ -228,19 +244,24 @@ def plotMuons():
    plot(11, 100, 0. , 200., True, "Muon2_pt", "p^{T}_{#mu^{2}} [GeV]")
    plot(12, 60, -3. , 3., False, "Muon1_eta", "#eta_{#mu^{1}}")
    plot(13, 60, -3. , 3., False, "Muon2_eta", "#eta_{#mu^{2}}")
-   plot(14, 100, -0. , 20., True, "Muon1_sip3d", "Muon1_sip3d")
-   plot(15, 100, -0. , 20., True, "Muon2_sip3d", "Muon2_sip3d")
+   if category == "VLcat" or category == "TTLcat" or category == "TTHcat":
+      plot(14, 100, -0. , 20., True, "Muon1_sip3d", "Muon1_sip3d")
+      plot(15, 100, -0. , 20., True, "Muon2_sip3d", "Muon2_sip3d")
 #   plot(16, 200, 0.1 , 20.1, False, "FsrPH_pt", "p^{T}_{#gammaFSR} [GeV]")
-   plot(18, 60, -3.14 , 3.14, False, "Muon1_phi", "#phi_{#mu^{1}}")
-   plot(19, 60, -3.14 , 3.14, False, "Muon2_phi", "#phi_{#mu^{2}}")
-
+#   plot(18, 60, -3.14 , 3.14, False, "Muon1_phi", "#phi_{#mu^{1}}")
+#   plot(19, 60, -3.14 , 3.14, False, "Muon2_phi", "#phi_{#mu^{2}}")
+   plot(20, 60, 0. , 6., False, "dEtaMuons", "#eta_{#mu^{1}}-#eta_{#mu^{2}}")
 
 if __name__ == "__main__":
 
-   if category == "_VLcat" or category == "_TTLcat" or category == "_TTHcat":
-      plot(4, 150, 50. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
+   #   plot(4, 130, 70. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
+
+   if category == "VLcat" or category == "TTLcat" or category == "TTHcat":
+      plot(4, 130, 70. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
    else:
-      plot(4, 150, 50. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
+      plot(4, 130, 70. , 200., True, "HCandCorrMass", "m_{#mu^{+},#mu^{-}}^{H} [GeV]")
+
+   if category == "VBFcat" or category == "ggHcat": plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
 
    plot(7, 100, 0. , 0.001, True, "HCandCorrMassErr", "#sigma(m_{#mu^{+},#mu^{-}}^{H})/m_{#mu^{+},#mu^{-}}^{H}")
 
@@ -248,13 +269,14 @@ if __name__ == "__main__":
 
    plot(95, 100, 0. , 100., False, "nVTX","nVTX")
    plot(6, 60, -3 , 3., True, "HCandCorrRapidity", "y_{#mu^{+},#mu^{-}}^{H}")
-   if category == "_VBFcat" or category == "_Zinvcat" or category == "_TTLcat":
+   if category == "VBFcat" or category == "TTLcat":
       plot(5, 200, 0. , 200., False, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
    else:
       plot(5, 100, 0. , 100., True, "HCandCorrPt", "p^{T}_{#mu^{+},#mu^{-}}^{H} [GeV]")
 
-   if category == "_VBFcat" : plotVBF()
-   if category == "_VLcat" or category == "_TTLcat": plotVHlep()
-   if category == "_VHcat": plotVHhad()
-   if category == "_TTHcat": plotTThad()
-   if category == "_Zinvcat" : plotZinvH()
+   if category == "VBFcat": plotVBF()
+   if category == "VLcat": plotVHlep()
+   if category == "TTLcat": plotTTHlep()
+   if category == "VHcat": plotVHhad()
+   if category == "TTHcat": plotTThad()
+   if category == "Zinvcat" : plotZinvH()

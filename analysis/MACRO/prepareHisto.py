@@ -35,7 +35,14 @@ lumis={
     '_22022':26.67, # E, F, G
     '_12023':17.794, #C
     '_22023':9.451, #D
-    '_2024':107.3, #C-I
+    '_2024':108.95, #C-I
+    '_12024':26.52, #CDE
+    '_22024':82.44, #FGHI
+    '_2025C':20.78, #C
+    '_2025D':25.29, #D
+    '_2025E':14.00, #E
+    '_2025F':30.35, #F
+    '_2025G':25.23, #G
 }
 
 def deltaPhi(phi1,phi2):
@@ -114,7 +121,10 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 17 : var = "FsrPH_eta"
    if item == 18 : var = "Muon1_phi"
    if item == 19 : var = "Muon2_phi"
+   if item == 20 : var = "fabs(Muon1_eta-Muon2_eta)"
    if item == 95 : var = "PV_npvsGood"
+
+   if item == 99 : var = "discrMVA"
 
    # for VBF
    if item == 100 : var = "Mjj"   
@@ -132,14 +142,22 @@ def getHisto(mytree, category, item, nbin, low, high):
    if item == 201: var = "Lepton_Pt"
    if item == 210: var = "category"
    if item == 211: var = "category"
+   if item == 212: var = "mt"
+   if item == 213: var = "m_wrongOSSF"
 
    # for VH had
-   if item == 251: var = "goodWjj_mass[0]"
-   if item == 256: var = "goodWjj_pt[0]"
-   if item == 252: var = "goodWjj_discr[0]"
+   if item == 251: var = "goodWjj_mass"
+   if item == 252: var = "goodWjj_discr"
+   if item == 253: var = "goodWjj_pt"
+   if item == 254: var = "goodWjj_pt/HiggsCandCorrPt"
 #   if item == 253: var = "FatJet_pNet_mass[0]"
-   if item == 254: var = "Jet1_Pt"
-   if item == 255: var = "WTopJetMass"
+
+   # for TTH had
+   if item == 260: var = "Jet1_Pt"
+   if item == 261: var = "WTopJetMass"
+   if item == 262: var = "WTopJetDiscr"
+   if item == 263: var = "HT"
+   if item == 264: var = "nGoodJetsAll"
 
    # for ZinvH
    if item == 301: var = "PuppiMET_pt"
@@ -149,7 +167,15 @@ def getHisto(mytree, category, item, nbin, low, high):
    ## FILL the histograms
    ## -------------------
 
-   df_common = df.Define("var","{}".format(var)).Define("weight","w_allSF")
+#   selection = "abs(Muon1_eta) < 0.9 && abs(Muon2_eta) < 0.9"
+#   selection = "abs(Muon1_eta) > 1.4 && abs(Muon2_eta) > 1.4"
+
+   weightSTD = "w_allSF"
+
+   df_common = df.Define("var","{}".format(var)).Define("weight","{}".format(weightSTD))
+#   df_common = df.Define("var","{}".format(var)).Define("weight","mc<0? w_allSF : w_allSF*(82.44/107.3)")    # 22024
+#   df_common = df.Define("var","{}".format(var)).Define("weight","mc<0? w_allSF : w_allSF*(26.52/107.3)")    # 12024
+   #.Filter(selection)
    #.Filter("int(category)==3")
    #.Filter("abs(HiggsCandCorrMass-125)<15")
    hDY = df_common.Filter("mc==100 or mc==103 or mc==104").Histo1D(("hDY","h",nbin, low, high),"var","weight")

@@ -79,16 +79,141 @@ Vec_b fatJetMask(Vec_i FatJet_muonIdx3SJ, int muon1_idx, int muon2_idx) {
   return mask;
 }
 
+
 TLorentzVector MakeTLV(const float pt, const float eta, const float phi, const float mass) {
     TLorentzVector v;
     v.SetPtEtaPhiM(pt, eta, phi, mass);
     return v;
 }
 
+float deltaPhi(float phi1, float phi2) {
+  float result = phi1 - phi2;
+  while (result > float(M_PI)) result -= float(2*M_PI);
+  while (result <= -float(M_PI)) result += float(2*M_PI);
+  return result;
+}
+
+float deltaR2(float eta1, float phi1, float eta2, float phi2) {
+  float deta = eta1-eta2;
+  float dphi = deltaPhi(phi1,phi2);
+  return deta*deta + dphi*dphi;
+}
+
+float deltaR(float eta1, float phi1, float eta2, float phi2) {
+  return std::sqrt(deltaR2(eta1,phi1,eta2,phi2));
+}
+
+Vec_b deltaRMask(float eta1, float phi1,
+		 const Vec_f & eta2,
+		 const Vec_f & phi2,
+		 float minDR = 0.8)
+{
+    Vec_b mask(eta2.size(), true);
+
+    for (size_t i = 0; i < eta2.size(); i++) {
+        float dr = deltaR(eta1, phi1, eta2[i], phi2[i]);
+        mask[i] = (dr < minDR) ? false : true;
+    }
+    return mask;
+}
+
+
+float minDRmusJ(const TLorentzVector& VBFCand, const TLorentzVector& mu1, const TLorentzVector& mu2 ){
+
+  float dr1 = deltaR2(VBFCand.Eta(), VBFCand.Phi(), mu1.Eta(), mu1.Phi());
+  float dr2 = deltaR2(VBFCand.Eta(), VBFCand.Phi(), mu2.Eta(), mu2.Phi());
+
+  return std::min(sqrt(dr1),sqrt(dr2));
+}
+
+// $$$$$$$$$$
+// here the angles i.e. Collin Sopper will move these to another file
+
+std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLorentzVector& mu2, float mu1_charge, float mu2_charge) {
+
+ // Set references correctly at initialization
+  const TLorentzVector& pMinus = (mu1_charge < 0 ? mu1 : mu2);
+  const TLorentzVector& pPlus  = (mu1_charge < 0 ? mu2 : mu1);
+
+  // Dilepton 4-vector and boost vector to go to its rest frame
+  TLorentzVector Higgs = pPlus + pMinus;
+  TVector3 beta = Higgs.BoostVector(); // boost to lab->dilepton rest: Boost(-beta)
+
+  // Copy the mu- and boost into the dilepton rest frame
+  TLorentzVector pMinus_rf = pMinus;
+  pMinus_rf.Boost(-beta);
+
+  // Construct (approximate) beam four-vectors in lab frame.
+  // Only directions matter; energies can be arbitrary positive numbers.
+  // We use unit z directions for the two beams.
+  TLorentzVector beam1_lab; // +z
+  TLorentzVector beam2_lab; // -z
+  beam1_lab.SetPxPyPzE(0.0, 0.0, 1.0, 1.0);
+  beam2_lab.SetPxPyPzE(0.0, 0.0,-1.0, 1.0);
+
+  // Boost beams into dilepton rest frame
+  TLorentzVector beam1_rf = beam1_lab;
+  TLorentzVector beam2_rf = beam2_lab;
+  beam1_rf.Boost(-beta);
+  beam2_rf.Boost(-beta);
+
+  // Use spatial parts to make unit vectors
+  TVector3 b1 = beam1_rf.Vect();
+  TVector3 b2 = beam2_rf.Vect();
+  // Protect against degenerate cases
+  if (b1.Mag() == 0 || b2.Mag() == 0) {
+    return std::make_pair(std::nanf(""), std::nanf(""));
+  }
+  TVector3 b1u = b1.Unit();
+  TVector3 b2u = b2.Unit();
+
+  // Collins-Soper axes:
+  TVector3 zCS = (b1u - b2u).Unit(); // z axis (bisector)
+  TVector3 xCS = (b1u + b2u).Unit(); // x axis (sum)
+  TVector3 yCS = zCS.Cross(xCS).Unit();
+
+  // Momentum of the selected lepton (mu-) in CS frame
+  TVector3 p = pMinus_rf.Vect();
+  double pMag = p.Mag();
+  if (pMag == 0) {
+    return std::make_pair(std::nanf(""), std::nanf(""));
+  }
+
+  // cos(theta_CS)
+  double cosTheta = p.Dot(zCS) / pMag;
+  // phi_CS from x,y projections
+  double projX = p.Dot(xCS);
+  double projY = p.Dot(yCS);
+  double phi = std::atan2(projY, projX); // range (-pi, pi)
+
+  return std::make_pair(static_cast<float>(cosTheta),
+			static_cast<float>(phi));
+
+}
 
 // $$$$$$$$$$
 // above generic RDF analysis functinos
 // below analysis oriented functions
+
+Vec_i getLHEPart_match(Vec_f & Jeta, Vec_f & Jphi, Vec_f & LHEPart_eta, Vec_f & LHEPart_phi, Vec_i & LHEPart_status, Vec_i & LHEPart_pdgId, bool isData) {
+
+  Vec_i idxMatch_(Jeta.size(), -1);
+  if(isData) return idxMatch_;
+
+  for (unsigned int idx = 0; idx < Jeta.size(); ++idx) {
+    for (unsigned int j = 0; j < LHEPart_eta.size(); ++j) {
+      if(LHEPart_status[j]!=1) continue; // outgoing
+      float dr2 = deltaR2(Jeta[idx], Jphi[idx], LHEPart_eta[j], LHEPart_phi[j]);
+      if(dr2>0.5*0.5) continue;
+      idxMatch_[idx] = j;
+    }
+  }
+  return idxMatch_;
+}
+
+float mt(float pt1, float phi1, float pt2, float phi2) {
+  return std::sqrt(2*pt1*pt2*(1-std::cos(phi1-phi2)));
+}
 
 int topology(float eta1, float eta2) {
 
@@ -220,6 +345,65 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f
 
 }
 
+float wrongOSSFmass(const ROOT::VecOps::RVec<float>& pts,
+		    const ROOT::VecOps::RVec<float>& etas,
+		    const ROOT::VecOps::RVec<float>& phis,
+		    const ROOT::VecOps::RVec<int>& charges,
+		    int mu1_idx, int mu2_idx)
+{
+    const float Z_MASS = 91.1876;
+
+    float bestMass = -1.f;
+    float bestScore = 1e9;  // distance from Z or low-mass threshold
+
+    int n = pts.size();
+
+    // Loop over all other muons
+    for (int k = 0; k < n; k++) {
+        if (k == mu1_idx || k == mu2_idx) continue;
+
+        // Check pair (mu1, k)
+        if (charges[mu1_idx] * charges[k] < 0) {
+            TLorentzVector a, b;
+            a.SetPtEtaPhiM(pts[mu1_idx], etas[mu1_idx], phis[mu1_idx], muon_mass_);
+            b.SetPtEtaPhiM(pts[k],       etas[k],       phis[k],       muon_mass_);
+            float M = (a + b).M();
+
+            bool nearZ   = fabs(M - Z_MASS) < 15.;
+            bool lowMass = M < 12.;
+
+            if (nearZ || lowMass) {
+                float score = nearZ ? fabs(M - Z_MASS) : (12. - M);
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestMass = M;
+                }
+            }
+        }
+
+        // Check pair (mu2, k)
+        if (charges[mu2_idx] * charges[k] < 0) {
+            TLorentzVector a, b;
+            a.SetPtEtaPhiM(pts[mu2_idx], etas[mu2_idx], phis[mu2_idx], muon_mass_);
+            b.SetPtEtaPhiM(pts[k],       etas[k],       phis[k],       muon_mass_);
+            float M = (a + b).M();
+
+            bool nearZ   = fabs(M - Z_MASS) < 15.;
+            bool lowMass = M < 12.;
+
+            if (nearZ || lowMass) {
+                float score = nearZ ? fabs(M - Z_MASS) : (12. - M);
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestMass = M;
+                }
+            }
+        }
+    }
+
+    return bestMass;   // -1 if no alternative OS pair found in signal regions
+}
+
 struct Pair {
     int i, j;
     float mass;
@@ -299,6 +483,8 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
   if (n <2 )  { return idx_; }
   else if (n == 2)  {
     // target hadronic final state
+
+    if (charges[0]*charges[1]>0) {idx_[0] = -1; idx_[1] = -1; } // looking for OS
     idx_[0] = 0; idx_[1] = 1;
 
   } else if (n == 4 and mode=="isVlep") {
@@ -365,18 +551,30 @@ stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
       PtEtaPhiMVector pi(pts[i], etas[i], phis[i], masses[i]);
       PtEtaPhiMVector pj(pts[j], etas[j], phis[j], masses[j]);
       float MJJ = (pi+pj).M();
+      float DetaJJ = abs(etas[i] - etas[j]);
 
       //      if (max < abs(etas[i] - etas[j]) && etas[i]*etas[j] < 0) {
       if (max < MJJ ) {
-        max = MJJ;
+	max = MJJ;
+	//      if (max < DetaJJ ) {
+	//        max = DetaJJ;
         index0 = i;
         index1 = j;
       }
     }
   }
 
-  idx_[0] = index0;
-  idx_[1] = index1;
+  // If a valid pair was found, reorder as leading/subleading pT
+  if (index0 >= 0 && index1 >= 0){
+    int leading  = (pts[index0] >= pts[index1]) ? index0 : index1;
+    int sublead  = (pts[index0] >= pts[index1]) ? index1 : index0;
+
+    idx_[0] = leading;
+    idx_[1] = sublead;
+  }
+
+  //  idx_[0] = index0;
+  //  idx_[1] = index1;
 
   return idx_;
 

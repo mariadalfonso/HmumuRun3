@@ -17,32 +17,31 @@ xlowRange = 110
 xhighRange = 150
 
 category_suffix = {
-    "_ggHcat":  "ggHcat",
-    "_VBFcat":  "VBFcat",
-    "_VHcat":   "VHcat",
-    "_VLcat":   "VLcat",
-    "_Zinvcat": "Zinvcat",
-    "_TTHcat":  "TTHcat",
-    "_TTLcat":  "TTLcat",
+    "ggHcat":  "ggHcat",
+    "VBFcat":  "VBFcat",
+    "VHcat":   "VHcat",
+    "VLcat":   "VLcat",
+    "Zinvcat": "Zinvcat",
+    "TTHcat":  "TTHcat",
+    "TTLcat":  "TTLcat",
 }
 
 # TO DO BETTER
 mc_list = {
-    "_ggHcat":  ["ggH","qqH"],
-    "_VBFcat":  ["qqH"],
-    "_VHcat":   ["VH"],
-    "_VLcat":   ["VH"],
-    "_Zinvcat": ["Zinvcat"],
-    "_TTHcat":  ["TTHcat"],
-    "_TTLcat":  ["TTLcat"],
+    "ggHcat":  ["ggH","qqH","VH","ttH"],
+    "VBFcat":  ["ggH","qqH","VH","ttH"],
+    "VLcat":  ["ggH","qqH","VH","ttH"],
+    "VHcat":  ["ggH","qqH","VH","ttH"],
+    "Zinvcat":  ["ggH","qqH","VH","ttH"],
+    "TTHcat":  ["ggH","qqH","VH","ttH"],
+    "TTLcat":  ["qqH","VH","ttH"],  # exception no ggH
 }
 
-def finalWorkspace(w, data, model, norm, doMultiPdf=False, tag='',storedPdfs=''):
-
+def finalWorkspace(w, data, model, norm, year, doMultiPdf=False, tag='',storedPdfs=''):
 
     if doMultiPdf:
-        pdf_cat = ROOT.RooCategory("pdfindex"+tag,"pdfindex"+tag)
-        pdf_bkg = ROOT.RooMultiPdf("multipdf"+tag+"_bkg","multipdf",pdf_cat,storedPdfs)
+        pdf_cat = ROOT.RooCategory("pdfindex_"+tag,"pdfindex_"+tag)
+        pdf_bkg = ROOT.RooMultiPdf("multipdf_"+tag+"_bkg","multipdf",pdf_cat,storedPdfs)
         getattr(w,'import')(pdf_bkg)
     else:
         # Import model and all its components into the workspace
@@ -74,9 +73,11 @@ def setVar(tag, lowBlind='-1', highBlind='-1'):
 
     return x
 
-def  fitSig(tag , year):
+def  fitSig(tag_ , year, binMVA):
 
-    x = setVar(tag)
+    tag = tag_+"_"+binMVA+"_"+year
+
+    x = setVar(tag_)
 
     doSignal = True
     doLog = False
@@ -84,23 +85,23 @@ def  fitSig(tag , year):
     # Create a empty workspace (one for all signal)
     w = ROOT.RooWorkspace("w", "workspace")
 
-    for sig in mc_list[tag]:
+    for sig in mc_list[tag_]:
     
-        data_full = getHisto(10*int(xhighRange - xlowRange), xlowRange, xhighRange, doLog, tag, year, doSignal, sig)
+        data_full = getHisto(10*int(xhighRange - xlowRange), xlowRange, xhighRange, doLog, tag_, year, doSignal, binMVA, sig)
         print('getHisto  DONE')
 
         data = ROOT.RooDataHist('datahist', 'data', ROOT.RooArgList(x), data_full)
 
         # -----------------------------------------------------------------------------
 
-        cb_mu = ROOT.RooRealVar('cb_mu'+tag+'_'+sig, 'cb_mu', 125., 125-10. , 125+10.)
-        cb_sigma = ROOT.RooRealVar('cb_sigma'+tag+'_'+sig, 'cb_sigma', 3, 0.5, 6.)
-        cb_alphaL = ROOT.RooRealVar('cb_alphaL'+tag+'_'+sig, 'cb_alphaL', 2., 0., 5.)
-        cb_alphaR = ROOT.RooRealVar('cb_alphaR'+tag+'_'+sig, 'cb_alphaR', 2., 0., 5.)
-        cb_nL = ROOT.RooRealVar('cb_nL'+tag+'_'+sig, 'cb_nL', 0., 5.)
-        cb_nR = ROOT.RooRealVar('cb_nR'+tag+'_'+sig, 'cb_nR', 0., 10.)
+        cb_mu = ROOT.RooRealVar('cb_mu_'+tag+'_'+sig, 'cb_mu', 125., 125-10. , 125+10.)
+        cb_sigma = ROOT.RooRealVar('cb_sigma_'+tag+'_'+sig, 'cb_sigma', 3, 0.5, 6.)
+        cb_alphaL = ROOT.RooRealVar('cb_alphaL_'+tag+'_'+sig, 'cb_alphaL', 2., 0., 5.)
+        cb_alphaR = ROOT.RooRealVar('cb_alphaR_'+tag+'_'+sig, 'cb_alphaR', 2., 0., 5.)
+        cb_nL = ROOT.RooRealVar('cb_nL_'+tag+'_'+sig, 'cb_nL', 0., 5.)
+        cb_nR = ROOT.RooRealVar('cb_nR_'+tag+'_'+sig, 'cb_nR', 0., 10.)
 
-        pdf_crystalball = ROOT.RooDoubleCBFast('crystal_ball'+tag+'_'+sig, 'crystal_ball', x, cb_mu, cb_sigma, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
+        pdf_crystalball = ROOT.RooDoubleCBFast('crystal_ball_'+tag+'_'+sig, 'crystal_ball', x, cb_mu, cb_sigma, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
         model = pdf_crystalball
 
         # -----------------------------------------------------------------------------
@@ -124,7 +125,7 @@ def  fitSig(tag , year):
             # ========== TOP PAD ==========
             pad1.cd()
 
-            titleSTR = "mH"+tag+'_'+sig+"_"+str(year)
+            titleSTR = "mH_"+tag+'_'+sig+"_"+str(year)
             plotFrameWithNormRange = x.frame(ROOT.RooFit.Title(titleSTR))
 
             # Plot only the blinded data, and then plot the PDF over the full range as well as both sidebands
@@ -194,7 +195,23 @@ def  fitSig(tag , year):
 
         norm_SR = data_full.Integral(binLow, binUp)
 
-        Sig_norm = ROOT.RooRealVar(model.GetName()+ "_norm", model.GetName()+ "_norm", norm_SR) # no range means contants
+        # Sig_norm constant only when fitting for the xsection upper limit
+        #        Sig_norm = ROOT.RooRealVar(model.GetName()+ "_norm", model.GetName()+ "_norm", norm_SR) # no range means contants
+        r = ROOT.RooRealVar("r", "signal strength", 1.0, 0.0, 10.0)
+        getattr(w,'import')(r)
+
+        N_SM = ROOT.RooRealVar(model.GetName() + "_N_SM",
+                               model.GetName() + " SM expected yield",
+                               norm_SR)
+        N_SM.setConstant(True)
+        getattr(w,'import')(N_SM)
+
+        # norm = r × N_SM
+        Sig_norm = ROOT.RooFormulaVar(model.GetName() + "_norm",
+                                      "@0 * @1",
+                                      ROOT.RooArgList(r, N_SM))
+
+        #        w.import(Sig_norm)   < -- this  is done inside Sig_norm
 
         # -----------------------------------------------------------------------------
         # -----------------------------------------------------------------------------
@@ -206,24 +223,27 @@ def  fitSig(tag , year):
         cb_alphaR.setConstant()
         cb_nL.setConstant()
         cb_nR.setConstant()
-        Sig_norm.setConstant()
+        #Sig_norm.setConstant()
 
-        w = finalWorkspace(w, data, model, Sig_norm)
+        w = finalWorkspace(w, data, model, Sig_norm, year)
 
     # -----------------------------------------------------------------------------
     # -----------------------------------------------------------------------------
     # Save workspace in file
 
-    w.writeToFile(workspaceName+"/Signal"+tag+"_"+str(year)+"_workspace.root")
+    w.writeToFile(workspaceName+"/Signal_"+tag+"_workspace.root")
 
-def  fitBkg(tag, year):
+def  fitBkg(tag_, year, binMVA):
 
+    tag = tag_+"_"+binMVA+"_"+year
+
+    print("tag = ", tag)
     # Create a empty workspace (one for all signal)
     w = ROOT.RooWorkspace("w", "workspace")
 
     lowBlind = 120
     highBlind = 130
-    x = setVar(tag, lowBlind, highBlind)
+    x = setVar(tag_, lowBlind, highBlind)
     nBins = 10*int(xhighRange-xlowRange)
 
     # Uniform binning for the full range
@@ -231,9 +251,9 @@ def  fitBkg(tag, year):
 
     doSignal = False
     doLog = False
-    data_full = getHisto(nBins, xlowRange, xhighRange, doLog, tag, year, doSignal)
+    data_full = getHisto(nBins, xlowRange, xhighRange, doLog, tag_, year, doSignal, binMVA)
     
-    data = ROOT.RooDataHist('datahist'+tag, 'data', ROOT.RooArgList(x), data_full)
+    data = ROOT.RooDataHist('datahist_'+tag, 'data', ROOT.RooArgList(x), data_full)
     blindedData = data.reduce(ROOT.RooFit.CutRange("left,right"))
 
     data_reduced_manual = data_full.Clone()
@@ -246,53 +266,53 @@ def  fitBkg(tag, year):
         data_reduced_manual.SetBinContent(i, 0.0)
         data_reduced_manual.SetBinError(i, 0.0)
 
-    data_reduced = ROOT.RooDataHist('datahistReduce'+tag, 'dataReduced', ROOT.RooArgList(x), data_reduced_manual)
+    data_reduced = ROOT.RooDataHist('datahistReduce_'+tag, 'dataReduced', ROOT.RooArgList(x), data_reduced_manual)
 
     # -----------------------------------------------------------------------------
     # BERN law
-    bern_c0 = ROOT.RooRealVar('bern_c0'+tag, 'bern_c0', 0.5, 0., 1.)
-    bern_c1 = ROOT.RooRealVar('bern_c1'+tag, 'bern_c1', 0.1, 0., 1.)
-    bern_c2 = ROOT.RooRealVar('bern_c2'+tag, 'bern_c2', 0.1, 0., 1.)
-    bern_c3 = ROOT.RooRealVar('bern_c3'+tag, 'bern_c3', 0.1, 0., 1.)
-    bern_c4 = ROOT.RooRealVar('bern_c4'+tag, 'bern_c4', 0.5, 0., 5.)
-    bern_c5 = ROOT.RooRealVar('bern_c5'+tag, 'bern_c5', 1e-2, 0., 0.1)
+    bern_c0 = ROOT.RooRealVar('bern_c0_'+tag, 'bern_c0', 0.5, 0., 1.)
+    bern_c1 = ROOT.RooRealVar('bern_c1_'+tag, 'bern_c1', 0.1, 0., 1.)
+    bern_c2 = ROOT.RooRealVar('bern_c2_'+tag, 'bern_c2', 0.1, 0., 1.)
+    bern_c3 = ROOT.RooRealVar('bern_c3_'+tag, 'bern_c3', 0.1, 0., 1.)
+    bern_c4 = ROOT.RooRealVar('bern_c4_'+tag, 'bern_c4', 0.5, 0., 5.)
+    bern_c5 = ROOT.RooRealVar('bern_c5_'+tag, 'bern_c5', 1e-2, 0., 0.1)
 
-    pdf_bern0 = ROOT.RooBernstein('bern0'+tag, 'bern0', x,
+    pdf_bern0 = ROOT.RooBernstein('bern0_'+tag, 'bern0', x,
                                   ROOT.RooArgList(bern_c0))
-    pdf_bern1 = ROOT.RooBernstein('bern1'+tag, 'bern1', x,
+    pdf_bern1 = ROOT.RooBernstein('bern1_'+tag, 'bern1', x,
                                   ROOT.RooArgList(bern_c0, bern_c1))
-    pdf_bern2 = ROOT.RooBernstein('bern2'+tag, 'bern2', x,
+    pdf_bern2 = ROOT.RooBernstein('bern2_'+tag, 'bern2', x,
                                   ROOT.RooArgList(bern_c0, bern_c1, bern_c2))
-    pdf_bern3 = ROOT.RooBernstein('bern3'+tag, 'bern3', x,
+    pdf_bern3 = ROOT.RooBernstein('bern3_'+tag, 'bern3', x,
                                   ROOT.RooArgList(bern_c0, bern_c1, bern_c2, bern_c3))
-    pdf_bern4 = ROOT.RooBernstein('bern4'+tag, 'bern4', x,
+    pdf_bern4 = ROOT.RooBernstein('bern4_'+tag, 'bern4', x,
                                   ROOT.RooArgList(bern_c0, bern_c1, bern_c2, bern_c3, bern_c4))
-    pdf_bern5 = ROOT.RooBernstein('bern5'+tag, 'bern5', x,
+    pdf_bern5 = ROOT.RooBernstein('bern5_'+tag, 'bern5', x,
                                   ROOT.RooArgList(bern_c0, bern_c1, bern_c2, bern_c3, bern_c4, bern_c5))
 
 #    if blinded: pdf_bern4.selectNormalizationRange(ROOT.RooFit.CutRange("left,right"))
 
     # -----------------------------------------------------------------------------
     # chebychev law
-    chebychev_c0 = ROOT.RooRealVar('chebychev_c0'+tag, 'chebychev_c0', 1.08, -1.1, 10.)
-    chebychev_c1 = ROOT.RooRealVar('chebychev_c1'+tag, 'chebychev_c1', 0.4, -1., 1.)
-    chebychev_c2 = ROOT.RooRealVar('chebychev_c2'+tag, 'chebychev_c2', 0.01, -0.1, 0.1)
-    chebychev_c3 = ROOT.RooRealVar('chebychev_c3'+tag, 'chebychev_c3', 0., -1., 1.) # limit this for the GF
+    chebychev_c0 = ROOT.RooRealVar('chebychev_c0_'+tag, 'chebychev_c0', 1.08, -1.1, 10.)
+    chebychev_c1 = ROOT.RooRealVar('chebychev_c1_'+tag, 'chebychev_c1', 0.4, -1., 1.)
+    chebychev_c2 = ROOT.RooRealVar('chebychev_c2_'+tag, 'chebychev_c2', 0.01, -0.1, 0.1)
+    chebychev_c3 = ROOT.RooRealVar('chebychev_c3_'+tag, 'chebychev_c3', 0., -1., 1.) # limit this for the GF
 
-    pdf_chebychev1 = ROOT.RooChebychev("chebychev1"+tag, "chebychev1",x,
+    pdf_chebychev1 = ROOT.RooChebychev("chebychev1_"+tag, "chebychev1",x,
                                        ROOT.RooArgList(chebychev_c0,chebychev_c1))
 
-    pdf_chebychev2 = ROOT.RooChebychev("chebychev2"+tag, "chebychev2",x,
+    pdf_chebychev2 = ROOT.RooChebychev("chebychev2_"+tag, "chebychev2",x,
                                        ROOT.RooArgList(chebychev_c0,chebychev_c1,chebychev_c2))
 
-    pdf_chebychev3 = ROOT.RooChebychev("chebychev3"+tag,"chebychev3",x,
+    pdf_chebychev3 = ROOT.RooChebychev("chebychev3_"+tag,"chebychev3",x,
                                        ROOT.RooArgList(chebychev_c0,chebychev_c1,chebychev_c2,chebychev_c3))
 
     # -----------------------------------------------------------------------------
     # GAUS law
-    gauss_mu = ROOT.RooRealVar('gauss_mu', 'gauss_mu', 120, 100, 140)
-    gauss_sigma = ROOT.RooRealVar('gauss_sigma', 'gauss_sigma', 30, 20, 40) #starting value, min max
-    pdf_gauss = ROOT.RooGaussian('gauss', 'gauss', x , gauss_mu, gauss_sigma)
+    gauss_mu = ROOT.RooRealVar('gauss_mu'+tag, 'gauss_mu', 120, 100, 140)
+    gauss_sigma = ROOT.RooRealVar('gauss_sigma'+tag, 'gauss_sigma', 30, 20, 40) #starting value, min max
+    pdf_gauss = ROOT.RooGaussian('gauss'+tag, 'gauss', x , gauss_mu, gauss_sigma)
 
     # -----------------------------------------------------------------------------
     # POW law
@@ -302,46 +322,46 @@ def  fitBkg(tag, year):
     formula_pow3 = '(1.-@1-@2)*TMath::Power(@0,@3) + @1*TMath::Power(@0,@4) + @2*TMath::Power(@0,@5)'
 
     # Variables
-    pow_frac1 = ROOT.RooRealVar('frac1', 'frac1', 0.01, 0., 1.)
-    pow_frac2 = ROOT.RooRealVar('frac2', 'frac2', 0.01, 0., 1.)
-    pow_p1 = ROOT.RooRealVar('p1', 'p1', -2.555, -10., 0.)
-    pow_p2 = ROOT.RooRealVar('p2', 'p2', -8., -10., 0.)
-    pow_p3 = ROOT.RooRealVar('p3', 'p3', -10., -10., 0.)
+    pow_frac1 = ROOT.RooRealVar('frac1'+tag, 'frac1', 0.01, 0., 1.)
+    pow_frac2 = ROOT.RooRealVar('frac2'+tag, 'frac2', 0.01, 0., 1.)
+    pow_p1 = ROOT.RooRealVar('p1'+tag, 'p1', -2.555, -10., 0.)
+    pow_p2 = ROOT.RooRealVar('p2'+tag, 'p2', -8., -10., 0.)
+    pow_p3 = ROOT.RooRealVar('p3'+tag, 'p3', -10., -10., 0.)
 
     # Power Law PDFs
-    pdf_pow1 = ROOT.RooGenericPdf('pow1', 'pow1', formula_pow1,
+    pdf_pow1 = ROOT.RooGenericPdf('pow1'+tag, 'pow1', formula_pow1,
                                   ROOT.RooArgList(x, pow_p1))
-    pdf_pow2 = ROOT.RooGenericPdf('pow2', 'pow2', formula_pow2,
+    pdf_pow2 = ROOT.RooGenericPdf('pow2'+tag, 'pow2', formula_pow2,
                                   ROOT.RooArgList(x, pow_frac1, pow_p1, pow_p2))
-    pdf_pow3 = ROOT.RooGenericPdf('pow3', 'pow3', formula_pow3,
+    pdf_pow3 = ROOT.RooGenericPdf('pow3'+tag, 'pow3', formula_pow3,
                                   ROOT.RooArgList(x, pow_frac1, pow_frac2, pow_p1, pow_p2, pow_p3))
     
     # -----------------------------------------------------------------------------
     # EXP law
     # these two from Davit
-    exp_p1 = ROOT.RooRealVar('exp_p1', 'exp_p1', -0.0207, -0.022, -0.018)
-    exp_p2 = ROOT.RooRealVar('exp_p2', 'exp_p2', -1e-2, -10, 10)
+    exp_p1 = ROOT.RooRealVar('exp_p1'+tag, 'exp_p1', -0.0207, -0.022, -0.018)
+    exp_p2 = ROOT.RooRealVar('exp_p2'+tag, 'exp_p2', -1e-2, -10, 10)
     # old param
 #    exp_p1 = ROOT.RooRealVar('exp_p1'+tag, 'exp_p1', -0.1, -10, 0)
 #    exp_p2 = ROOT.RooRealVar('exp_p2'+tag, 'exp_p2', -1e-2, -10, 0)
-    exp_p3 = ROOT.RooRealVar('exp_p3', 'exp_p3', -1e-3, -10, 0)
-    exp_c1 = ROOT.RooRealVar('exp_c1', 'exp_c1', 0., 1.)
-    exp_c2 = ROOT.RooRealVar('exp_c2', 'exp_c2', 0., 1.)
-    exp_c3 = ROOT.RooRealVar('exp_c3', 'exp_c3', 0., 1.)
+    exp_p3 = ROOT.RooRealVar('exp_p3'+tag, 'exp_p3', -1e-3, -10, 0)
+    exp_c1 = ROOT.RooRealVar('exp_c1'+tag, 'exp_c1', 0., 1.)
+    exp_c2 = ROOT.RooRealVar('exp_c2'+tag, 'exp_c2', 0., 1.)
+    exp_c3 = ROOT.RooRealVar('exp_c3'+tag, 'exp_c3', 0., 1.)
 
-    pdf_exp1 = ROOT.RooExponential('exp1'+tag, 'exp1', x, exp_p1)
-    pdf_single_exp2 = ROOT.RooExponential('single_exp2', 'single_exp2', x, exp_p2)
-    pdf_single_exp3 = ROOT.RooExponential('single_exp3', 'single_exp3', x, exp_p3)
+    pdf_exp1 = ROOT.RooExponential('exp1_'+tag, 'exp1', x, exp_p1)
+    pdf_single_exp2 = ROOT.RooExponential('single_exp2'+tag, 'single_exp2', x, exp_p2)
+    pdf_single_exp3 = ROOT.RooExponential('single_exp3'+tag, 'single_exp3', x, exp_p3)
 
-    pdf_exp2 = ROOT.RooAddPdf('exp2', 'exp2',
+    pdf_exp2 = ROOT.RooAddPdf('exp2'+tag, 'exp2',
                          ROOT.RooArgList(pdf_exp1, pdf_single_exp2),
                          ROOT.RooArgList(exp_c1, exp_c2))
 
-    pdf_exp3 = ROOT.RooAddPdf('exp3', 'exp3',
+    pdf_exp3 = ROOT.RooAddPdf('exp3'+tag, 'exp3',
                          ROOT.RooArgList(pdf_exp1, pdf_single_exp2, pdf_single_exp3),
                          ROOT.RooArgList(exp_c1, exp_c2, exp_c3))
 
-    pdf_exp1_conv_gauss = ROOT.RooFFTConvPdf('exp1_conv_gauss', 'exp1 (X) gauss', x, pdf_exp1, pdf_gauss)
+    pdf_exp1_conv_gauss = ROOT.RooFFTConvPdf('exp1_conv_gauss'+tag, 'exp1 (X) gauss', x, pdf_exp1, pdf_gauss)
 
 #   Set #bins to be used for FFT sampling to 10000
 #    x.setBins(10000, "cache");
@@ -352,23 +372,23 @@ def  fitBkg(tag, year):
     storedPdfs = ROOT.RooArgList("store_"+tag)
 
     models = {
-        "_ggHcat":  {"model1": pdf_chebychev2,   "model2": pdf_bern3},
-        "_VBFcat":  {"model1": pdf_bern2,        "model2": pdf_pow3},
-        "_VHcat":   {"model1": pdf_bern2,        "model2": pdf_exp1},
-        "_VLcat":   {"model1": pdf_bern2,        "model2": pdf_exp1,},
-        "_Zinvcat": {"model1": pdf_bern2,        "model2": pdf_exp1},
-        "_TTHcat":  {"model1": pdf_chebychev2,   "model2": pdf_exp1},
-        "_TTLcat":  {"model1": pdf_chebychev3,   "model2": pdf_exp1},
+        "ggHcat":  {"model1": pdf_chebychev2,   "model2": pdf_bern3},
+        "VBFcat":  {"model1": pdf_bern2,        "model2": pdf_pow3},
+        "VHcat":   {"model1": pdf_bern2,        "model2": pdf_exp1},
+        "VLcat":   {"model1": pdf_bern2,        "model2": pdf_exp1,},
+        "Zinvcat": {"model1": pdf_bern2,        "model2": pdf_exp1},
+        "TTHcat":  {"model1": pdf_chebychev2,   "model2": pdf_exp1},
+        "TTLcat":  {"model1": pdf_chebychev3,   "model2": pdf_exp1},
     }
 
-    if blinded: models[tag]["model1"].fitTo(blindedData,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"))
-    else: fitresults = models[tag]["model1"].fitTo(data,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"),ROOT.RooFit.Save(ROOT.kTRUE))
+    if blinded: models[tag_]["model1"].fitTo(blindedData,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"))
+    else: fitresults = models[tag_]["model1"].fitTo(data,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"),ROOT.RooFit.Save(ROOT.kTRUE))
 
     if doMultiPdf:
-        storedPdfs.add(models[tag]["model1"])
-        if blinded: models[tag]["model2"].fitTo(blindedData,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"))
-        else: fitresults2 = models[tag]["model2"].fitTo(data,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"),ROOT.RooFit.Save(ROOT.kTRUE))
-        storedPdfs.add(models[tag]["model2"])  # extra PDF
+        storedPdfs.add(models[tag_]["model1"])
+        if blinded: models[tag_]["model2"].fitTo(blindedData,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"))
+        else: fitresults2 = models[tag_]["model2"].fitTo(data,ROOT.RooFit.Minimizer("Minuit2"),ROOT.RooFit.Strategy(2),ROOT.RooFit.Range("full"),ROOT.RooFit.Save(ROOT.kTRUE))
+        storedPdfs.add(models[tag_]["model2"])  # extra PDF
 
     # -----------------------------------------------------------------------------
 
@@ -384,9 +404,9 @@ def  fitBkg(tag, year):
     print("--------------------------")
 
     if doMultiPdf:
-        BKG_norm = ROOT.RooRealVar("multipdf"+tag+"_bkg"+"_norm", models[tag]["model1"].GetName()+"_norm", norm_range, 0.5*norm_range, 2*norm_range)
+        BKG_norm = ROOT.RooRealVar("multipdf_"+tag+"_bkg"+"_norm", models[tag_]["model1"].GetName()+"_norm", norm_range, 0.5*norm_range, 2*norm_range)
     else:
-        BKG_norm = ROOT.RooRealVar(models[tag]["model1"].GetName()+ "_norm", models[tag]["model1"].GetName()+ "_norm", norm_range, 0.5*norm_range, 2*norm_range)
+        BKG_norm = ROOT.RooRealVar(models[tag_]["model1"].GetName()+ "_norm", models[tag_]["model1"].GetName()+ "_norm", norm_range, 0.5*norm_range, 2*norm_range)
 
     # -----------------------------------------------------------------------------
     # -----------------------------------------------------------------------------
@@ -396,7 +416,7 @@ def  fitBkg(tag, year):
     canvas = ROOT.TCanvas("canvas", "canvas", 800, 800)
     #canvas.Divide(2, 1)
 
-    titleSTR = "mH"+tag+"_"+str(year)+" -- "
+    titleSTR = "mH_"+tag+"_"+str(year)+" -- "
     plotFrameWithNormRange = x.frame(ROOT.RooFit.Title(titleSTR))
 
     # Plot only the blinded data, and then plot the PDF over the full range as well as both sidebands
@@ -404,33 +424,33 @@ def  fitBkg(tag, year):
     if blinded:
         data_reduced.plotOn(plotFrameWithNormRange, ROOT.RooFit.MarkerColor(ROOT.kWhite), ROOT.RooFit.LineColor(ROOT.kWhite))
 
-        models[tag]["model1"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag]["model1"].GetName()), ROOT.RooFit.LineColor(ROOT.kRed), ROOT.RooFit.Range("left"), ROOT.RooFit.NormRange("left,right"))
-        models[tag]["model1"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag]["model1"].GetName()), ROOT.RooFit.LineColor(ROOT.kRed), ROOT.RooFit.Range("right"), ROOT.RooFit.NormRange("left,right"))
-        models[tag]["model2"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag]["model2"].GetName()), ROOT.RooFit.LineColor(ROOT.kBlue), ROOT.RooFit.Range("left"), ROOT.RooFit.NormRange("left,right"))
-        models[tag]["model2"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag]["model2"].GetName()), ROOT.RooFit.LineColor(ROOT.kBlue), ROOT.RooFit.Range("right"), ROOT.RooFit.NormRange("left,right"))
+        models[tag_]["model1"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag_]["model1"].GetName()), ROOT.RooFit.LineColor(ROOT.kRed), ROOT.RooFit.Range("left"), ROOT.RooFit.NormRange("left,right"))
+        models[tag_]["model1"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag_]["model1"].GetName()), ROOT.RooFit.LineColor(ROOT.kRed), ROOT.RooFit.Range("right"), ROOT.RooFit.NormRange("left,right"))
+        models[tag_]["model2"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag_]["model2"].GetName()), ROOT.RooFit.LineColor(ROOT.kBlue), ROOT.RooFit.Range("left"), ROOT.RooFit.NormRange("left,right"))
+        models[tag_]["model2"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag_]["model2"].GetName()), ROOT.RooFit.LineColor(ROOT.kBlue), ROOT.RooFit.Range("right"), ROOT.RooFit.NormRange("left,right"))
 
         data_reduced.plotOn(plotFrameWithNormRange, ROOT.RooFit.Binning("left"))
         data_reduced.plotOn(plotFrameWithNormRange, ROOT.RooFit.Binning("right"))
 
     else:
         data.plotOn(plotFrameWithNormRange)
-        models[tag]["model1"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag]["model1"].GetName()), ROOT.RooFit.Range("full"), ROOT.RooFit.NormRange("full"), ROOT.RooFit.LineColor(ROOT.kRed)) ;
-        models[tag]["model2"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag]["model2"].GetName()), ROOT.RooFit.Range("full"), ROOT.RooFit.NormRange("full"), ROOT.RooFit.LineColor(ROOT.kBlue)) ;
-        name1 = models[tag]["model1"].GetName()+"_Norm[mh]_Comp["+models[tag]["model1"].GetName()+"]_Range[full]_NormRange[full]"
-        name2 = models[tag]["model2"].GetName()+"_Norm[mh]_Comp["+models[tag]["model2"].GetName()+"]_Range[full]_NormRange[full]"
+        models[tag_]["model1"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag_]["model1"].GetName()), ROOT.RooFit.Range("full"), ROOT.RooFit.NormRange("full"), ROOT.RooFit.LineColor(ROOT.kRed)) ;
+        models[tag_]["model2"].plotOn(plotFrameWithNormRange, ROOT.RooFit.Components(models[tag_]["model2"].GetName()), ROOT.RooFit.Range("full"), ROOT.RooFit.NormRange("full"), ROOT.RooFit.LineColor(ROOT.kBlue)) ;
+        name1 = models[tag_]["model1"].GetName()+"_Norm[mh]_Comp["+models[tag_]["model1"].GetName()+"]_Range[full]_NormRange[full]"
+        name2 = models[tag_]["model2"].GetName()+"_Norm[mh]_Comp["+models[tag_]["model2"].GetName()+"]_Range[full]_NormRange[full]"
         chi2_1 = plotFrameWithNormRange.chiSquare(name1,"h_"+data.GetName(),fitresults.floatParsFinal().getSize())
         if doMultiPdf: chi2_2 = plotFrameWithNormRange.chiSquare(name2,"h_"+data.GetName(),fitresults2.floatParsFinal().getSize())
 #        plotFrameWithNormRange.Print("v")
         print('--------------------')
-        if doMultiPdf: print(models[tag]["model2"].GetName(),"    chi2/ndof=",round(chi2_2,2)," ndof",fitresults2.floatParsFinal().getSize())
-        print(models[tag]["model1"].GetName(),"    chi2/ndof=",round(chi2_1,2)," ndof",fitresults.floatParsFinal().getSize())
+        if doMultiPdf: print(models[tag_]["model2"].GetName(),"    chi2/ndof=",round(chi2_2,2)," ndof",fitresults2.floatParsFinal().getSize())
+        print(models[tag_]["model1"].GetName(),"    chi2/ndof=",round(chi2_1,2)," ndof",fitresults.floatParsFinal().getSize())
         print('--------------------')
 
         fileToWrite="preselection_"+tag+"_"+"_"+str(year)+".txt"
         with open(fileToWrite, "a") as f:
-            str1 = models[tag]["model1"].GetName()+"    chi2/ndof="+str(round(chi2_1,2))+" ndof"+str(fitresults.floatParsFinal().getSize())+"\n"
+            str1 = models[tag_]["model1"].GetName()+"    chi2/ndof="+str(round(chi2_1,2))+" ndof"+str(fitresults.floatParsFinal().getSize())+"\n"
             f.write(str1)
-            if doMultiPdf: str2 = models[tag]["model2"].GetName()+"    chi2/ndof="+str(round(chi2_2,2))+" ndof"+str(fitresults2.floatParsFinal().getSize())+"\n"
+            if doMultiPdf: str2 = models[tag_]["model2"].GetName()+"    chi2/ndof="+str(round(chi2_2,2))+" ndof"+str(fitresults2.floatParsFinal().getSize())+"\n"
             if doMultiPdf: f.write(str2)
 
 #    model.paramOn(plotFrameWithNormRange, RooFit.Layout(0.6,0.99,0.95))
@@ -444,9 +464,9 @@ def  fitBkg(tag, year):
     latex = ROOT.TLatex()
     latex.SetTextColor(ROOT.kRed)
     latex.SetTextSize(0.04)
-    latex.DrawLatex(130 ,offsetY + 0.10*data_full.GetMaximum(), models[tag]["model1"].GetName())
+    latex.DrawLatex(130 ,offsetY + 0.10*data_full.GetMaximum(), models[tag_]["model1"].GetName())
     latex.SetTextColor(ROOT.kBlue)
-    latex.DrawLatex(130 ,offsetY + 0.20*data_full.GetMaximum(), models[tag]["model2"].GetName())
+    latex.DrawLatex(130 ,offsetY + 0.20*data_full.GetMaximum(), models[tag_]["model2"].GetName())
 
     canvas.Draw()
     htmldir = "~/public_html/HMUMU_FITS/OCT"
@@ -457,27 +477,35 @@ def  fitBkg(tag, year):
     # Create workspace, import data and model
     # Save workspace in file
 
-    w = finalWorkspace(w, data, models[tag]["model1"], BKG_norm, doMultiPdf, tag, storedPdfs)
+    w = finalWorkspace(w, data, models[tag_]["model1"], BKG_norm, year, doMultiPdf, tag, storedPdfs)
 
     if not blinded:
-        w.writeToFile(workspaceName+"/Bkg"+tag+"_"+str(year)+"_workspace.root")
+        w.writeToFile(workspaceName+"/Bkg_"+tag+"_workspace.root")
 
 if __name__ == "__main__":
 
-    for year in ['2024']:
-        fitBkg('_ggHcat',year)
-        fitBkg('_VBFcat',year)
-        fitBkg('_TTLcat',year)
-        fitBkg('_TTHcat',year)
-        fitBkg('_Zinvcat',year)
-        fitBkg('_VLcat',year)
-        fitBkg('_VHcat',year)
+    for year in ['Run3']:
+        for binX in [""]:
+            '''
+            fitSig('VBFcat',year,binX)
+            fitBkg('VBFcat',year,binX)
+            fitBkg('ggHcat',year,binX)
+            fitSig('ggHcat',year,binX)
+            '''
+            fitSig('Zinvcat',year,binX)
+            fitBkg('Zinvcat',year,binX)
+            fitSig('VLcat',year,binX)
+            fitBkg('VLcat',year,binX)
+            fitBkg('VHcat',year,binX)
+            fitSig('VHcat',year,binX)
+            fitSig('TTLcat',year,binX)
+            fitBkg('TTLcat',year,binX)
+            fitBkg('TTHcat',year,binX)
+            fitSig('TTHcat',year,binX)
 
-    for year in ['12022','22022','12023','22023','2024']:
-        fitSig('_ggHcat',year)
-        fitSig('_VBFcat',year)
-        fitSig('_TTLcat',year)
-        fitSig('_TTHcat',year)
-        fitSig('_Zinvcat',year)
-        fitSig('_VLcat',year)
-        fitSig('_VHcat',year)
+    for year in ['12022','22022','12023','22023','2024','2025']:
+        for binX in ["bdt0", "bdt1", "bdt2"]:
+            fitBkg('VBFcat',year,binX)
+            fitSig('VBFcat',year,binX)
+            fitBkg('ggHcat',year,binX)
+            fitSig('ggHcat',year,binX)
