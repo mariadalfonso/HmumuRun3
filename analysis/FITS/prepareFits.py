@@ -135,36 +135,62 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
 
    #-------------- selection
 
-   selMVAvbf = {
-       "bdt0" : "discrMVA0>=0.75",
-       "bdt1" : "discrMVA0>=0.4 && discrMVA0<0.75",
-       "bdt2" : "discrMVA0<0.4",
+   selMVAvl = {
+       "bdt1" : "discrMVA0>=0.98",
+       "bdt0" : "discrMVA0<0.98",
+       "incl" : "true",
+       "" : "true"
+   }
+
+   selMVAzinv = {
+       "bdt2" : "discrMVA0>=0.98",
+       "bdt1" : "discrMVA0>=0.16 && discrMVA0<0.98",
+       "bdt0" : "discrMVA0<0.16",
+       "incl" : "true",
+       "" : "true"
+   }
+
+   selMVAvh = {
+       "bdt2" : "discrMVA0>=0.98",
+       "bdt1" : "discrMVA0>=0.8 && discrMVA0<0.98",
+       "bdt0" : "discrMVA0<0.8",
+       "incl" : "true",
+       "" : "true"
+   }
+
+   selMVAtth = {
+       "bdt2" : "discrMVA0>=0.98",
+       "bdt1" : "discrMVA0>=0.3 && discrMVA0<0.98",
+       "bdt0" : "discrMVA0<0.3",
+       "incl" : "true",
        "" : "true"
    }
 
    selMVAggh = {
-       "bdt0" : "discrMVA0>=0.65",
-       "bdt1" : "discrMVA0>=0.35 && discrMVA0<0.65",
-       "bdt2" : "discrMVA0<0.35",
+       "incl" : "true",
        "" : "true"
    }
 
-   selection = {
-       "VLcat":   "true",
-       "ggHcat":  ""+selMVAggh[binMVA],
-       "VBFcat":  "Mjj>200 && "+selMVAvbf[binMVA],
-       "VHcat":   "goodWjj_discr>0.9",
-       "Zinvcat": "true",
-       "TTHcat":  "true",
-       "TTLcat":  "HT>100",
-   }
-   print('sel=',selection[category])
+   # VLcat: 1 W->e; 2 Z->ee; 3 W->μ; 4 Z→μμ
+
+   if category in ["VLcat", "TTLcat", "VBFcat"]:
+       selection_cut = selMVAvl[binMVA]
+   elif category == "Zinvcat":
+       selection_cut = selMVAzinv[binMVA]
+   elif category == "ggHcat":
+       selection_cut = selMVAggh[binMVA]
+   elif category == "VHcat":
+       selection_cut = selMVAvh[binMVA]
+   elif category == "TTHcat":
+       selection_cut = selMVAtth[binMVA]
+   else:
+       raise ValueError(f"Unknown category {category}")
 
    # --- Build the RDataFrame ---
    df = ROOT.RDataFrame("events", files)
    print(f"✅ Loaded {df.Count().GetValue()} entries from {len(files)} files")
 
-   df = df.Filter("{}".format(selection[category]),"selection cut")
+   df = df.Filter("{}".format(selection_cut),"selection cut")
 
    # --- Filters ---
    # Sanity check: skip NaN masses
@@ -173,7 +199,7 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
    # Select signal or background
    if doSignal:
          df_sel = df.Filter("mc == 10 || mc == 11 || mc == 12 || mc == 13 || mc == 14 || mc == 15", "Signal (ggH, VBF, VH, ttH)")
-         df_sel = df_sel.Define("weight", "w_allSF * lumiIntegrated")
+         df_sel = df_sel.Define("weight", "w_allSF") # lumiIntegrated is in the weight already
    else:
          df_sel = df.Filter("mc < 0 && mc > -100 ", "data ")
          df_sel = df_sel.Define("weight", "w_allSF")

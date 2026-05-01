@@ -152,30 +152,30 @@ if opts.whichCat=='VBFcat':
     mcAll = ['ggH','qqH','VH','ttH','bkgVBF']
     category = ['VBFcat']
 
+if opts.whichCat=='Zinvcat':
+    sigAll = ['qqH','VH','ttH']
+    mcAll = ['qqH','VH','ttH','bkgV']
+    category = ['Zinvcat']
+
 if opts.whichCat=='VLcat':
-    sigAll = ['ggH','qqH','VH','ttH']
-    mcAll = ['ggH','qqH','VH','ttH','bkgV']
+    sigAll = ['VH','ttH']
+    mcAll = ['VH','ttH','bkgV']
     category = ['VLcat']
 
 if opts.whichCat=='VHcat':
-    sigAll = ['ggH','qqH','VH','ttH']
-    mcAll = ['ggH','qqH','VH','ttH','bkgV']
+    sigAll = ['VH','ttH']
+    mcAll = ['VH','ttH','bkgV']
     category = ['VHcat']
 
 if opts.whichCat=='TTLcat':
-    sigAll = ['qqH','VH','ttH']
-    mcAll = ['qqH','VH','ttH','bkgtth']
+    sigAll = ['VH','ttH']
+    mcAll = ['VH','ttH','bkgtth']
     category = ['TTLcat']
 
 if opts.whichCat=='TTHcat':
-    sigAll = ['ggH','qqH','VH','ttH']
-    mcAll = ['ggH','qqH','VH','ttH','bkgtth']
+    sigAll = ['VH','ttH']
+    mcAll = ['ttH','bkgtth']
     category = ['TTHcat']
-
-if opts.whichCat=='Zinvcat':
-    sigAll = ['ggH','qqH','VH','ttH']
-    mcAll = ['ggH','qqH','VH','ttH','bkgV']
-    category = ['Zinvcat']
 
 ################### OPEN OUTPUT ############
 w = ROOT.RooWorkspace("w","w")
@@ -227,32 +227,22 @@ for cat in category:
         if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgVBFlow' or proc=='bkgtth':
             if opts.inputFileBKG != "":
                 wInput=fBkgIn.Get("w")
-                if opts.whichCat=='Vcat': name = BkgPdf[cat]+"_"+tag+"_"+'bkg'
-                else: name = BkgPdf[cat]+"_"+tag+"_"+'bkg'
+                name = BkgPdf[cat]+"_"+tag+"_"+'bkg'
                 nameNorm = name+"_norm"
         else:
             if opts.inputFileSig != "":
                 wInput=fSigIn.Get("w")
                 name = SigPdf[cat]+"_"+tag+"_"+proc
-                nameNorm = name+"_N_SM"
-
-                rVar = wInput.var("r")
-                if rVar == None: raise IOError("Unable to get func r ")
-                getattr(w,'import')(rVar)
+                nameNorm = name+"_norm"
                 
         print("proc=",proc," cat=",cat," name=",name)
-        
         func = wInput.pdf(name)
         if func == None: raise IOError("Unable to get func" + name)
         getattr(w,'import')(func)
 
-        funcNorm = wInput.var(nameNorm)
-        if funcNorm == None: raise IOError("Unable to get func normalization " + nameNorm)
-        getattr(w,'import')(funcNorm)
-
         datacard.write("shapes")
         datacard.write("\t"+proc )
-        datacard.write("\t"+cat )
+        datacard.write("\t"+tag)
         datacard.write("\t"+opts.output )
         datacard.write("\tw:"+name )
         datacard.write("\n")
@@ -264,17 +254,16 @@ for cat in category:
     getattr(w,'import')(hist_data)
     datacard.write("shapes")
     datacard.write("\tdata_obs" )
-    datacard.write("\t"+cat )
+    datacard.write("\t"+tag )
     datacard.write("\t"+opts.output )
     datacard.write("\tw:"+"observed_data_"+tag)
     datacard.write("\n")
 
-    
 #### OBSERVATION
 datacard.write("-------------------------------------\n")
 datacard.write("bin")
 for cat in category:
-    datacard.write("\t"+cat)
+    datacard.write("\t"+tag)
 datacard.write("\n")
 datacard.write("observation")
 for cat in category:
@@ -287,7 +276,7 @@ datacard.write("bin\t\t")
 #for cat in range(0,opts.ncat):
 for cat in category:    
     for proc in mcAll:
-        datacard.write("\t"+cat)
+        datacard.write("\t"+tag)
 datacard.write("\n")
 datacard.write("process\t\t")
 for cat in category:    
@@ -304,22 +293,49 @@ for cat in category:
             newIDX=ENUM[proc]
             datacard.write("\t%d"%newIDX)
 datacard.write("\n")
+
+############ UL_r ########
+
 datacard.write("rate\t\t")
 for cat in category:
+    tag = cat+"_"+opts.whichBIN+"_"+opts.whichYear
     for proc in mcAll:
-#        datacard.write("\t1")
-        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgtth' or proc=='bkgVBF': datacard.write("\t1")
+        #        datacard.write("\t1")
+        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgtth' or proc=='bkgVBF':
+            datacard.write("\t1") # I handle this via rateParma
         else:
-            datacard.write("\t1")
-#	datacard.write("\t1")
-#        if savePdf:
-#	    datacard.write("\t%.0f"%(opts.lumi) )
-#        else:
-#	    datacard.write("\t-1")
+            wInput=fSigIn.Get("w")
+            name = SigPdf[cat]+"_"+tag+"_"+proc
+            var = wInput.obj(name+"_norm")
+            datacard.write("\t%6f"%var.getVal())
 datacard.write("\n")
 
 ############ SYST ########
 datacard.write("-------------------------------------\n")
+
+
+## rateParam: take the norm from the workspace
+for cat in category:
+    tag = cat+"_"+opts.whichBIN+"_"+opts.whichYear
+    for proc in mcAll:
+        if proc=='bkgGF' or proc=='bkgV' or proc=='bkgtth' or proc=='bkgVBF':
+            wInput=fBkgIn.Get("w")
+            name = BkgPdf[cat]+"_"+tag+"_"+'bkg'
+            nameNorm = name+"_norm"
+
+            datacard.write(nameNorm)
+            datacard.write("\trateParam")
+            datacard.write("\t")
+            datacard.write(tag)
+            datacard.write("\t")
+            datacard.write(proc)
+            datacard.write("\t")
+            var = wInput.var(nameNorm)
+            datacard.write("\t%.6f" % var.getVal())
+datacard.write("\n")
+
+####
+
 datacard.write("lumi_13p6TeV \tlnN ")
 
 for cat in category:
@@ -328,6 +344,15 @@ for cat in category:
         else:
             if opts.whichCat=='GFcat' or opts.whichCat=='VBFcatlow': datacard.write("\t%.3f"%(1.025) )
             else: datacard.write("\t%.3f"%(1.016) )
+    datacard.write("\n")
+
+
+    datacard.write("BR_mm   \tlnN ")
+    for cat in category:
+        for proc in mcAll:
+            if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgtth': datacard.write("\t-")
+            else:
+                datacard.write("\t%.3f"%(1.012) )
     datacard.write("\n")
 
 if doSyst:
@@ -339,11 +364,11 @@ if doSyst:
             if proc=='bkgGF' or proc=='bkgV' or proc=='bkgVBF' or proc=='bkgtth': datacard.write("\t-")
             else:
                 datacard.write("\t%.3f"%(1.01) )
+    datacard.write("\n")
 
 #    ### Add autoMCStats
 #    datacard.write("\n")
 #    datacard.write("* autoMCStats 0\n")
-
 
 datacard.write("-------------------------------------\n")
 

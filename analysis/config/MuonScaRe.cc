@@ -125,16 +125,21 @@ double get_rndm(double eta, double phi, float nL, int evtNumber, int lumiNumber)
     double sigma = cset->at("cb_params")->evaluate({abs(eta), nL, 1});
     double n = cset->at("cb_params")->evaluate({abs(eta), nL, 2});
     double alpha = cset->at("cb_params")->evaluate({abs(eta), nL, 3});
-   
+
+    // da controllare con questo https://gitlab.cern.ch/cms-analysis/general/CMSJMECalculators/-/blob/main/src/MuonVariationsCalculator.cc?ref_type=heads#L230
+    // e questa cb e' diversa chiaramente https://gitlab.cern.ch/cms-muonPOG/muonscarekit/-/raw/master/scripts/MuonScaRe.cc
+
     // instantiate CB and get random number following the CB
-    CrystalBall cb(mean, sigma, alpha, n);
+    CrystalBall cb(mean, sigma, alpha, n);    // questo era dentro il codice standard
     int64_t phi_seed = static_cast<int64_t>((phi / M_PI) * ((1LL << 31) - 1)) & 0xFFF;
     SeedSequence seq{static_cast<uint32_t>(evtNumber), static_cast<uint32_t>(lumiNumber), static_cast<uint32_t>(phi_seed)};
     uint32_t seed;
     seq.generate(&seed, &seed + 1);
 
-    TRandom3 rnd(seed);
-    double rndm = rnd.Rndm();
+    //    TRandom3 rnd(seed);
+    //    double rndm = rnd.Rndm();
+    // use the smearing in correction lib
+    double rndm = cset->at("RandomSmearing")->evaluate({(int)evtNumber, (int)lumiNumber, phi});
     return cb.invcdf(rndm);
 }
 
@@ -168,6 +173,7 @@ double get_k(double eta, string var) {
 
 
 double pt_resol(double pt, double eta, double phi, float nL, int evtNumber, int lumiNumber, double low_pt_threshold = 26) {
+
     // load correction values
     double rndm = (double) get_rndm(eta, phi, nL, evtNumber, lumiNumber);
     double std = (double) get_std(pt, eta, nL);
@@ -179,6 +185,11 @@ double pt_resol(double pt, double eta, double phi, float nL, int evtNumber, int 
     if(ptc / pt > 2 || ptc / pt < 0.1 || ptc < 0 || pt < low_pt_threshold || pt > 200){
 	ptc = pt;
     }
+
+    // do we need to have this one ?
+    //pt < threshold
+    //pt > 200
+
     // TODO: Understand why for evts with pT < threshold the pt_corr is set to one
     return ptc;
 }
@@ -212,7 +223,7 @@ double pt_resol_var(double pt_woresol, double pt_wresol, double eta, string updn
 }
 
 double pt_scale(bool is_data, double pt, double eta, double phi, int charge, double low_pt_threshold = 26) {
-        
+
     // use right correction
     string dtmc = "mc";
     if (is_data) dtmc = "data";

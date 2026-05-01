@@ -36,18 +36,19 @@ def loadTree(mytree, directory_, category, year ):
         "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 … -54
         "_12024" : [str(i) for i in range(-41, -47, -1)],  # -41 … -46
         "_22024" : [str(i) for i in range(-47, -55, -1)],  # -47 … -54
-        "_2025" : [str(i) for i in range(-61, -71, -1)],  # -61 … -70
+        "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 … -72
     }
 
     # Common groups
     hmumu   = [f"{i}" for i in range(10, 16)]       # 10–15
     hzgamma = [f"{i}" for i in range(20, 25)]       # 20–24
-    vv      = [f"{i}" for i in range(201, 206)] + [f"{i}" for i in range(211, 215)]  # 201–205, 211–214
-    ttV     = [f"{i}" for i in range(221, 226)]
+    vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(211, 215)]  # 201–205, 211–214
+    ttV     = [f"{i}" for i in range(221, 230)]
 
     print(data_samples[year])
     if year == '_12024': yearX = '_2024'
     elif year == '_22024': yearX = '_2024'
+    elif year == '_22025': yearX = '_2025'
     else: yearX = year
     # Add year-specific samples
     for tag in data_samples.get(year):
@@ -55,6 +56,7 @@ def loadTree(mytree, directory_, category, year ):
 
     if year == '_12024': year = '_2024'
     if year == '_22024': year = '_2024'
+    if year == '_2025': year = '_2024'
 
     # Add Hmumu
     for tag in hmumu:
@@ -89,13 +91,13 @@ def loadTree(mytree, directory_, category, year ):
             safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
         # Add TTV
-        for tag in ttV:
-            if year in {"_12022", "_22022", "_12023", "_22023"}:
+        if year in {"_12022", "_22022", "_12023", "_22023"}:
+            for tag in ttV:
                 safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
-            elif year in {"_2024"}: # could not find TTW
-                safe_add_tree(mytree, f"{directory}snapshot_mc_222{year}_{category}.root")
-                safe_add_tree(mytree, f"{directory}snapshot_mc_223{year}_{category}.root")
-                safe_add_tree(mytree, f"{directory}snapshot_mc_224{year}_{category}.root")  # this is the largest
-                safe_add_tree(mytree, f"{directory}snapshot_mc_225{year}_{category}.root")
+        elif year in {"_2024"}: # 221 and 226 are strage madrapgh names
+            safe_add_tree(mytree, f"{directory}snapshot_mc_222{year}_{category}.root")
+            safe_add_tree(mytree, f"{directory}snapshot_mc_223{year}_{category}.root")
+            safe_add_tree(mytree, f"{directory}snapshot_mc_224{year}_{category}.root")
+            safe_add_tree(mytree, f"{directory}snapshot_mc_225{year}_{category}.root")
 
     return mytree

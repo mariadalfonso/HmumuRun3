@@ -11,6 +11,7 @@ using stdVec_i = std::vector<int>;
 using stdVec_b = std::vector<bool>;
 using stdVec_f = std::vector<float>;
 
+const float ele_mass_ = 0.000511;
 const float muon_mass_ = 0.10566;
 const float Z_mass_ = 91.1880; // GeV
 const float H_mass_ = 125.0; // GeV
@@ -57,6 +58,45 @@ Vec_b cleaningMask(Vec_i indices, int size) {
     mask[idx] = false;
   }
   return mask;
+}
+
+int pickFsrForMuon(int muIdx,
+                   const ROOT::VecOps::RVec<int>& mu_fsrIdx,
+                   const ROOT::VecOps::RVec<float>& fsr_pt,
+                   const ROOT::VecOps::RVec<float>& fsr_dROverEt2,
+                   const ROOT::VecOps::RVec<float>& fsr_iso,
+                   float mu_pt)
+{
+    // invalid muon
+    if (muIdx < 0 || muIdx >= (int)mu_fsrIdx.size())
+        return -1;
+
+    int fsr_idx = mu_fsrIdx[muIdx];
+
+    // no associated FSR
+    if (fsr_idx < 0 ||
+        fsr_idx >= (int)fsr_pt.size() ||
+        fsr_idx >= (int)fsr_dROverEt2.size() ||
+        fsr_idx >= (int)fsr_iso.size())
+        return -1;
+
+    // Apply selection
+    if ( (fsr_pt[fsr_idx] / mu_pt) < 0.4 &&
+         fsr_dROverEt2[fsr_idx] < 0.012 &&
+         fsr_iso[fsr_idx] < 1.8 )
+    {
+        return fsr_idx;
+    }
+
+    return -1;
+}
+
+int pickFsrForMuon(int muIdx,
+                   const ROOT::VecOps::RVec<int>& mu_fsrIdx)
+{
+    if (muIdx < 0) return -1;
+    int idx = mu_fsrIdx[muIdx];
+    return (idx >= 0) ? idx : -1;
 }
 
 Vec_b fsrMask(Vec_i indices, int size) {
@@ -195,6 +235,18 @@ std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLor
 // above generic RDF analysis functinos
 // below analysis oriented functions
 
+float getLHEPart_boson(Vec_f & LHEPart_xyz, Vec_i & LHEPart_status, Vec_i & LHEPart_pdgId, int typeBos=24) {
+
+  float var = -1;
+  for (unsigned int j = 0; j < LHEPart_xyz.size(); ++j) {
+
+    if(typeBos == 25 && abs(LHEPart_pdgId[j])==25 ) var = LHEPart_xyz[j];
+    else if ( abs(LHEPart_pdgId[j])==23 || abs(LHEPart_pdgId[j])==24 ) var = LHEPart_xyz[j]; 
+
+  }
+  return var;
+}
+
 Vec_i getLHEPart_match(Vec_f & Jeta, Vec_f & Jphi, Vec_f & LHEPart_eta, Vec_f & LHEPart_phi, Vec_i & LHEPart_status, Vec_i & LHEPart_pdgId, bool isData) {
 
   Vec_i idxMatch_(Jeta.size(), -1);
@@ -242,6 +294,7 @@ int hardest_pt_idx(const Vec_f pts) {
 
 }
 
+/*
 // https://twiki.cern.ch/twiki/bin/view/CMS/JetID13p6TeV
 // bug fix for v12 nano
 // going to use the json for v15
@@ -277,6 +330,7 @@ Vec_b cleaningJetSelMask(int sel, Vec_f jet_eta, Vec_f jet_neHEF, Vec_f jet_chEm
 
   return jet_Sel_mask;
 }
+*/
 
 float Minv(const TLorentzVector& p1, const TLorentzVector& p2) {
   return (p1 + p2).M();
@@ -290,35 +344,49 @@ float minDeta(const float& etaDiMu, const float& jetEta1, const float& jetEta2) 
   return   std::min(abs(etaDiMu-jetEta1),abs(etaDiMu-jetEta2));
 }  
 
-float MinvCorr(const TLorentzVector& p1, const TLorentzVector& p2,
-	       const Vec_f& fsr_pt, const Vec_f& fsr_eta, const Vec_f& fsr_phi,
-	       const int& typeVar) {
 
-  // Index of the lowest-dR/ET2 among associated FSR photons
-  TLorentzVector p4 = p1 + p2;
+//https://github.com/cms-sw/cmssw/blob/master/CommonTools/RecoUtils/plugins/LeptonFSRProducer.cc#L59
 
-  for (int i = 0; i < 2; i++){
+float MinvCorr(const TLorentzVector& p1,
+               const TLorentzVector& p2,
+               int fsr1_idx, int fsr2_idx,
+               const Vec_f& fsr_pt,
+               const Vec_f& fsr_eta,
+               const Vec_f& fsr_phi,
+	       //	       const Vec_f& FsrPhoton_dROverEt2,
+	       //	       const Vec_f& isolation,
+               int typeVar)
+{
+    TLorentzVector p4 = p1 + p2;
 
-    if (i==0 and fsr_pt[i]/p1.Pt() > 0.4) continue;
-    if (i==1 and fsr_pt[i]/p2.Pt() > 0.4) continue;
+    if (fsr1_idx >= 0 && fsr1_idx < fsr_pt.size()) {
+      //      if (fsr_pt[fsr1_idx] / p1.Pt() < 0.4 and FsrPhoton_dROverEt2[fsr1_idx]<0.012 and isolation[fsr1_idx]>1.8) {
+      TLorentzVector ph;
+      ph.SetPtEtaPhiM(fsr_pt[fsr1_idx],
+		      fsr_eta[fsr1_idx],
+		      fsr_phi[fsr1_idx], 0);
+      p4 += ph;
+      //        }
+    }
 
-    TLorentzVector ph;
-    ph.SetPtEtaPhiM(fsr_pt[i], fsr_eta[i], fsr_phi[i], 0);
+    if (fsr2_idx >= 0 && fsr2_idx < fsr_pt.size()) {
+      //        if (fsr_pt[fsr2_idx] / p2.Pt() < 0.4 and FsrPhoton_dROverEt2[fsr2_idx]<0.012) {
+      TLorentzVector ph;
+      ph.SetPtEtaPhiM(fsr_pt[fsr2_idx],
+		      fsr_eta[fsr2_idx],
+		      fsr_phi[fsr2_idx], 0);
+      p4 += ph;
+      //    }
+    }
 
-    p4 = p4 + ph;
-
-  }
-
-  if (typeVar==0) { return p4.M(); }
-  if (typeVar==1) { return p4.Pt(); }
-  if (typeVar==2) { return p4.Rapidity(); }
-  if (typeVar==3) { return p4.Eta(); }
-
-  return 0;
-
+    if (typeVar == 0) return p4.M();
+    if (typeVar == 1) return p4.Pt();
+    if (typeVar == 2) return p4.Rapidity();
+    if (typeVar == 3) return p4.Eta();
+    return 0.f;
 }
 
-bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges){
+bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const float& mass_){
 // useful for the Wmunu + Hmm 3mu final state
 
   bool freeOfZ=true;
@@ -331,8 +399,8 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f
 
       if (charges[i]*charges[j]>0) continue; // looking for OS
 
-      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], muon_mass_);
-      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], muon_mass_);
+      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], mass_);
+      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], mass_);
 
       float delta = abs((pi + pj).M() - Z_mass_);
 
@@ -343,6 +411,27 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f
 
   return freeOfZ;
 
+}
+
+stdVec_i pickExtraMu(const ROOT::VecOps::RVec<float>& pts,
+		   int mu1_idx, int mu2_idx)
+{
+
+  stdVec_i idx_(2, -1);
+  int n = pts.size();
+  int counter=0;
+
+  // Loop over all other muons
+  for (int k = 0; k < n; k++) {
+    if (k == mu1_idx || k == mu2_idx) continue;
+
+    idx_[counter]=k;
+    counter++;
+
+    if(counter>1) break; // this count up to 2 extra mu
+  }
+
+  return idx_;
 }
 
 float wrongOSSFmass(const ROOT::VecOps::RVec<float>& pts,
@@ -530,14 +619,48 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
 }
 
-stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& masses){
+enum class JetPairMode {
+  MaxMjj,
+  MaxDeltaEta,
+  LeadingPt
+};
+
+stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& masses, JetPairMode mode){
 
   stdVec_i idx_(2, -1);
 
   int n = etas.size(), index0 = -1, index1 = -1;
   float pt_limit = 20;
 
-  float max = 0;
+  // --------------------------------------------------
+  // Case 3: simply take the two leading-pT jets
+  // --------------------------------------------------
+  if (mode == JetPairMode::LeadingPt) {
+    int lead = -1, sub = -1;
+
+    for (int i = 0; i < n; ++i) {
+      if (pts[i] < pt_limit) continue;
+
+      if (lead < 0 || pts[i] > pts[lead]) {
+        sub  = lead;
+        lead = i;
+      } else if (sub < 0 || pts[i] > pts[sub]) {
+        sub = i;
+      }
+    }
+
+    if (lead >= 0 && sub >= 0) {
+      idx_[0] = lead;
+      idx_[1] = sub;
+    }
+    return idx_;
+  }
+
+  // --------------------------------------------------
+  // Case 1 & 2: pairwise scan
+  // --------------------------------------------------
+
+  float max = -1.;
 
   for (int i = 0; i < n; i++){
     if (pts[i] < pt_limit) continue;
@@ -553,11 +676,12 @@ stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
       float MJJ = (pi+pj).M();
       float DetaJJ = abs(etas[i] - etas[j]);
 
-      //      if (max < abs(etas[i] - etas[j]) && etas[i]*etas[j] < 0) {
-      if (max < MJJ ) {
-	max = MJJ;
-	//      if (max < DetaJJ ) {
-	//        max = DetaJJ;
+      float metric = -1.0;
+      if (mode == JetPairMode::MaxMjj)       metric = MJJ;
+      if (mode == JetPairMode::MaxDeltaEta)  metric = DetaJJ;
+
+      if (metric > max) {
+        max   = metric;
         index0 = i;
         index1 = j;
       }
