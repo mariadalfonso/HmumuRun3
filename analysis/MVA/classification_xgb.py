@@ -1,6 +1,20 @@
 import ROOT
 import json
 
+import xgboost as xgb
+import os
+
+# Set threading via environment variables (works in all versions)
+num_cores = 192
+os.environ['OMP_NUM_THREADS'] = str(num_cores)
+os.environ['OPENBLAS_NUM_THREADS'] = str(num_cores)
+os.environ['MKL_NUM_THREADS'] = str(num_cores)
+os.environ['NUMEXPR_NUM_THREADS'] = str(num_cores)
+
+#xgb.set_config(verbosity=0)
+
+print(f"XGBoost threading configured for {num_cores} cores")
+
 import matplotlib
 matplotlib.use("Agg")     # IMPORTANT for batch mode / no display
 import matplotlib.pyplot as plt
@@ -8,7 +22,6 @@ import scipy.stats
 
 import pandas as pd
 import numpy as np
-import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve, auc
 
@@ -35,18 +48,87 @@ for year in years:
 ROOT.gROOT.SetBatch(True)
 ROOT.ROOT.EnableImplicitMT()
 
-paramsClass = {
-    "lambda": 0, # to make the discriminator larger for VL
+paramsClass1 = {
     "objective": "binary:logistic",
     "eval_metric": "auc",
-    "max_depth": 4,
-    "eta": 0.1,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
-    "n_estimators": 400,
+    ##
+#    "objective": "multi:softprob",
+#    "num_class": 3,   # signal + 2 backgrounds
+#    "eval_metric": "mlogloss",
+    ##
+    # Model complexity
     "tree_method": "hist",
     "seed": 42,
-    "min_child_weight": 1,
+    "n_estimators": 500,
+    # Model complexity (reduce to fight overfitting)
+    "max_depth": 4,
+    "min_child_weight": 5,
+    "eta": 0.1,
+    # Sampling (reduce to fight overfitting)
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    # Regularization (increase to fight overfitting)
+    "lambda": 1.0,            # L2 regularization
+    "gamma": 1.0,             # Minimum loss reduction
+    "alpha": 0.1,             # L1 regularization
+    #
+    "early_stopping_rounds": 50,
+    "n_jobs": -1
+}
+
+
+paramsClass2 = {
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    ##
+    # Model complexity
+    "tree_method": "hist",
+    "seed": 42,
+    "n_estimators": 500,
+    "max_bin": 512,
+    # Model complexity (reduce to fight overfitting)
+    "max_depth": 3,
+    "min_child_weight": 15,
+    "eta": 0.02,
+    # Sampling (reduce to fight overfitting)
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    # Regularization (increase to fight overfitting)
+    "lambda": 5.0,            # L2 regularization
+    "gamma": 2.0,             # Minimum loss reduction
+    "alpha": 0.5,             # L1 regularization
+    #
+    "early_stopping_rounds": 50,
+    "n_jobs": -1
+}
+
+paramsMulti = {
+    # ====== MULTI-CLASS OBJECTIVE ======
+    "objective": "multi:softprob",      # ← Multi-class (probabilities)
+    "num_class": 3,                     # ← 3 classes!
+    "eval_metric": "mlogloss",          # ← Multi-class loss (not AUC)
+    # Anti-overfitting
+    "max_depth": 3,
+    "min_child_weight": 15,
+    "eta": 0.01,
+    "lambda": 5.0,
+    "alpha": 0.5,
+    "gamma": 2.0,
+    # Sampling
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "colsample_bylevel": 0.9,
+    # Tree method
+    "tree_method": "hist",
+    "grow_policy": "lossguide",
+    "max_leaves": 15,
+    "max_bin": 512,
+    # Threading
+    "n_jobs": -1,
+    # Training
+    "seed": 42,
+    "n_estimators": 2000,
+    "early_stopping_rounds": 100,
 }
 
 signal_map = {
@@ -103,7 +185,7 @@ variables_resolution = {
 # here the no discrimination and very weak
 variables_notUseful_map = {
     "ggHcat": ["HiggsCandCorrRapidity", "cosThetaCS", "phiStarCS", "Muon1_eta","Muon2_eta", "PuppiMET_pt"],
-    "VBFcat": ["HiggsCandCorrRapidity", "HiggsCandMassErr", "cosThetaCS","phiStarCS","Muon1_eta","Muon2_eta","dPhiJJ"],
+    "VBFcat": ["HiggsCandCorrRapidity", "HiggsCandMassErr", "cosThetaCS","phiStarCS","Muon1_eta","Muon2_eta"],
     "Zinvcat": [ "HiggsCandCorrRapidity","cosThetaCS","phiStarCS","Muon1_eta","Muon2_eta"],
     "TTLcat": ["category","Lepton_Pt","Lepton_sip3d","Jet1_Pt","HiggsCandCorrRapidity", "cosThetaCS", "phiStarCS","Muon1_eta","Muon2_eta","PuppiMET_pt","HiggsCandMassErr"],
     "TTHcat": ["HiggsCandCorrRapidity", "cosThetaCS", "phiStarCS", "Muon1_eta","Muon2_eta","Jet1_Pt","Muon1_sip3d","Muon2_sip3d","WTopJetMass"],
@@ -330,6 +412,83 @@ def diagnostic(bdt,test_data,test_labels,variables):
 
         print(f"📊 Saved feature importance ({imp}) to: {outfile}")
 
+def overtraining(bdt, train_data, train_labels, train_weights, test_data, test_labels, test_weights):
+
+    train_scores = bdt.predict_proba(train_data)[:, 1]
+    test_scores  = bdt.predict_proba(test_data)[:, 1]
+
+    train_sig = train_scores[train_labels == 0]
+    train_bkg = train_scores[train_labels == 1]
+
+    test_sig  = test_scores[test_labels == 0]
+    test_bkg  = test_scores[test_labels == 1]
+
+    train_w_sig = train_weights[train_labels == 0]
+    train_w_bkg = train_weights[train_labels == 1]
+
+    test_w_sig  = test_weights[test_labels == 0]
+    test_w_bkg  = test_weights[test_labels == 1]
+
+    bins = np.linspace(0, 1, 50)
+
+    plt.figure(figsize=(8,6))
+
+    # --- TRAIN (histograms) ---
+    plt.hist(train_sig, bins=bins, weights=train_w_sig,
+             density=True, histtype='step', linewidth=2,
+             label='Train Signal')
+
+    plt.hist(train_bkg, bins=bins, weights=train_w_bkg,
+             density=True, histtype='step', linewidth=2,
+             label='Train Background')
+
+    # --- TEST (points with errors) ---
+    def weighted_hist_with_err(values, weights, bins):
+        hist, edges = np.histogram(values, bins=bins, weights=weights, density=True)
+
+        # statistical uncertainty (approx)
+        sumw2, _ = np.histogram(values, bins=bins, weights=weights**2)
+        err = np.sqrt(sumw2) / np.sum(weights)
+
+        centers = (edges[:-1] + edges[1:]) / 2
+        return centers, hist, err
+
+    # Signal
+    x_sig, y_sig, err_sig = weighted_hist_with_err(test_sig, test_w_sig, bins)
+    plt.errorbar(x_sig, y_sig, yerr=err_sig, fmt='o', label='Test Signal')
+
+    # Background
+    x_bkg, y_bkg, err_bkg = weighted_hist_with_err(test_bkg, test_w_bkg, bins)
+    plt.errorbar(x_bkg, y_bkg, yerr=err_bkg, fmt='o', label='Test Background')
+
+    # Labels
+    plt.xlabel('BDT Output Score')
+    plt.ylabel('Probability Density')
+    plt.title('XGBoost Overtraining Check')
+    plt.legend()
+    plt.grid(alpha=0.3)
+    outfile = dir_map[category] + f"overtraining.png"
+    plt.savefig(outfile, dpi=200)
+    plt.close()
+
+    print(f"📊 Saved overtraining to: {outfile}")
+
+    # Plot Over Training curve
+    results = bdt.evals_result()
+
+    # Plot
+    plt.plot(results['validation_0']['auc'], label='Train')
+    plt.plot(results['validation_1']['auc'], label='Validation')
+    plt.xlabel('Boosting Rounds')
+    plt.ylabel('AUC')
+    plt.legend()
+    plt.title('XGBoost Overfitting Plot')
+    outfile = dir_map[category] + f"overtraining_AUCvsRound.png"
+    plt.savefig(outfile, dpi=200)
+    plt.close()
+
+    print(f"📊 Saved overtraining to: {outfile}")
+
 def _test_XGB_class(label):
 
     # -------------------------------------------------
@@ -341,31 +500,55 @@ def _test_XGB_class(label):
     sig_df = load_process_class(0,  variables, False)
     bkg_df = load_process_class(1, variables, False)
 
+    data = pd.concat([sig_df, bkg_df], ignore_index=True)
     data = data.sample(frac=1, random_state=42)
     data["event"] = np.arange(len(data))
 
     # -------------------------------------------------
-    # Build balanced, positive-definite weights
+    # WEIGHTS: fix neg weights, and balance the dataset
     # -------------------------------------------------
 
-    # Build balanced weight
+    sig_mask = data["target"] == 0
+    bkg_mask = data["target"] == 1
+
+    w = data["weight"].abs().clip(lower=1e-10)
+
     if False:
-        data["weight_balanced"] = data["weight"]
+
+        # Normalize per class to mean=1
+        sig_avg = w[sig_mask].mean()
+        bkg_avg = w[bkg_mask].mean()
+
+        data.loc[sig_mask, "weight_balanced"] = w[sig_mask] / sig_avg
+        data.loc[bkg_mask, "weight_balanced"] = w[bkg_mask] / bkg_avg
+
     else:
-        eps = 1e-8  # small positive number
+
+        # Apply mass error weighting: 1 / sigma^2
         sigma = data["HiggsCandMassErr"].values
+        sigma_safe = np.where((sigma <= 0) | (~np.isfinite(sigma)), 1e-3, sigma)
 
-        # protect against bad values
-        sigma_safe = np.where((sigma <= 0) | (~np.isfinite(sigma)), eps, sigma)
+        # Weight by mass resolution: events with better resolution get higher weight
+        w_with_sigma = w / (sigma_safe ** 2)
+        w_with_sigma = w_with_sigma.clip(lower=1e-10)  # Safety
 
-        data["weight_balanced"] = data["weight"] / (sigma_safe * sigma_safe)
+        # Normalize per class to mean=1
+        sig_avg = w_with_sigma[sig_mask].mean()
+        bkg_avg = w_with_sigma[bkg_mask].mean()
 
-    # Fix negative weights (MANDATORY)
-    n_neg = (data["weight_balanced"] <= 0).sum()
-    if n_neg:
-        print(f"⚠️  Found {n_neg} non-positive weights → taking absolute value")
+        data.loc[sig_mask, "weight_balanced"] = w_with_sigma[sig_mask] / sig_avg
+        data.loc[bkg_mask, "weight_balanced"] = w_with_sigma[bkg_mask] / bkg_avg
 
-        data["weight_balanced"] = data["weight_balanced"].abs().clip(lower=1e-6)
+    print("\n" + "="*60)
+    print("WEIGHT DIAGNOSTICS (AFTER SCALING)")
+    print("="*60)
+
+    train_weights_temp = data["weight_balanced"]
+    print(f"Scaled weight range: {train_weights_temp.min():.2e} to {train_weights_temp.max():.2e}")
+    print(f"Scaled weight mean: {train_weights_temp.mean():.2e}")
+    print(f"Signal weight avg: {train_weights_temp[sig_mask].mean():.4f}")
+    print(f"Bkg weight avg: {train_weights_temp[bkg_mask].mean():.4f}")
+    print(f"Signal weight sum: {train_weights_temp[sig_mask].sum():.2e}")
 
     # -------------------------------------------------
     # Split even odd
@@ -382,6 +565,30 @@ def _test_XGB_class(label):
 
     train_weights = data.loc[train_mask, "weight_balanced"]
     test_weights  = data.loc[test_mask,  "weight_balanced"]
+
+    # -------------------------------------------------
+    # TRAINING: BETTER PARAMETERS FOR CLASS IMBALANCE
+    # -------------------------------------------------
+    ## NOTE: scale_pos_weight should be looked for multiclass
+
+    n_signal = (train_labels == 0).sum()
+    n_background = (train_labels == 1).sum()
+    n_total = len(train_labels)
+
+    print(f"Train: {n_signal} signal ({100*n_signal/n_total:.1f}%), {n_background} bkg ({100*n_background/n_total:.1f}%)")
+    print(f"Imbalance: {n_background/n_signal:.3f}")
+
+    scale_pos_weight = n_background / max(n_signal, 1)
+
+    print(f"\n✅ Signal samples: {n_signal}, Background: {n_background}")
+    print(f"✅ Scale pos weight: {scale_pos_weight:.2f}\n")
+
+    if category in ["Zincat" "VHcat" "TTLcat"]:
+        params = paramsClass2.copy()
+        params["scale_pos_weight"] = scale_pos_weight
+    else:
+        params = paramsClass1.copy()
+        params["scale_pos_weight"] = scale_pos_weight
 
     # -------------------------------------------------
     # Correlation check with HiggsCandCorrMass
@@ -489,7 +696,7 @@ def _test_XGB_class(label):
     print("Start training in 632")
 
     eval_set = [(train_data, train_labels), (test_data, test_labels)]
-    bdt = xgb.XGBClassifier(**paramsClass)
+    bdt = xgb.XGBClassifier(**params)
     bdt.fit(train_data, train_labels, sample_weight=train_weights, verbose=True, eval_set=eval_set)
 
     print("Training complete.")
@@ -498,6 +705,8 @@ def _test_XGB_class(label):
     model_name = f"bdt_model_{category}"
     print("variables",variables)
     print("Export model ",model_name)
+
+    overtraining(bdt, train_data, train_labels, train_weights, test_data, test_labels, test_weights)
 
     ROOT.TMVA.Experimental.SaveXGBoost(bdt, model_name, fOutName, num_inputs=len(variables))
     print(f"output written to {fOutName} with name {model_name}")
