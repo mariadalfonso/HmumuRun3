@@ -26,9 +26,9 @@ def safe_add_tree(chain, filepath, treename="events"):
 # Common groups
 hmumu   = [f"{i}" for i in range(10, 16)]       # 10–15
 hzgamma = [f"{i}" for i in range(20, 25)]       # 20–24
-vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(211, 215)]  # 201–206, 211–214
-tt2l    = ["102", "118"]
-ttV     = [f"{i}" for i in range(221, 235)] + ["107","105","106"] #ttV, tt1l , singletop
+vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(207, 213)] + [f"{i}" for i in range(213, 217)]  # 201–206, 211–214
+tt2l    = ["140", "141", "142"]
+ttV     = [f"{i}" for i in range(221, 238)] + ["107","105","106"] #ttV, tt1l , singletop
 
 def loadTree(mytree, directory_, category, year ):
 

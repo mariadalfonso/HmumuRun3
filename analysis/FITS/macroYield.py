@@ -39,26 +39,38 @@ def plotByCat(cat, binN, fileToOpen, myVar):
     if not w:
         raise RuntimeError("Workspace 'w' not found!")
 
-    w.Print()
-    # Retrieve normalization variables
-    if cat=='TTLcat': n_ggH = 0
-    else: n_ggH = w.var(f"{myVar}_ggH_N_SM")
-    n_qqH = w.var(f"{myVar}_qqH_N_SM")
-    n_VH  = w.var(f"{myVar}_VH_N_SM")
-    n_ttH = w.var(f"{myVar}_ttH_N_SM")
+#    w.Print()
+
+    n_ggH_ = 0
+    n_qqH_ = 0
+    n_VH_ = 0
+    n_ttH_ = 0
     
-    if cat=='TTLcat': n_ggHval = 0;
-    else: n_ggHval = n_ggH.getVal()
-    print('n_qqH = ', n_qqH.getVal())
-    print('n_VH = ', n_VH.getVal())
-    print('n_ttH = ', n_ttH.getVal())
+    # Retrieve normalization variables
+    if cat=='VBFcat' or cat=='ggHcat':
+        n_ggH_ = w.var(f"{myVar}_ggH_norm").getVal()
+        n_qqH_ = w.var(f"{myVar}_qqH_norm").getVal()
+        n_VH_  = w.var(f"{myVar}_VH_norm").getVal()
+        n_ttH_ = w.var(f"{myVar}_ttH_norm").getVal()
+    if cat=='TTHcat' or cat=='VHcat' or cat=='TTLcat' or cat=='VLcat':
+        n_VH_  = w.var(f"{myVar}_VH_norm").getVal()
+        n_ttH_ = w.var(f"{myVar}_ttH_norm").getVal()
+    if cat=='Zinvcat':
+        n_qqH_ = w.var(f"{myVar}_qqH_norm").getVal()
+        n_VH_  = w.var(f"{myVar}_VH_norm").getVal()
+        n_ttH_ = w.var(f"{myVar}_ttH_norm").getVal()
+
+    print('n_ggH = ', n_ggH_)
+    print('n_qqH = ', n_qqH_)
+    print('n_VH = ', n_VH_)
+    print('n_ttH = ', n_ttH_)
 
     # Compute fractions
-    total = n_ggHval + n_qqH.getVal() + n_VH.getVal() + n_ttH.getVal()
-    f_ggH = n_ggHval / total
-    f_qqH = n_qqH.getVal() / total
-    f_VH  = n_VH.getVal()  / total
-    f_ttH = n_ttH.getVal() / total
+    total = n_ggH_ + n_qqH_ + n_VH_ + n_ttH_
+    f_ggH = n_ggH_ / total
+    f_qqH = n_qqH_ / total
+    f_VH  = n_VH_  / total
+    f_ttH = n_ttH_ / total
 
     # Fill global histograms (one bin each)
     h_ggH.SetBinContent(binN, f_ggH)
@@ -81,13 +93,15 @@ def plotByCat(cat, binN, fileToOpen, myVar):
 # =============================
 if __name__ == "__main__":
 
-    plotByCat("ggHcat", 1, "workspaces_GGH_DEC16/workspace_ggHcat__Run3_workspace.root", "crystal_ball_ggHcat__Run3")
-    plotByCat("VBFcat", 2, "workspaces_VBF_DEC16/workspace_VBFcat__Run3_workspace.root", "crystal_ball_VBFcat__Run3")
-    plotByCat("VLcat",  3, "workspaces_MINOR_DEC16/workspace_VLcat__Run3_workspace.root", "crystal_ball_VLcat__Run3")
-    plotByCat("VHcat",  4, "workspaces_MINOR_DEC16/workspace_VHcat__Run3_workspace.root", "crystal_ball_VHcat__Run3")
-    plotByCat("Zinvcat",5, "workspaces_MINOR_DEC16/workspace_Zinvcat__Run3_workspace.root", "crystal_ball_Zinvcat__Run3")
-    plotByCat("TTLcat", 6, "workspaces_MINOR_DEC16/workspace_TTLcat__Run3_workspace.root", "crystal_ball_TTLcat__Run3")
-    plotByCat("TTHcat", 7, "workspaces_MINOR_DEC16/workspace_TTHcat__Run3_workspace.root", "crystal_ball_TTHcat__Run3")
+    folder = 'WS_APR27/'
+
+    plotByCat("ggHcat", 1, f"{folder}Signal_ggHcat_incl_Run3_workspace.root", "crystal_ball_ggHcat_incl_Run3")
+    plotByCat("VBFcat", 2, f"{folder}Signal_VBFcat_incl_Run3_workspace.root", "crystal_ball_VBFcat_incl_Run3")
+    plotByCat("VLcat",  3, f"{folder}Signal_VLcat_incl_Run3_workspace.root", "crystal_ball_VLcat_incl_Run3")
+    plotByCat("VHcat",  4, f"{folder}Signal_VHcat_incl_Run3_workspace.root", "crystal_ball_VHcat_incl_Run3")
+    plotByCat("Zinvcat",5, f"{folder}Signal_Zinvcat_incl_Run3_workspace.root", "crystal_ball_Zinvcat_incl_Run3")
+    plotByCat("TTLcat", 6, f"{folder}Signal_TTLcat_incl_Run3_workspace.root", "crystal_ball_TTLcat_incl_Run3")
+    plotByCat("TTHcat", 7, f"{folder}Signal_TTHcat_incl_Run3_workspace.root", "crystal_ball_TTHcat_incl_Run3")
 
     # =============================
     # MAKE ONE STACKED PLOT

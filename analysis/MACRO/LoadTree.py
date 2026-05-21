@@ -23,6 +23,22 @@ def safe_add_tree(chain, filepath, treename="events"):
     chain.Add(filepath)
     return True
 
+# Common groups
+hmumu   = [f"{i}" for i in range(10, 16)]       # 10–15
+hzgamma = [f"{i}" for i in range(20, 27)]       # 20-26
+hww     = [f"{i}" for i in range(30, 38)]       # 30–37
+vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(213, 217)]  # 201–206, 213–216
+ttV     = [f"{i}" for i in range(221, 238)]
+tt2l    = ["140"]
+top     = ["105", "106", "107"]
+dyewk   = ["101"]
+dy_2223 = ["100"]
+dy_24     = ["103","104"]
+dy_pt2223 = ["114","115","116","117"]
+dy_pt24 = ["122","123","124","125"]
+dy_minllo = ["126","127"]
+dy_j    = ["111","112","113"]
+
 def loadTree(mytree, directory_, category, year ):
 
     directory = directory_ + category + "/"
@@ -38,12 +54,6 @@ def loadTree(mytree, directory_, category, year ):
         "_22024" : [str(i) for i in range(-47, -55, -1)],  # -47 … -54
         "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 … -72
     }
-
-    # Common groups
-    hmumu   = [f"{i}" for i in range(10, 16)]       # 10–15
-    hzgamma = [f"{i}" for i in range(20, 25)]       # 20–24
-    vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(211, 215)]  # 201–205, 211–214
-    ttV     = [f"{i}" for i in range(221, 230)]
 
     print(data_samples[year])
     if year == '_12024': yearX = '_2024'
@@ -66,38 +76,49 @@ def loadTree(mytree, directory_, category, year ):
     for tag in hzgamma:
         safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
+    # Add H→WW
+#    if category in ["TTLcat"] and year in {"_2024"}:
+#        for tag in hww:
+#            safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")  # DY 0j
+
+    # Add W+jets
+#    if category in ["VHcat"]:
+#        for tag in hww:
+#            safe_add_tree(mytree, f"{directory}snapshot_mc_129{year}_{category}.root")
+
     # Special cases
     if year in {"_12022", "_22022", "_12023", "_22023"}:
-        safe_add_tree(mytree, f"{directory}snapshot_mc_25{year}_{category}.root") #Zg
-        safe_add_tree(mytree, f"{directory}snapshot_mc_100{year}_{category}.root")  # DY
+        if category in ["VHcat"]: # later more stat , but normalization need to be fixed
+            for tag in dy_pt2223: safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
+        else:
+            for tag in dy_2223: safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")  # DY
     elif year in {"_2024"}:
-        safe_add_tree(mytree, f"{directory}snapshot_mc_26{year}_{category}.root") #Zg
-        safe_add_tree(mytree, f"{directory}snapshot_mc_103{year}_{category}.root")  # DY
-        safe_add_tree(mytree, f"{directory}snapshot_mc_104{year}_{category}.root")  # DY
+        if category in ["VHcat"]:
+            for tag in dy_pt24: safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
+        else:
+            for tag in dy_24: safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
-    safe_add_tree(mytree, f"{directory}snapshot_mc_101{year}_{category}.root")  # DY-EWK
+    for tag in dy_minllo:
+        safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")  # DY-EWK
 
-    # Always add
-    for tag in ["102"]:  # TT2L
+    # Add DYEWK
+    for tag in dyewk:
+        safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")  # DY-EWK
+
+    # Add TT2L
+    for tag in tt2l:
         safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
     # Add VV
     for tag in vv:
         safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
-    if category in ["VLcat", "TTLcat", "TTHcat", "VHcat", "ggHcat", "VBFcat"]:
-        other = ["105", "106", "107"]  # TW, TT1L
-        for tag in other:
-            safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
+    # Add TW, TT1L
+    for tag in top:
+        safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
-        # Add TTV
-        if year in {"_12022", "_22022", "_12023", "_22023"}:
-            for tag in ttV:
-                safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
-        elif year in {"_2024"}: # 221 and 226 are strage madrapgh names
-            safe_add_tree(mytree, f"{directory}snapshot_mc_222{year}_{category}.root")
-            safe_add_tree(mytree, f"{directory}snapshot_mc_223{year}_{category}.root")
-            safe_add_tree(mytree, f"{directory}snapshot_mc_224{year}_{category}.root")
-            safe_add_tree(mytree, f"{directory}snapshot_mc_225{year}_{category}.root")
+    # Add TTV
+    for tag in ttV:
+        safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
     return mytree

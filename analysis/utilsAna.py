@@ -90,15 +90,25 @@ xsecRun3={
     'Z':6244.8*1000, # TO USE TURBO XSECION 6244.8
     'EWKZ':1.71*1000, # TEMP: placeholder for now from Andrea
     'W':67710.0*1000,
+    'EWKW':91.48*1000,
     'TT2l2n':923.6*1000*0.105, # needed the 2L BR (NNLO)
     'TTln':923.6*1000*0.438,
     'TW2l2n':87.9*0.5*1000*0.105,
+    #
     'WWto2L2Nu':11.79*1000, # NLO
     'WZto2L2Q':7.568*1000, # NLO
     'ZZto2L2Nu':1.031*1000, # NLO # Didar 1.175
     'ZZto2L2Q':6.788*1000, # NLO # Didar 0.449
     'WZto3LNu':4.924*1000, # NLO # Didara 5.297
     'ZZto4L':1.39*1000, # NLO  # Didar 1.65
+    #
+    'WZto2L2Q-1Jets':6.724*1000,
+    'ZZto2L2Q-1Jets':3.86*1000,
+    'VVto2L2Nu_MLL-50-1Jets':10.48*1000,
+    'VVto2L2Nu_MLL-4to50-1Jets':3.304*1000,
+    'WZto3LNu-1Jets':5.315*1000,
+    'ZZto4L-1Jets':1.499*1000,
+    #
     'WWW':0.2328*1000,
     'WWZ':0.1851*1000,
     'WZZ':0.06206*1000,
@@ -106,9 +116,11 @@ xsecRun3={
     ###
     'TTW':0.2505*1000,
     'TTLNu-EWK':0.01769*1000,
+    'TTW-WtoQQ':0.4678*1000,
     'TTLL_MLL-4to50':0.03949*1000,
     'TTLL_MLL-50':0.08646*1000,
     'TTZ-ZtoQQ':0.6603*1000,
+    'TTNuNu':0.1638*1000,
     'TZQ':0.07968*1000,
     'TWZ3l':0.00334*1000,
     'TWZ4l':0.00167*1000,
@@ -116,7 +128,8 @@ xsecRun3={
     'TTWZ':0.002715*1000,
     'TTWW':0.008191*1000,
     'TTZZ':0.001579*1000,
-    'TTW-WtoQQ':0.4678*1000,
+    'TTTWm':0.0006029*1000,
+    'TTTWp':0.0006061*1000,
 }
 
 
@@ -219,6 +232,7 @@ def BuildDict(year):
         #/GluGluZH-Zto2L-Hto2Wto2L2Nu_Par-M-125_TuneCP5_13p6TeV_powhegMINLO-jhugen-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v2/NANOAODSIM
         #/GluGluZH-Zto2Q-Hto2Wto2L2Nu_Par-M-125_TuneCP5_13p6TeV_powhegMINLO-jhugen-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v2/NANOAODSIM
         ## DY-QCD
+        # 102 is now free
         103: (findDIR(pathScratch("/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)), # I think this has a genCut at 130
 #        103: (findDIR(path("/DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
         104: (findDIR(path("/DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['Z']*(1./3)),
@@ -244,18 +258,18 @@ def BuildDict(year):
         127: (findDIR(path("/DYto2Mu_*MLL-130to200_TuneCP5_13p6TeV_powhegMINNLO-pythia8-photos")),0.60*21.65*1000), # temporaty presa quella di 120to200 empirically scaled
         128: (findDIR(path("/DYto2Mu_*MLL-200to400_TuneCP5_13p6TeV_powhegMINNLO-pythia8-photos")),3.058*1000), # temporaty presa quella di powhegV2
         129: (findDIR(path("/WtoLNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['W']),
-#        130: (findDIR(path("/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8")) # no xsection so far
+        130: (findDIR(path("/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8")),xsecRun3['EWKW']),
         ## DY-EWK
         101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
         99:  (findDIR(path("/EWK-2Mu2J*M2Mu-105to160*M2J-120_TuneCP5_13p6TeV_madgraph-pythia8")),0.06443*1000), # pythia8 i.e. dipole ?
         98:  (findDIR(path("/EWK*2Mu2J_*MLL-105to160_TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']/120.), # added 120. empirical scaling from the DYQCD
         ## TTBAR
-        102: (findDIR(pathScratch("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']), #<-- can add the AMC@NLO
-#        102: (findDIR(path("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']), #<-- can add the AMC@NLO
+        140: (findDIR(pathScratch("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        141: (findDIR(path("/TTto2L2Nu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TT2l2n']),
+        142: (findDIR(path("/TTto2L2Nu-3Jets_TuneCP5_13p6TeV_madgraphMLM-pythia8")),xsecRun3['TT2l2n']),
         107: (findDIR(path("/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTln']),
         105: (findDIR(path("/TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         106: (findDIR(path("/TbarWplusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
-        118: (findDIR(path("/TTto2L2Nu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TT2l2n']),
         ## DI/TRI- BOSON
         201: (findDIR(path("/WZto2L2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['WZto2L2Q']),
         202: (findDIR(path("/ZZto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto2L2Nu']),
@@ -263,10 +277,18 @@ def BuildDict(year):
         204: (findDIR(path("/WZto3LNu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['WZto3LNu']),
         205: (findDIR(path("/ZZto4L_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ZZto4L']),
         206: (findDIR(path("/WWto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['WWto2L2Nu']),
-        211: (findDIR(path("/WWW*_TuneCP5_13p6TeV_amcatnlo*-pythia8")),xsecRun3['WWW']),
-        212: (findDIR(path("/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WWZ']),
+        #
+        207: (findDIR(path("/WZto2L2Q-1Jets-4FS_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['WZto2L2Q-1Jets']),
+        208: (findDIR(path("/ZZto2L2Q-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['ZZto2L2Q-1Jets']),
+        209: (findDIR(path("/VVto2L2Nu-1Jets-4FS_*MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['VVto2L2Nu_MLL-50-1Jets']),
+        210: (findDIR(path("/VVto2L2Nu-1Jets-4FS_*MLL-4to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['VVto2L2Nu_MLL-4to50-1Jets']),
+        211: (findDIR(path("/WZto3LNu-1Jets-4FS_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['WZto3LNu-1Jets']),
+        212: (findDIR(path("/ZZto4L-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['ZZto4L-1Jets']),
+        ## VVV
         213: (findDIR(path("/WZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WZZ']),
         214: (findDIR(path("/ZZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['ZZZ']),
+        215: (findDIR(path("/WWW*_TuneCP5_13p6TeV_amcatnlo*-pythia8")),xsecRun3['WWW']),
+        216: (findDIR(path("/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WWZ']),
         ## tX
         221: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8","mg35x_150X_mcRun3_2024_realistic_v2-v2")),xsecRun3['TTW']),
         222: (findDIR(path("/TTLNu-EWK_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLNu-EWK']),
@@ -274,20 +296,18 @@ def BuildDict(year):
         224: (findDIR(path("/TTLL_*MLL-50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-50']),
         225: (findDIR(path("/TTZ-ZtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFX*-pythia8")),xsecRun3['TTZ-ZtoQQ']),
         226: (findDIR(pathEx("/TZQB-Zto2L-4FS_*MLL-30_TuneCP5_13p6TeV_amcatnlo-pythia8","Madgraph_2_6_5_150X_mcRun3_2024_realistic_v2-v2")),xsecRun3['TZQ']),
-        227: (findDIR(path("TWZ*Tto2Q_WtoLNu_Zto2L_DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ3l']),
-        228: (findDIR(path("TWZ*TtoLNu_Wto2Q_Zto2L_DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ3l']),
-        229: (findDIR(path("TWZ*TtoLNu_WtoLNu_Zto2L_DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ4l']),
+        227: (findDIR(path("TWZ*Tto2Q*WtoLNu*Zto2L*DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ3l']),
+        228: (findDIR(path("TWZ*TtoLNu*Wto2Q*Zto2L*DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ3l']),
+        229: (findDIR(path("TWZ*TtoLNu*WtoLNu*Zto2L*DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ4l']),
         230: (findDIR(path("TTTT_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTTT']),
         231: (findDIR(path("TTWZ_TuneCP5_13p6TeV_madgraph-pythia8")),xsecRun3['TTWZ']),
         232: (findDIR(path("TTWW_TuneCP5_13p6TeV_madgraph*-pythia8")),xsecRun3['TTWW']),
         233: (findDIR(path("TTZZ_TuneCP5_13p6TeV_madgraph*-pythia8")),xsecRun3['TTZZ']),
         234: (findDIR(path("TTW-WtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),xsecRun3['TTW-WtoQQ']),
+        235: (findDIR(path("TTTWminus-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTTWm']),
+        236: (findDIR(path("TTTWplus-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTTWp']),
+        237: (findDIR(path("TTNuNu_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTNuNu']),
     }
-
-    #submitted
-    #TWZ-Tto2Q-WtoLNu-Zto2L-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8
-    #TWZ-TtoLNu-Wto2Q-Zto2L-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8
-    #TWZ-TtoLNu-WtoLNu-Zto2L-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8
 
     # TODO: add the signal aMCNLO sample, for the training we can use the powheg
 
@@ -486,7 +506,15 @@ def loadCorrectionSet(year):
 
     print('loadHiggsNNLOPS()')
     ROOT.gROOT.ProcessLine(
-        f'auto csetH = correction::CorrectionSet::from_file("./config/NNLOPS_reweight_13p6TeV.json");'
+        f'auto csetH = correction::CorrectionSet::from_file("./config/THeory/NNLOPS_reweight_13p6TeV.json");'
+    )
+
+    print('loadDYturbo()')
+    ROOT.gROOT.ProcessLine(
+        f'auto csetZ1 = correction::CorrectionSet::from_file("./config/THeory/qT_correction_dyturbo_76.0_106.0.json");'
+    )
+    ROOT.gROOT.ProcessLine(
+        f'auto csetZ2 = correction::CorrectionSet::from_file("./config/THeory/qT_correction_dyturbo_105.0_160.0.json");'
     )
 
     ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')

@@ -3,30 +3,33 @@ import ROOT
 ROOT.gROOT.SetBatch()
 
 signal_suffix = {
+    "ggHcat":  "ggH",
     "VBFcat":  "qqH",
     "VHcat":   "VH",
     "VLcat":   "VH",
     "Zinvcat": "VH",
-#    "ggHcat":  "ggHcat",
     "TTHcat":  "ttH",
     "TTLcat":  "ttH",
 }
 
 
 signal_binning = {
-    "VBFcat":  ["bdt0","bdt1"],
-    "TTLcat":  ["bdt0","bdt1"],
-    "VLcat":   ["bdt0","bdt1"],    
+    "VLcat":   ["bdt0","bdt1","bdt2"],
     "VHcat":   ["bdt0","bdt1","bdt2"],
+    "Zinvcat": ["bdt0","bdt1","bdt2"],
+    #
+    "ggHcat":  ["bdt0","bdt1","bdt2"],
+    "VBFcat":  ["bdt0","bdt1","bdt2"],
+    #
+    "TTLcat":  ["bdt0","bdt1","bdt2"],
     "TTHcat":  ["bdt0","bdt1","bdt2"],
-    "Zinvcat": ["bdt0","bdt1","bdt2"],        
-#    "ggHcat":  "ggHcat",
 }
 
 #2 bins VBFcat , VLcat, TTLcat
 #3 bins Zinv, VHcat, TTHcat
 
-myWSdir="WS_APR27"
+myWSdir="WS_MAY8"
+outdir = '~/public_html/HMUMU_FITS/MAY/'
 
 def compare(category):
 
@@ -99,12 +102,14 @@ def compare(category):
         for i in range(len(labels)):
             leg.AddEntry(frame.getObject(i), labels[i], "l")
         leg.Draw()
-        
-        c.SaveAs("~/public_html/HMUMU_FITS/APRgood/compareCB_"+category+"_Run3.png")
+
+        c.SaveAs(outdir+"compareCB_"+category+"_Run3.png")
 
 if __name__ == "__main__":
 
+    compare("ggHcat")
     compare("VBFcat")
+
     compare("Zinvcat")
     compare("VLcat")
     compare("VHcat")

@@ -96,7 +96,6 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
    print("getHisto getting called for year: ", year)
 
    year = '_'+str(year)
-#   dirLOCAL_='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'+category+'/WS/'
    dirLOCAL_='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'+category+'/'
    files = []
 
@@ -136,53 +135,78 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
    #-------------- selection
 
    selMVAvl = {
-       "bdt1" : "discrMVA0>=0.98",
-       "bdt0" : "discrMVA0<0.98",
+       "bdt2" : "discrMVA0>=0.76",
+       "bdt1" : "discrMVA0>=0.52 && discrMVA0<0.76",
+       "bdt0" : "discrMVA0<0.52",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAzinv = {
        "bdt2" : "discrMVA0>=0.98",
-       "bdt1" : "discrMVA0>=0.16 && discrMVA0<0.98",
-       "bdt0" : "discrMVA0<0.16",
+       "bdt1" : "discrMVA0>=0.84 && discrMVA0<0.98",
+       "bdt0" : "discrMVA0<0.84",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAvh = {
-       "bdt2" : "discrMVA0>=0.98",
-       "bdt1" : "discrMVA0>=0.8 && discrMVA0<0.98",
-       "bdt0" : "discrMVA0<0.8",
+       "bdt2" : "discrMVA0>=0.92",
+       "bdt1" : "discrMVA0>=0.86 && discrMVA0<0.92",
+       "bdt0" : "discrMVA0<0.86",
+       "incl" : "true",
+       "" : "true"
+   }
+
+   selMVAvbf = {
+       "bdt2" : "discrMVA0>=0.94",
+       "bdt1" : "discrMVA0>=0.74 && discrMVA0<0.94",
+       "bdt0" : "discrMVA0<0.74",
+       "incl" : "true",
+       "" : "true"
+   }
+
+   selMVAttl = {
+       "bdt2" : "discrMVA0>=0.94",
+       "bdt1" : "discrMVA0>=0.74 && discrMVA0<0.94",
+       "bdt0" : "discrMVA0<0.74",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAtth = {
-       "bdt2" : "discrMVA0>=0.98",
-       "bdt1" : "discrMVA0>=0.3 && discrMVA0<0.98",
-       "bdt0" : "discrMVA0<0.3",
+       "bdt2" : "discrMVA0>=0.94",
+       "bdt1" : "discrMVA0>=0.74 && discrMVA0<0.94",
+       "bdt0" : "discrMVA0<0.74",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAggh = {
+       "bdt2" : "discrMVA0>=0.78",
+       "bdt1" : "discrMVA0>=0.52 && discrMVA0<0.78",
+       "bdt0" : "discrMVA0<0.52",
        "incl" : "true",
        "" : "true"
    }
 
    # VLcat: 1 W->e; 2 Z->ee; 3 W->μ; 4 Z→μμ
 
-   if category in ["VLcat", "TTLcat", "VBFcat"]:
+   if category in ["VBFcat"]:
+       selection_cut = selMVAvbf[binMVA]
+   elif category in ["VLcat"]:
        selection_cut = selMVAvl[binMVA]
-   elif category == "Zinvcat":
+   elif category in ["Zinvcat"]:
        selection_cut = selMVAzinv[binMVA]
+   elif category in ["VHcat"]:
+       selection_cut = selMVAvh[binMVA]
+   ###
    elif category == "ggHcat":
        selection_cut = selMVAggh[binMVA]
-   elif category == "VHcat":
-       selection_cut = selMVAvh[binMVA]
-   elif category == "TTHcat":
+   elif category in ["TTHcat"]:
        selection_cut = selMVAtth[binMVA]
+   elif category in ["TTLcat"]:
+       selection_cut = selMVAttl[binMVA]
    else:
        raise ValueError(f"Unknown category {category}")
 

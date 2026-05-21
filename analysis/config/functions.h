@@ -342,8 +342,11 @@ float MinvErr(const float pt1, const float err1, const float pt2, const float er
 
 float minDeta(const float& etaDiMu, const float& jetEta1, const float& jetEta2) {
   return   std::min(abs(etaDiMu-jetEta1),abs(etaDiMu-jetEta2));
-}  
+}
 
+float minDphi(const float& DiMu, const float& jet1, const float& jet2) {
+  return   std::min(deltaPhi(DiMu,jet1),deltaPhi(DiMu,jet2));
+}
 
 //https://github.com/cms-sw/cmssw/blob/master/CommonTools/RecoUtils/plugins/LeptonFSRProducer.cc#L59
 
@@ -383,6 +386,7 @@ float MinvCorr(const TLorentzVector& p1,
     if (typeVar == 1) return p4.Pt();
     if (typeVar == 2) return p4.Rapidity();
     if (typeVar == 3) return p4.Eta();
+    if (typeVar == 4) return p4.Phi();
     return 0.f;
 }
 
@@ -704,14 +708,21 @@ stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
 }
 
-float getZep(const TLorentzVector& mu1, const TLorentzVector& mu2,
-             const float& VBF1_eta, const float& VBF2_eta
+float getZep(const float& etaDiMu,
+	     const float& VBF1_eta, const float& VBF2_eta
              ){
-  TLorentzVector HiggsCand = mu1 + mu2;
 
-  float ZepVar = ( HiggsCand.Rapidity() - (VBF1_eta+VBF2_eta)/2.0)/abs(VBF1_eta - VBF2_eta);
+  float ZepVar = ( etaDiMu - (VBF1_eta+VBF2_eta)/2.0)/abs(VBF1_eta - VBF2_eta);
 
   return ZepVar;
+
+}
+
+float getEtaCen(const float& etaDiMu, const float& jetEta1, const float& jetEta2) {
+
+  float detaJJ = jetEta1 - jetEta2;
+  float num = etaDiMu - (jetEta1+jetEta2)*0.5;
+  return  abs(num/detaJJ);
 
 }
 
@@ -726,6 +737,17 @@ float getRpt(const TLorentzVector& mu1, const TLorentzVector& mu2,
 
 }
 
+float getPtCen(const TLorentzVector& mu1, const TLorentzVector& mu2,
+	       const TLorentzVector& VBF1Cand, const TLorentzVector& VBF2Cand ){
+
+  TLorentzVector HiggsCand = mu1 + mu2;
+  TLorentzVector diJets = VBF1Cand + VBF2Cand;
+  TLorentzVector num = (HiggsCand-0.5*(diJets));
+
+  return num.Pt()/diJets.Pt();
+
+}
+
 float Pair12Minv(const float& v1_Pt, const float& v1_Eta, const float& v1_Phi, const float& v1_Mass,
                  const float& v2_Pt, const float& v2_Eta, const float& v2_Phi, const float& v2_Mass) {
   PtEtaPhiMVector p1(v1_Pt, v1_Eta, v1_Phi, v1_Mass);
@@ -734,5 +756,49 @@ float Pair12Minv(const float& v1_Pt, const float& v1_Eta, const float& v1_Phi, c
 
 }
 
-#endif
+//VH / VBF discrimination
+//DY rejection
 
+float metBisectorProjection(const TLorentzVector& mu1,
+                            const TLorentzVector& mu2,
+                            const TLorentzVector& met)
+{
+    //This implementation uses the geometric bisector:
+    float pt1 = mu1.Pt();
+    float pt2 = mu2.Pt();
+
+    if (pt1 < 1e-8 || pt2 < 1e-8)
+        return -999.f;
+
+    float u1x = mu1.Px()/pt1;
+    float u1y = mu1.Py()/pt1;
+
+    float u2x = mu2.Px()/pt2;
+    float u2y = mu2.Py()/pt2;
+
+    float bx = u1x + u2x;
+    float by = u1y + u2y;
+
+    float norm = std::sqrt(bx*bx + by*by);
+    if (norm < 1e-8)
+        return -999.f;
+
+    bx /= norm;
+    by /= norm;
+
+    // projection
+    return met.Px()*bx + met.Py()*by;
+
+    //Optional: normalized projection
+    //    if (dimu.Mod()==0)
+    //      return -999.f;
+
+    //    return (metvec * bis)/dimu.Mod();
+
+    // projection perpendicular to bisector
+    //    TVector2 perp(-bis.Y(), bis.X());
+    //    return metvec * perp;
+
+}
+
+#endif

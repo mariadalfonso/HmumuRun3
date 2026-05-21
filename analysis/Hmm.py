@@ -42,15 +42,15 @@ mode_map = {
 }
 
 MVA_map = {
-    "isVBF":   "MVA/output/classification_model_VBFcat_apr26.root",
-    "isGGH":   "MVA/output/classification_model_ggHcat.root",
+    "isVBF":   "MVA/output/classification_model_VBFcat_may8.root",
+    "isGGH":   "MVA/output/classification_model_ggHcat_may12.root",
     #
-    "isVlep":  "MVA/output/classification_model_VLcat_apr25.root",
-    "isVhad":  "MVA/output/classification_model_VHcat_apr26.root",
-    "isZinv":  "MVA/output/classification_model_Zinvcat_apr26.root",
+    "isVlep":  "MVA/output/classification_model_VLcat_may4.root",
+    "isVhad":  "MVA/output/classification_model_VHcat_may20.root",
+    "isZinv":  "MVA/output/classification_model_Zinvcat_may20.root",
     #
-    "isTTlep":  "MVA/output/classification_model_TTLcat_apr26.root",
-    "isTThad":  "MVA/output/classification_model_TTHcat_apr26.root",
+    "isTTlep":  "MVA/output/classification_model_TTLcat_may13.root",
+    "isTThad":  "MVA/output/classification_model_TTHcat_may11.root",
 }
 
 def callMVAclassification(df):
@@ -289,6 +289,7 @@ def doCategories(df,mc,year):
              .Define("Lepton_Pt","isEle ? Electron_pt[idx_goodEls[0]]: isMu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]: -1 ")
              .Define("Lepton_Eta","isEle ? Electron_eta[idx_goodEls[0]]: isMu ? Muon_eta[goodMuons][idxExtraMu[0]]: -1 ")
              .Define("Lepton_Phi","isEle ? Electron_phi[idx_goodEls[0]]: isMu ? Muon_phi[goodMuons][idxExtraMu[0]]: -1 ")
+             .Define("Lepton_charge","isEle ? Electron_charge[idx_goodEls[0]]: isMu ? Muon_charge[goodMuons][idxExtraMu[0]]: -1 ")
              .Define("Lep1Vec", "Lepton_Pt>0 ? MakeTLV(Lepton_Pt, Lepton_Eta, Lepton_Phi, (isEle ? ele_mass_: muon_mass_)): TLorentzVector()")
              .Define("Lepton_sip3d","isEle ? Electron_sip3d[idx_goodEls[0]]: isMu ? Muon_sip3d[goodMuons][idxExtraMu[0]]: -1 ")
              .Define("Lepton_MVAid","isEle ? Electron_mvaIso[idx_goodEls[0]]: isMu ? Muon_mvaMuID[goodMuons][idxExtraMu[0]]: -1 ")
@@ -296,15 +297,22 @@ def doCategories(df,mc,year):
              .Define("Lepton2_Pt","isEleZ ? Electron_pt[idx_goodEls[1]]: isMuZ ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[1]]: -1 ")
              .Define("Lepton2_Eta","isEleZ ? Electron_eta[idx_goodEls[1]]: isMuZ ? Muon_eta[goodMuons][idxExtraMu[1]]: -1 ")
              .Define("Lepton2_Phi","isEleZ ? Electron_phi[idx_goodEls[1]]: isMuZ ? Muon_phi[goodMuons][idxExtraMu[1]]: -1 ")
+             .Define("Lepton2_charge","isEleZ ? Electron_charge[idx_goodEls[1]]: isMuZ ? Muon_charge[goodMuons][idxExtraMu[1]]: -1 ")
              .Define("Lep2Vec", "Lepton2_Pt>0 ? MakeTLV(Lepton2_Pt, Lepton2_Eta, Lepton2_Phi, (isEle ? ele_mass_:  muon_mass_)): TLorentzVector()")
              .Define("Lepton2_sip3d","isEleZ ? Electron_sip3d[idx_goodEls[1]]: isMuZ ? Muon_sip3d[goodMuons][idxExtraMu[1]]: -1 ")
              .Define("Lepton2_MVAid","isEleZ ? Electron_mvaIso[idx_goodEls[1]]: isMuZ ? Muon_mvaMuID[goodMuons][idxExtraMu[1]]: -1 ")
-             .Define("VMass","(isEleZ or isMuZ) ? (Lep1Vec+Lep2Vec).M() : (isEle or isMu) ? mt(Lepton_Pt, Lepton_Phi, PuppiMET_pt, PuppiMET_phi): -1 ")
+             #
+             .Define("MetVec", "MakeTLV(PuppiMET_pt,0,PuppiMET_phi,0)")
+             .Define("VBoson","(isEleZ or isMuZ) ? Lep1Vec+Lep2Vec : (isEle or isMu) ? Lep1Vec+MetVec: TLorentzVector()")
+             .Define("VMass","(isEleZ or isMuZ) ? VBoson.M() : (isEle or isMu) ? mt(Lepton_Pt, Lepton_Phi, PuppiMET_pt, PuppiMET_phi): -1 ")
+             .Define("dEtaVH","(isEleZ or isMuZ) ? abs((Muon1Vec+Muon2Vec).Eta()-VBoson.Eta()): (isEle or isMu) ? abs((Muon1Vec+Muon2Vec).Eta()-Lepton_Eta) : -1")
+             .Define("dPhiVH","(isEleZ or isMuZ) ? deltaPhi((Muon1Vec+Muon2Vec).Phi(),VBoson.Phi()): (isEle or isMu) ? deltaPhi((Muon1Vec+Muon2Vec).Phi(),VBoson.Phi()) : -999")
+             .Define("RPt","getRpt(Muon1Vec, Muon2Vec, VBoson, TLorentzVector())")
              #
 #             .Define("m_wrongOSSF","wrongOSSFmass(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], index_Mu[0],index_Mu[1])")
-             .Define("dEtaVH","(isEleZ or isMuZ) ? abs((Muon1Vec+Muon2Vec).Eta()-(Lep1Vec+Lep2Vec).Eta()): (isEle or isMu) ? abs((Muon1Vec+Muon2Vec).Eta()-Lepton_Eta) : -1")
-             .Define("dPhiVH","(isEleZ or isMuZ) ? deltaPhi((Muon1Vec+Muon2Vec).Phi(),(Lep1Vec+Lep2Vec).Phi()): (isEle or isMu) ? deltaPhi((Muon1Vec+Muon2Vec).Phi(),Lepton_Phi) : -1") # for dPhiWH  should be Phi + MET
+#             .Define("dPhiLepH","abs(deltaPhi((Muon1Vec+Muon2Vec).Phi(),Lepton_Phi))")
              )
+
         if mc>0:
             df = df.Define("Lepton_genPartFlav","isEle ? Electron_genPartFlav[idx_goodEls[0]]: isMu ? Muon_genPartFlav[goodMuons][idxExtraMu[0]]: -1 ")
 
@@ -332,27 +340,41 @@ def doCategories(df,mc,year):
              .Filter("category > 0", "Has valid category")
              .Define("idxExtraMu", "pickExtraMu(Muon_bsConstrainedPt[goodMuons], index_Mu[0],index_Mu[1])")
              .Define("isEle", "(category==1 || category==2) && idx_goodEls.size() > 0")
-             .Define("isMu",  "(category==3 || category==4) && idxExtraMu[0]!= -1")
+             .Define("isMu",  "(category==3 || category==4) && idxExtraMu.size()>0 && idxExtraMu[0]!= -1")
              .Define("is2Ele", "(category==2) && idx_goodEls.size() > 1")
              .Define("is2Mu",  "(category==4) && idxExtraMu.size()>1 && idxExtraMu[1]!= -1")
              .Define("is1Ele1Mu",  "(category==5) && idxExtraMu.size()>0 && idxExtraMu[0]!= -1 && idx_goodEls.size() > 0")
+             .Define("isEleLead","is1Ele1Mu && Electron_pt[idx_goodEls[0]] > Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]")
              #
-             .Define("Lepton_Pt","isEle ? Electron_pt[idx_goodEls[0]]: isMu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]: -1 ")
-             .Define("Lepton_Eta","isEle ? Electron_eta[idx_goodEls[0]]: isMu ? Muon_eta[goodMuons][idxExtraMu[0]]: -1 ")
-             .Define("Lepton_Phi","isEle ? Electron_phi[idx_goodEls[0]]: isMu ? Muon_phi[goodMuons][idxExtraMu[0]]: -1 ")
-             .Define("Lepton_MVAid","isEle ? Electron_mvaIso[idx_goodEls[0]]: isMu ? Muon_mvaMuID[goodMuons][idxExtraMu[0]]: -1 ")
-             .Define("Lepton_sip3d","isEle ? Electron_sip3d[idx_goodEls[0]]: isMu ? Muon_sip3d[goodMuons][index_Mu[0]]: -1 ")
-             .Define("mt","isEle or isMu? mt(Lepton_Pt, Lepton_Phi, PuppiMET_pt, PuppiMET_phi): -1 ")
+             .Define("Lepton_Pt","isEle ? Electron_pt[idx_goodEls[0]]: isMu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_pt[idx_goodEls[0]]: Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]) : -1 ")
+             .Define("Lepton_Eta","isEle ? Electron_eta[idx_goodEls[0]]: isMu ? Muon_eta[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_eta[idx_goodEls[0]]: Muon_eta[goodMuons][idxExtraMu[0]]) : -10 ")
+             .Define("Lepton_Phi","isEle ? Electron_phi[idx_goodEls[0]]: isMu ? Muon_phi[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_phi[idx_goodEls[0]]: Muon_phi[goodMuons][idxExtraMu[0]]) : -99 ")
+             .Define("Lepton_charge","isEle ? Electron_charge[idx_goodEls[0]]: isMu ? Muon_charge[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_charge[idx_goodEls[0]]: Muon_charge[goodMuons][idxExtraMu[0]]) : -99 ")
+             .Define("Lepton_MVAid","isEle ? Electron_mvaIso[idx_goodEls[0]]: isMu ? Muon_mvaMuID[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_mvaIso[idx_goodEls[0]]: Muon_mvaMuID[goodMuons][idxExtraMu[0]]) : -1 ")
+             .Define("Lepton_sip3d","isEle ? Electron_sip3d[idx_goodEls[0]]: isMu ? Muon_sip3d[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_sip3d[idx_goodEls[0]]: Muon_sip3d[goodMuons][idxExtraMu[0]]) :  -1 ")
+             .Define("mt","(isEle or isMu or is1Ele1Mu) ? mt(Lepton_Pt, Lepton_Phi, PuppiMET_pt, PuppiMET_phi): -1 ")
              #
-             # need to add the case for the is1Ele1Mu
-             .Define("Lepton2_Pt","is2Ele ? Electron_pt[idx_goodEls[1]]: is2Mu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEle ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]] : Electron_pt[idx_goodEls[0]]) :  -1 ")
-             .Define("Lepton2_Eta","is2Ele ? Electron_eta[idx_goodEls[1]]: is2Mu ? Muon_eta[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEle ? Muon_eta[goodMuons][idxExtraMu[0]] : Electron_eta[idx_goodEls[0]]) : -1 ")
-             .Define("Lepton2_Phi","is2Ele ? Electron_phi[idx_goodEls[1]]: is2Mu ? Muon_phi[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEle ? Muon_phi[goodMuons][idxExtraMu[0]] : Electron_phi[idx_goodEls[0]]): -1 ")
-             .Define("Lepton2_sip3d","is2Ele ? Electron_sip3d[idx_goodEls[1]]: is2Mu ? Muon_sip3d[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEle ? Muon_sip3d[goodMuons][idxExtraMu[0]] : Electron_sip3d[idx_goodEls[0]]): -1 ")
-             .Define("Lepton2_MVAid","is2Ele ? Electron_mvaIso[idx_goodEls[1]]: is2Mu ? Muon_mvaMuID[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEle ? Muon_sip3d[goodMuons][idxExtraMu[0]] : Electron_sip3d[idx_goodEls[0]]): -1 ")
+             .Define("Lepton2_Pt","is2Ele ? Electron_pt[idx_goodEls[1]]: is2Mu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]: Electron_pt[idx_goodEls[0]]) :  -1 ")
+             .Define("Lepton2_Eta","is2Ele ? Electron_eta[idx_goodEls[1]]: is2Mu ? Muon_eta[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_eta[goodMuons][idxExtraMu[0]]: Electron_eta[idx_goodEls[0]]) : -10 ")
+             .Define("Lepton2_Phi","is2Ele ? Electron_phi[idx_goodEls[1]]: is2Mu ? Muon_phi[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_phi[goodMuons][idxExtraMu[0]]: Electron_phi[idx_goodEls[0]]) : -99 ")
+             .Define("Lepton2_charge","is2Ele ? Electron_charge[idx_goodEls[1]]: is2Mu ? Muon_charge[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_charge[goodMuons][idxExtraMu[0]]: Electron_charge[idx_goodEls[0]]) : -99 ")
+	     .Define("Lepton2_sip3d","is2Ele ? Electron_sip3d[idx_goodEls[1]]: is2Mu ? Muon_sip3d[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_sip3d[goodMuons][idxExtraMu[0]]: Electron_sip3d[idx_goodEls[0]]) : -1 ")
+             .Define("Lepton2_MVAid","is2Ele ? Electron_mvaIso[idx_goodEls[1]]: is2Mu ? Muon_mvaMuID[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_mvaMuID[goodMuons][idxExtraMu[0]]: Electron_mvaIso[idx_goodEls[0]]) : -1 ")
              #
+             .Define("bJet_pt",  "Jet_pt[BJETS]")
+	     .Define("bJet_eta", "Jet_eta[BJETS]")
+             .Define("bJet_phi", "Jet_phi[BJETS]")
+             .Define("mindR_H_BJet","MinDeltaRToJets((Muon1Vec+Muon2Vec),bJet_pt,bJet_eta,bJet_phi)")
+             .Define("LeadBJetVec","bJet_pt.size()>0 ? MakeTLV(bJet_pt[0], bJet_eta[0], bJet_phi[0], 0) : TLorentzVector()")
+	     .Define("LeadBJetPt","bJet_pt[0]")
+             .Define("dR_H_LeadB","bJet_pt.size()>0 ? (Muon1Vec+Muon2Vec).DeltaR(LeadBJetVec) : -1")
+             .Define("mbb","bJet_pt.size()>1 ? ( MakeTLV(bJet_pt[0],bJet_eta[0],bJet_phi[0],0)+MakeTLV(bJet_pt[1],bJet_eta[1],bJet_phi[1],0) ).M(): -1")
+             #
+             .Define("MetVec", "MakeTLV(PuppiMET_pt,0,PuppiMET_phi,0)")
              .Define("dEtaLepH","abs((Muon1Vec+Muon2Vec).Eta()-Lepton_Eta)")
              .Define("dPhiLepH","deltaPhi((Muon1Vec+Muon2Vec).Phi(),Lepton_Phi)")
+             .Define("dPhiMETH","deltaPhi((Muon1Vec+Muon2Vec).Phi(),PuppiMET_phi)")
+             .Define("MetBisectorProj","metBisectorProjection(Muon1Vec, Muon2Vec, MetVec)")
              #
              .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
              .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
@@ -360,6 +382,8 @@ def doCategories(df,mc,year):
              .Define("Jet1_Eta","Jet_eta[goodJetsAll][hardestGoodJet_idx]")
              .Define("JetAll_Eta","Jet_eta[goodJetsAll]")
              .Define("HT", "ROOT::VecOps::Sum(Jet_pt[goodJetsAll])")
+             .Define("Centrality","(HT>0) ? HT / Sum(sqrt(Jet_pt[goodJetsAll]*Jet_pt[goodJetsAll]*cosh(Jet_eta[goodJetsAll])*cosh(Jet_eta[goodJetsAll]))) : -1")
+             .Define("dEta_j1j2","category==3 ? abs(Jet_eta[goodJetsAll][0]-Jet_eta[goodJetsAll][1]): -1 ")
              .Define("ST", "(is2Ele || is2Mu || is1Ele1Mu) ? (HT + PuppiMET_pt + Lepton_Pt + Lepton2_Pt): (HT + PuppiMET_pt + Lepton_Pt)")
              )
 
@@ -383,6 +407,7 @@ def doCategories(df,mc,year):
         # Build a single expression with nested ternaries
         expr = f"({category_map[1]}) ? 1 : (({category_map[2]}) ? 2 : (({category_map[3]}) ? 3 : 0))"
 
+
         df= (df.Define("fatjet_muon_clean","fatJetMask(FatJet_muonIdx3SJ, index_Mu[0], index_Mu[1])")
              .Define("dR2fatjetH_mask","deltaRMask((Muon1Vec+Muon2Vec).Eta(),(Muon1Vec+Muon2Vec).Phi(),FatJet_eta,FatJet_phi)")
              .Define("dR2fatjetMu1_mask","deltaRMask((Muon1Vec).Eta(),(Muon1Vec).Phi(),FatJet_eta,FatJet_phi)")
@@ -396,10 +421,30 @@ def doCategories(df,mc,year):
              .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
              .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
              .Define("Jet1_Eta","Jet_eta[goodJetsAll][hardestGoodJet_idx]")
+             .Define("JetAll_Eta","Jet_eta[goodJetsAll]")
              .Define("HT", "ROOT::VecOps::Sum(Jet_pt[goodJetsAll])")
+             .Define("Centrality","(HT>0) ? HT / Sum(sqrt(Jet_pt[goodJetsAll]*Jet_pt[goodJetsAll]*cosh(Jet_eta[goodJetsAll])*cosh(Jet_eta[goodJetsAll]))) : -1")
              .Filter("category==1 || category==2 || (category==3 && Jet1_Pt>50 && Sum(goodJetsAll)>4)")
+             #
              .Define("WTopJetMass","(category==1) ? (FatJet_particleNet_massCorr[goodTOP_idx]*FatJet_mass[goodTOP_idx]): (category==2) ? (FatJet_particleNet_massCorr[goodW_idx]*FatJet_mass[goodW_idx]): 0.f")
              .Define("WTopJetDiscr","(category==1) ? (FatJet_particleNetWithMass_TvsQCD[goodTOP_idx]): (category==2) ? (FatJet_particleNetWithMass_WvsQCD[goodW_idx]): 0.f")
+             .Define("dEta_j1j2","category==3 ? abs(Jet_eta[goodJetsAll][0]-Jet_eta[goodJetsAll][1]): -1 ")
+             .Define("TopMassReco","category==3 ? bestTopMass(Jet_pt[goodJetsAll],Jet_eta[goodJetsAll],Jet_phi[goodJetsAll]): -1.")
+             .Define("TopPairChi2","category==3 ? topPairChi2(Jet_pt[goodJetsAll], Jet_eta[goodJetsAll], Jet_phi[goodJetsAll]): -1.")
+             .Define("MetVec", "MakeTLV(PuppiMET_pt,0,PuppiMET_phi,0)")
+             .Define("MetBisectorProj","metBisectorProjection(Muon1Vec, Muon2Vec, MetVec)")
+             .Define("dPhiMETH","deltaPhi((Muon1Vec+Muon2Vec).Phi(),PuppiMET_phi)")
+             #
+             .Define("nBMJets","Sum(BJETS)*1.0f")
+             .Define("mindR_H_AnyJet","MinDeltaRToJets((Muon1Vec+Muon2Vec),Jet_pt[goodJetsAll],Jet_eta[goodJetsAll],Jet_phi[goodJetsAll])")
+             .Define("bJet_pt",  "Jet_pt[BJETS]")
+             .Define("bJet_eta", "Jet_eta[BJETS]")
+             .Define("bJet_phi", "Jet_phi[BJETS]")
+             .Define("mindR_H_BJet","MinDeltaRToJets((Muon1Vec+Muon2Vec),bJet_pt,bJet_eta,bJet_phi)")
+             .Define("LeadBJetVec","bJet_pt.size()>0 ? MakeTLV(bJet_pt[0], bJet_eta[0], bJet_phi[0], 0) : TLorentzVector()")
+             .Define("LeadBJetPt","bJet_pt[0]")
+             .Define("dR_H_LeadB","bJet_pt.size()>0 ? (Muon1Vec+Muon2Vec).DeltaR(LeadBJetVec) : -1")
+             .Define("mbb","bJet_pt.size()>1 ? ( MakeTLV(bJet_pt[0],bJet_eta[0],bJet_phi[0],0)+MakeTLV(bJet_pt[1],bJet_eta[1],bJet_phi[1],0) ).M(): -1")
              )
 
     elif mode == "isVBF" or mode == "isGGH":
@@ -424,13 +469,19 @@ def doCategories(df,mc,year):
              .Define("dEtaJJ","VBFjetCond ? abs(jetVBF1_Eta-jetVBF2_Eta) : -999")
              .Define("dPhiJJ","VBFjetCond ? deltaPhi(jetVBF1_Phi,jetVBF2_Phi) : -999")
              )
+       if mode == "isGGH":
+            df= (df.Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f")
+                 .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
+                 .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
+                 .Define("Jet1_Eta","Jet_eta[goodJetsAll][hardestGoodJet_idx]")
+                 )
         if mode == "isVBF":
             df= (df.Define("VBF1Vec", "MakeTLV(Jet_pt[goodJetsAll][index_VBFJets[0]],Jet_eta[goodJetsAll][index_VBFJets[0]], Jet_phi[goodJetsAll][index_VBFJets[0]],Jet_mass[goodJetsAll][index_VBFJets[0]])")
                  .Define("VBF2Vec", "MakeTLV(Jet_pt[goodJetsAll][index_VBFJets[1]],Jet_eta[goodJetsAll][index_VBFJets[1]], Jet_phi[goodJetsAll][index_VBFJets[1]],Jet_mass[goodJetsAll][index_VBFJets[1]])")
                  .Define("minDR_jetVBF1_Mu","minDRmusJ(VBF1Vec, Muon1Vec, Muon2Vec)")
                  .Define("minDR_jetVBF2_Mu","minDRmusJ(VBF2Vec, Muon1Vec, Muon2Vec)")
                  .Define("RPt","getRpt(Muon1Vec, Muon2Vec, VBF1Vec, VBF2Vec)")
-                 .Define("ZepVar","getZep(Muon1Vec, Muon2Vec, jetVBF1_Eta, jetVBF2_Eta)") # should I pass the Jet.rapidity() and has very large values
+                 .Define("CenPt","getPtCen(Muon1Vec, Muon2Vec, VBF1Vec, VBF2Vec)")
                  #
                  .Define("jetVBF1_hfcentralEtaStripSize","Jet_hfcentralEtaStripSize[goodJetsAll][index_VBFJets[0]]")
                  .Define("jetVBF1_hfadjacentEtaStripsSize","Jet_hfadjacentEtaStripsSize[goodJetsAll][index_VBFJets[0]]")
@@ -542,6 +593,9 @@ def analysis(files,year,mc,sumW):
 
     if mode == "isVBF":
         df = (df.Define("minDetaDiMuVBF","minDeta(HiggsCandCorrRapidity, jetVBF1_Eta, jetVBF2_Eta)")
+              .Define("minDphiDiMuVBF","minDphi(HiggsCandCorrPhi, jetVBF1_Eta, jetVBF2_Eta)")
+              .Define("ZepVar","getZep(HiggsCandCorrRapidity, jetVBF1_Eta, jetVBF2_Eta)") # should I pass the Jet.rapidity() and has very large values
+              .Define("CenEta","getEtaCen(HiggsCandCorrRapidity, jetVBF1_Eta, jetVBF2_Eta)")
               )
 
     if mode == "isVlep" or mode == "isTThad" or mode == "isVhad" or mode == "isZinv" or mode == "isTTlep" or mode == "isVBF":
@@ -633,26 +687,26 @@ def analysis(files,year,mc,sumW):
         branchList = ROOT.vector('string')()
 
         base_branches = [
-                "mc",
-                "w",
-                "w_allSF",
-                "lumiIntegrated",
-                "PV_npvsGood",
-                "run",
-                "event",
-                "luminosityBlock",
-                #
-                "HiggsCandCorrMass",
-                "HiggsCandCorrPt",
-                "HiggsCandCorrRapidity",
-                "HiggsCandMassErr",
-                "cosThetaCS",
-                "phiStarCS",
-                "classify",
-                "Muon1_pt",
-                "Muon2_pt",
-                "Muon1_eta",
-                "Muon2_eta",
+            "mc",
+            "w",
+            "w_allSF",
+            "lumiIntegrated",
+            "PV_npvsGood",
+            "run",
+            "event",
+            "luminosityBlock",
+            #
+            "HiggsCandCorrMass",
+            "HiggsCandCorrPt",
+            "HiggsCandCorrRapidity",
+            "HiggsCandMassErr",
+            "cosThetaCS",
+            "phiStarCS",
+            "classify",
+            "Muon1_pt",
+            "Muon2_pt",
+            "Muon1_eta",
+            "Muon2_eta",
 #                "Muon1_bsConstrainedChi2",
 #                "Muon2_bsConstrainedChi2",
 #                "Muon1_jetPtRel",
@@ -667,16 +721,14 @@ def analysis(files,year,mc,sumW):
 #                "FsrPH2_dROverEt2",
 #                "FsrPH_pt_ratio0",
 #                "FsrPH_pt_ratio1",
-                "PuppiMET_pt",
-                "PuppiMET_phi",
-                "discrMVA0"
+            "PuppiMET_pt",
+            "PuppiMET_phi",
+            "discrMVA0"
         ]
 
         # Mode-specific branches
         mode_branches = {
             "isVBF": [
-                "Mjj",
-                "RPt",
                 "jetVBF2_Pt",
                 "jetVBF1_Pt",
                 "jetVBF2_Eta",
@@ -685,44 +737,79 @@ def analysis(files,year,mc,sumW):
                 "jetVBF1_Phi",
                 "minDR_jetVBF1_Mu",
                 "minDR_jetVBF2_Mu",
+                #
+                "Mjj",
                 "dEtaJJ",
                 "dPhiJJ",
                 "ZepVar",
+                "CenEta",
                 "minDetaDiMuVBF",
+                "minDphiDiMuVBF",
+                "RPt",
+                "CenPt",
+                #
                 "jetVBF2_hfcentralEtaStripSize",
                 "jetVBF1_hfcentralEtaStripSize",
                 "jetVBF2_hfadjacentEtaStripsSize",
                 "jetVBF1_hfadjacentEtaStripsSize",
+                "jetVBF1_hfsigmaPhiPhi",
+                "jetVBF2_hfsigmaPhiPhi",
+                "jetVBF1_hfsigmaEtaEta",
+                "jetVBF2_hfsigmaEtaEta",
+	    ],
+            "isGGH": [
+		"nGoodJetsAll",
+	        "Jet1_Pt",
+                "Jet1_Eta",
             ],
-#            "isGGH": [
-#                "discrMVA0"
-#            ],
             "isZinv": [
                 "Muon1_phi",
                 "Muon2_phi",
-            ],
-            "isVlep": [
-                "Lepton_Pt",
-                "Lepton_sip3d",
                 "Muon1_sip3d",
                 "Muon2_sip3d",
-                "dEtaLepH",
-                "dPhiLepH",
+                "dPhiMETH",
+                "RPt",
+            ],
+	    "isVlep": [
                 "category",
-                "mt"
+                "Muon1_sip3d",
+                "Muon2_sip3d",
+                "Lepton_MVAid",
+                "Lepton2_MVAid",
+                "Lepton_Eta",
+                "Lepton2_Eta",
+                "Lepton_Pt",
+                "Lepton2_Pt",
+                "Lepton_charge",
+                "Lepton2_charge",
+                "dEtaVH",
+                "dPhiVH",
+                "VMass",
+                "RPt",
             ],
             "isTTlep": [
+                "Lepton_MVAid",
+                "Lepton2_MVAid",
                 "Lepton_Pt",
-                "Lepton_sip3d",
-                "Muon1_sip3d",
-                "Muon2_sip3d",
+                "Lepton2_Pt",
+                "Lepton_Eta",
+                "Lepton2_Eta",
+                "Lepton_charge",
+                "Lepton2_charge",
+                #
                 "dEtaLepH",
                 "dPhiLepH",
+                "dPhiMETH",
+                "MetBisectorProj",
+                "mbb",
+                #
                 "category",
                 "Jet1_Pt",
                 "Jet1_Eta",
                 "HT",
-                "nGoodJetsAll",
+                "ST",
+                "dEta_j1j2",
+                "Centrality",
                 "mt"
             ],
             "isTThad": [
@@ -731,14 +818,24 @@ def analysis(files,year,mc,sumW):
                 "Muon2_sip3d",
                 "Jet1_Pt",
                 "Jet1_Eta",
+                "JetAll_Eta",
                 "HT",
-                "nGoodJetsAll",
                 "WTopJetMass",
-                "WTopJetDiscr"
+                "WTopJetDiscr",
+                "nGoodJetsAll",
+                "Centrality",
+                "TopMassReco",
+                "TopPairChi2",
+                "dEta_j1j2",
+                "MetBisectorProj",
+                "dPhiMETH",
+                "mindR_H_BJet", #used
+                "nBMJets"
             ],
             "isVhad": [
                 "goodWjj_mass",
                 "goodWjj_discr",
+                "goodWjj_discr2",
                 "goodWjj_pt",
                 "goodWjj_eta",
                 "goodWjj_phi",
@@ -837,6 +934,7 @@ def loopOnDataset(year):
     loadCorrectionSet(int(year))
 
     mc = []
+
     mc.extend([10,11,12,13,14,15])
     if year in ["12022", "22022", "12023", "22023"]: mc.extend([20,21,22,23,24,25]) #Zgamma
     if year=="2024": mc.extend([20,21,22,23,24,26]) #Zgamma
@@ -852,26 +950,32 @@ def loopOnDataset(year):
     mc.extend([101])    #DY EWK
     if mode == "isVBF": mc.extend([99,98])    #DY EWK
 
-    mc.extend([102])    #TT2l
+    mc.extend([140])    #TT2l (was 102)
 
-    mc.extend([201,202,203,204,205,206]) #VV
-    mc.extend([211,212,213,214])     #VVV
+    mc.extend([201,202,203,204,205,206]) #VV powheg
+    mc.extend([213,214,215,216])     #VVV
 
-    mc.extend([221,222,223,224,225,226,230,231,232,233,234])    #ttV
-    if year in ["12022", "22022", "12023", "22023"]: mc.extend([227,228,229])  # TWZ
+    mc.extend([221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237])    #ttV
     mc.extend([107,105,106]) # tt1l, tW
 
+    '''
     # below for training
     if year in ["2024"]:
-        if mode == "isVhad": mc.extend([119,120,121])  # extra DY jet binned for ML training
+#        if mode == "isVhad": mc.extend([119,120,121])  # extra DY jet binned for ML training
+        if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([142,141]) # extra TTbar (2024 not there yet)
+        if mode == "isVlep": mc.extend([207,208,208,210,211,212]) #VV amcNLO
     if year in ["12022", "22022", "12023", "22023"]:
-        if mode == "isVhad": mc.extend([111,112,113])  # extra DY jet binned for ML training
-        if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVlep": mc.extend([118]) # extra TTbar (2024 not there yet)
-    if mode == "isVBF" or mode == "isGGH" or mode == "isVhad" or mode == "isTThad": mc.extend([109,108,110]) # extra DY jet mass binned
+#        if mode == "isVhad": mc.extend([111,112,113])  # extra DY jet binned for ML training
+        if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([142]) # extra TTbar (2024 not there yet)
+        if mode == "isVlep": mc.extend([208,208,210,211,212]) #VV amcNLO    (207 still missing)
+
+    if mode == "isVBF" or mode == "isGGH" or mode == "isVhad" or mode == "isTThad": mc.extend([109]) # extra DY jet mass binned
+    if mode == "isVBF" or mode == "isGGH": mc.extend([108,110]) # extra DY jet mass binned
 
     if mode == "isGGH":
         mc.extend([126,127]) # MINNLO
         if year=="2024": mc.extend([128])
+    '''
 
     for sampleNOW in mc:
         files, xsec = SwitchSample(thisdict, sampleNOW)
