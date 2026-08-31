@@ -174,20 +174,23 @@ double get_k(double eta, string var) {
 
 double pt_resol(double pt, double eta, double phi, float nL, int evtNumber, int lumiNumber, double low_pt_threshold = 26) {
 
+    // use lowest calibrated pt for low-pt leptons
+    double pt_eval = std::max(pt, low_pt_threshold);
+
     // load correction values
     double rndm = (double) get_rndm(eta, phi, nL, evtNumber, lumiNumber);
-    double std = (double) get_std(pt, eta, nL);
+    double std = (double) get_std(pt_eval, eta, nL);
     double k = (double) get_k(eta, "nom");
 
     // calculate corrected value and return original value if a parameter is nan
     double ptc = pt * ( 1 + k * std * rndm);
     if (isnan(ptc)) ptc = pt;
-    if(ptc / pt > 2 || ptc / pt < 0.1 || ptc < 0 || pt < low_pt_threshold || pt > 200){
+    //    if(ptc / pt > 2 || ptc / pt < 0.1 || ptc < 0 || pt < low_pt_threshold || pt > 200){
+    if(ptc / pt > 2 || ptc / pt < 0.1 || ptc < 0 || pt > 200){
 	ptc = pt;
     }
 
     // do we need to have this one ?
-    //pt < threshold
     //pt > 200
 
     // TODO: Understand why for evts with pT < threshold the pt_corr is set to one
@@ -230,8 +233,10 @@ double pt_scale(bool is_data, double pt, double eta, double phi, int charge, dou
 
     double a = cset->at("a_"+dtmc)->evaluate({eta, phi, "nom"});
     double m = cset->at("m_"+dtmc)->evaluate({eta, phi, "nom"});
-    if(pt < low_pt_threshold)
-	    return pt;
+
+    //comment for NOW
+    //    if(pt < low_pt_threshold)
+    //	    return pt;
 
     return 1. / (m/pt + charge * a);
 }

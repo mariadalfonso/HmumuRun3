@@ -51,11 +51,12 @@ class TMVAHelperXML():
         self.nthreads = ROOT.GetThreadPoolSize()
         print('self.nthreads',self.nthreads)
 
-        self.tmva_helper = ROOT.tmva_helper_xml(self.model_input, self.nthreads)
         self.var_col = f"tmva_vars_{self.model_name}"
 
 #    def run_inference(self, df, doInteractive, col_name = "mva_score"):
     def run_inference(self, df, col_name = "mva_score"):
+
+        self.tmva_helper = ROOT.tmva_helper_xml(self.model_input, self.nthreads)
 
         doInteractive=True
         # check if columns exist in the dataframe
@@ -70,4 +71,30 @@ class TMVAHelperXML():
         df = df.Define(self.var_col, f"ROOT::VecOps::RVec<float>{{{vars_str}}}")
         if doInteractive: df = df.DefineSlot(col_name, self.tmva_helper, [self.var_col])
         else: df = df.Define(col_name, self.tmva_helper, [self.var_col])
+        return df
+
+    def run_inferenceVec(self, df, col_name="mva_score"):
+
+        self.tmva_helper = ROOT.tmva_helper_xml_vec(
+            self.model_input,
+            self.nthreads
+        )
+
+        cols = df.GetColumnNames()
+        for var in self.variables:
+            if var not in cols:
+                raise Exception(f"Variable {var} not defined in dataframe.")
+
+        # create the vector of variables for each lepton
+        df = df.Define(
+            self.var_col,
+            f"makeTMVAVarsVec({','.join(self.variables)})"
+        )
+
+        df = df.DefineSlot(
+            col_name,
+            self.tmva_helper,
+            [self.var_col]
+        )
+
         return df

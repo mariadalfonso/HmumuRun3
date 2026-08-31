@@ -27,8 +27,9 @@ def safe_add_tree(chain, filepath, treename="events"):
 hmumu   = [f"{i}" for i in range(10, 16)]       # 10–15
 hzgamma = [f"{i}" for i in range(20, 25)]       # 20–24
 vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(207, 213)] + [f"{i}" for i in range(213, 217)]  # 201–206, 211–214
-tt2l    = ["140", "141", "142"]
-ttV     = [f"{i}" for i in range(221, 238)] + ["107","105","106"] #ttV, tt1l , singletop
+#tt2l    = ["140", "141", "142"]
+tt2l    = [f"{i}" for i in range(140, 150)] # this include syst + variation (tt2l x 10)
+ttV     = [f"{i}" for i in range(221, 238)] + ["107","105","106"] + ["242","243","244","245"] #ttV, tt1l , singletop
 
 def loadTree(mytree, directory_, category, year ):
 

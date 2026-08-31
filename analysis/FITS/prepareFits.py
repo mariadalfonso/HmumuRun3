@@ -24,7 +24,8 @@ lumis={
     '_22023':9.451, #D
     '_2024':108.95, #C-I
     '_2025':115.65, #C-G
-    '_Run3':286.5, #C-G
+    '_2026':25.8, #from Gluillelmo
+    '_Run3':312, #C-G
 }
 
 def safe_add_tree(file_list, filepath_pattern, treename="events"):
@@ -123,7 +124,8 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
        "_22023": ["-31", "-32"],
        "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 … -54
        "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 … -72
-       "_Run3" : ["-11", "-13", "-14", "-15", "-16", "-17", "-23", "-24", "-31", "-32"]+ [str(i) for i in range(-41, -55, -1)] + [str(i) for i in range(-61, -73, -1)],
+       "_2026" : [str(i) for i in range(-81, -89, -1)],  # -61 … -72
+       "_Run3" : ["-11", "-13", "-14", "-15", "-16", "-17", "-23", "-24", "-31", "-32"]+ [str(i) for i in range(-41, -55, -1)] + [str(i) for i in range(-61, -73, -1)] + [str(i) for i in range(-81, -89, -1)],
    }
 
    # Add files safely
@@ -135,57 +137,56 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
    #-------------- selection
 
    selMVAvl = {
-       "bdt2" : "discrMVA0>=0.76",
-       "bdt1" : "discrMVA0>=0.52 && discrMVA0<0.76",
-       "bdt0" : "discrMVA0<0.52",
+       "bdt2" : "discrMVA0>=0.78",
+       "bdt1" : "discrMVA0>=0.32 && discrMVA0<0.78",
+       "bdt0" : "discrMVA0<0.32",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAzinv = {
        "bdt2" : "discrMVA0>=0.98",
-       "bdt1" : "discrMVA0>=0.84 && discrMVA0<0.98",
-       "bdt0" : "discrMVA0<0.84",
+       "bdt1" : "discrMVA0>=0.78 && discrMVA0<0.98",
+       "bdt0" : "discrMVA0<0.78",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAvh = {
-       "bdt2" : "discrMVA0>=0.92",
-       "bdt1" : "discrMVA0>=0.86 && discrMVA0<0.92",
+       "bdt2" : "discrMVA0>=0.94",
+       "bdt1" : "discrMVA0>=0.86 && discrMVA0<0.94",
        "bdt0" : "discrMVA0<0.86",
        "incl" : "true",
        "" : "true"
    }
 
-   selMVAvbf = {
-       "bdt2" : "discrMVA0>=0.94",
-       "bdt1" : "discrMVA0>=0.74 && discrMVA0<0.94",
-       "bdt0" : "discrMVA0<0.74",
-       "incl" : "true",
-       "" : "true"
-   }
-
    selMVAttl = {
-       "bdt2" : "discrMVA0>=0.94",
-       "bdt1" : "discrMVA0>=0.74 && discrMVA0<0.94",
-       "bdt0" : "discrMVA0<0.74",
+       "bdt1" : "discrMVA0>=0.54",
+       "bdt0" : "discrMVA0<0.54",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAtth = {
-       "bdt2" : "discrMVA0>=0.94",
-       "bdt1" : "discrMVA0>=0.74 && discrMVA0<0.94",
-       "bdt0" : "discrMVA0<0.74",
+       "bdt2" : "discrMVA0>=0.98",
+       "bdt1" : "discrMVA0>=0.8 && discrMVA0<0.98",
+       "bdt0" : "discrMVA0<0.8",
+       "incl" : "true",
+       "" : "true"
+   }
+
+   selMVAvbf = {
+       "bdt2" : "discrMVA0>=0.92",
+       "bdt1" : "discrMVA0>=0.64 && discrMVA0<0.92",
+       "bdt0" : "discrMVA0<0.64",
        "incl" : "true",
        "" : "true"
    }
 
    selMVAggh = {
-       "bdt2" : "discrMVA0>=0.78",
-       "bdt1" : "discrMVA0>=0.52 && discrMVA0<0.78",
-       "bdt0" : "discrMVA0<0.52",
+       "bdt2" : "discrMVA0>=0.76",
+       "bdt1" : "discrMVA0>=0.5 && discrMVA0<0.76",
+       "bdt0" : "discrMVA0<0.5",
        "incl" : "true",
        "" : "true"
    }

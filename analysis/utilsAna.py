@@ -20,12 +20,13 @@ def loadtmvahelper():
 # lumis with golden json
 #https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis#ReReco_ERAS_A_B_C_D_E
 lumis={
-    '12022':7.98, # C-D
-    '22022':26.67, # E, F, G
-    '12023':17.794, # C
-    '22023':9.451, # D
-    '2024':109.95, # C-I
-    '2025':115.54 # C-G
+    '12022':7.99, # C-D
+    '22022':26.68, # E, F, G
+    '12023':17.96, # C
+    '22023':9.68, # D
+    '2024':109.82, # C-I
+    '2025':110.59, # C-G
+    '2026':25.31 # C, B
 }
 
 btagPNetBM={
@@ -35,6 +36,7 @@ btagPNetBM={
     '22023':0.1919,
     '2024':0.245, # found only UparT
     '2025':0.245, # copy the 2024 value
+    '2026':0.245, # copy the 2024 value
 }
 
 btagPNetBL={
@@ -44,6 +46,7 @@ btagPNetBL={
     '22023':0.0359,
     '2024':0.047, # found only UparT https://btv-wiki.docs.cern.ch/ScaleFactors/Run3Summer24/#general-remarks
     '2025':0.047, # copy the 2024 value
+    '2026':0.047, # copy the 2024 value
 }
 
 btagParTL={
@@ -53,6 +56,7 @@ btagParTL={
     '22023':0.0683,
     '2024':0.0246, # found only UparT
     '2025':0.0246, # copy the 2024 value
+    '2026':0.0246, # copy the 2024 value
 }
 
 btagParTM={
@@ -62,6 +66,7 @@ btagParTM={
     '22023':0.3494,
     '2024':0.1272, # found only UparT
     '2025':0.1272, # copy the 2024 value
+    '2026':0.1272, # copy the 2024 value
 }
 
 
@@ -83,8 +88,8 @@ xsecRun3={
     'Wp':888.9,
     'ZH':943.9,
     'TTH':570,
-#    'ggZH':XXX,
-#    'bbH':XXX,
+    'ggZH':217.09, # from xsecDB
+    'bbH':568, # 0.568 /pb
     ###
 #    'Z':6688.0*1000,
     'Z':6244.8*1000, # TO USE TURBO XSECION 6244.8
@@ -175,32 +180,33 @@ def BuildDict(year):
 
     dirName="/ceph/submit/data/group/cms/store/Hmumu/v12/"
     dirNameScratch="/scratch/submit/cms/mariadlf/Hmumu/v12/"
-    if (str(year) == '2024' or str(year) == '2025'):
+    if (str(year) == '2024' or str(year) == '2025' or str(year) == '2026'):
         dirName="/ceph/submit/data/group/cms/store/Hmumu/v15/"
         dirNameScratch="/scratch/submit/cms/mariadlf/Hmumu/v15/"
 
     campaign_map = {
-        "12022": "/NANOAODSIM/130X_mcRun3_2022_realistic_v*/*",
-        "22022": "/NANOAODSIM/130X_mcRun3_2022_realistic_postEE_v*/*",
-        "12023": "/NANOAODSIM/130X_mcRun3_2023_realistic_v*/*",
-        "22023": "/NANOAODSIM/130X_mcRun3_2023_realistic_postBPix_v*-v*/*",
-        "2024":  "/NANOAODSIM/150X_mcRun3_2024_realistic_v*-v*/*",
-        "2025":  "/NANOAODSIM/150X_mcRun3_2025*-v*/*",
+        "12022": "130X_mcRun3_2022_realistic_v*/*",
+        "22022": "130X_mcRun3_2022_realistic_postEE_v*/*",
+        "12023": "130X_mcRun3_2023_realistic_v*/*",
+        "22023": "130X_mcRun3_2023_realistic_postBPix_v*-v*/*",
+        "2024":  "150X_mcRun3_2024_realistic_v*-v*/*",
+        "2025":  "150X_mcRun3_2025*-v*/*", # noMC
+        "2026":  "150X_mcRun3_2025*-v*/*", # noMC
     }
     campaign = campaign_map.get(year, "")
 
     # Helper for building paths
     def path(suffix):
-        return f"{dirName}{year}/{suffix}{campaign}"
+        return f"{dirName}{year}/{suffix}/NANOAODSIM/{campaign}"
 
-    def pathEx(suffix,specialCampaign):
-        if year in "2024":
-            return f"{dirName}{year}/{suffix}/NANOAODSIM/{specialCampaign}/*"
+    def pathEx(suffix,specialCampaignPrefix, year_):
+        if year in year_:
+            return f"{dirName}{year}/{suffix}/NANOAODSIM/{specialCampaignPrefix}{campaign}"
         else:
-            return f"{dirName}{year}/{suffix}{campaign}"
+            return f"{dirName}{year}/{suffix}/NANOAODSIM/{campaign}"
 
     def pathScratch(suffix):
-        return f"{dirNameScratch}{year}/{suffix}{campaign}"
+        return f"{dirNameScratch}{year}/{suffix}/NANOAODSIM/{campaign}"
 
     thisdict = {
         10: (findDIR(pathScratch("/VBF*Hto2Mu_*M-125_TuneCP5*_13p6TeV_powheg-pythia8")),xsecRun3['VBFH']*0.00022),
@@ -210,7 +216,7 @@ def BuildDict(year):
         14: (findDIR(pathScratch("/ZH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg*-pythia8")),xsecRun3['ZH']*0.00022),
         15: (findDIR(pathScratch("/TTH*Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTH']*0.00022),
 #        16: (findDIR(path("/GluGluZH-Zto2L-Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ggZH']*0.00022),
-#        17: (findDIR(path("/BBH-Hto2Mu_Par-M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['bbH']*0.00022),
+        17: (findDIR(path("/BBH-Hto2Mu_*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['bbH']*0.00022),
         ##
         20: (findDIR(path("/VBF*HtoZG*to2L*M-125_TuneCP5*_13p6TeV_powheg-pythia8")),xsecRun3['VBFH']*0.0015),
         21: (findDIR(path("/GluGlu*HtoZG*to2L*M-125_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['ggH']*0.0015),
@@ -262,12 +268,19 @@ def BuildDict(year):
         ## DY-EWK
         101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),
         99:  (findDIR(path("/EWK-2Mu2J*M2Mu-105to160*M2J-120_TuneCP5_13p6TeV_madgraph-pythia8")),0.06443*1000), # pythia8 i.e. dipole ?
-        98:  (findDIR(path("/EWK*2Mu2J_*MLL-105to160_TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']/120.), # added 120. empirical scaling from the DYQCD
+        98:  (findDIR(path("/EWK*2Mu2J_*MLL-105to160_TuneCH3_13p6TeV_madgraph-herwig7")),0.0527*1000), # from Filippo, otherwise if xsecRun3['EWKZ']/120. is empirical scaling from the DYQCD
         ## TTBAR
         140: (findDIR(pathScratch("/TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
         141: (findDIR(path("/TTto2L2Nu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['TT2l2n']),
         142: (findDIR(path("/TTto2L2Nu-3Jets_TuneCP5_13p6TeV_madgraphMLM-pythia8")),xsecRun3['TT2l2n']),
-        107: (findDIR(path("/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTln']),
+        143: (findDIR(path("/TTto2L2Nu_TuneCP5CR2_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        144: (findDIR(path("/TTto2L2Nu_TuneCP5CR1_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        145: (findDIR(path("/TTto2L2Nu_TuneCP5Down_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        146: (findDIR(path("/TTto2L2Nu_TuneCP5Up_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        147: (findDIR(path("/TTto2L2Nu_*ERD*On*_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        148: (findDIR(path("/TTto2L2Nu_*Hdamp-158_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        149: (findDIR(path("/TTto2L2Nu_*Hdamp-418_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TT2l2n']),
+        107: (findDIR(path("/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TTln']),  # this also has the same syst as the
         105: (findDIR(path("/TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         106: (findDIR(path("/TbarWplusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8")),xsecRun3['TW2l2n']),
         ## DI/TRI- BOSON
@@ -289,27 +302,40 @@ def BuildDict(year):
         214: (findDIR(path("/ZZZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['ZZZ']),
         215: (findDIR(path("/WWW*_TuneCP5_13p6TeV_amcatnlo*-pythia8")),xsecRun3['WWW']),
         216: (findDIR(path("/WWZ*_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['WWZ']),
-        ## tX
-        221: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8","mg35x_150X_mcRun3_2024_realistic_v2-v2")),xsecRun3['TTW']),
+        ## ttV
+        221: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8","mg35x_","2024")),xsecRun3['TTW']), # this we have syst
         222: (findDIR(path("/TTLNu-EWK_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLNu-EWK']),
+        234: (findDIR(path("TTW-WtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),xsecRun3['TTW-WtoQQ']),
+        #
         223: (findDIR(path("/TTLL_*MLL-4to50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-4to50']),
         224: (findDIR(path("/TTLL_*MLL-50_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTLL_MLL-50']),
-        225: (findDIR(path("/TTZ-ZtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFX*-pythia8")),xsecRun3['TTZ-ZtoQQ']),
-        226: (findDIR(pathEx("/TZQB-Zto2L-4FS_*MLL-30_TuneCP5_13p6TeV_amcatnlo-pythia8","Madgraph_2_6_5_150X_mcRun3_2024_realistic_v2-v2")),xsecRun3['TZQ']),
+        225: (findDIR(path("/TTZ-ZtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFX*-pythia8")),xsecRun3['TTZ-ZtoQQ']),                  # nevents 22EE 1 334 574
+        238: (findDIR(path("TTZ-ZtoQQ-TTto2L2Nu-1Jets_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),xsecRun3['TTZ-ZtoQQ']*0.105), # nevents 22EE 4 865 313
+        239: (findDIR(path("TTZ-ZtoQQ-TTtoLNu2Q-1Jets_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),xsecRun3['TTZ-ZtoQQ']*0.444), # nevents 22EE 5 387 360
+        237: (findDIR(path("TTNuNu_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTNuNu']),
+        ## tZX + TT+(TT,VV,TW)
+        226: (findDIR(pathEx("/TZQB-Zto2L-4FS_*MLL-30_TuneCP5_13p6TeV_amcatnlo-pythia8","Madgraph_2_6_5_","2024")),xsecRun3['TZQ']),
         227: (findDIR(path("TWZ*Tto2Q*WtoLNu*Zto2L*DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ3l']),
         228: (findDIR(path("TWZ*TtoLNu*Wto2Q*Zto2L*DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ3l']),
         229: (findDIR(path("TWZ*TtoLNu*WtoLNu*Zto2L*DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TWZ4l']),
+        #
         230: (findDIR(path("TTTT_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTTT']),
         231: (findDIR(path("TTWZ_TuneCP5_13p6TeV_madgraph-pythia8")),xsecRun3['TTWZ']),
         232: (findDIR(path("TTWW_TuneCP5_13p6TeV_madgraph*-pythia8")),xsecRun3['TTWW']),
         233: (findDIR(path("TTZZ_TuneCP5_13p6TeV_madgraph*-pythia8")),xsecRun3['TTZZ']),
-        234: (findDIR(path("TTW-WtoQQ-1Jets_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),xsecRun3['TTW-WtoQQ']),
         235: (findDIR(path("TTTWminus-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTTWm']),
         236: (findDIR(path("TTTWplus-DR1_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTTWp']),
-        237: (findDIR(path("TTNuNu_TuneCP5_13p6TeV_amcatnlo-pythia8")),xsecRun3['TTNuNu']),
+        #
+        242: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5CR1_13p6TeV_amcatnloFXFX-pythia8","mg35x_",year)),xsecRun3['TTW']), # TTW we have syst
+        243: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5CR2_13p6TeV_amcatnloFXFX-pythia8","mg35x_",year)),xsecRun3['TTW']), # TTW we have syst
+        244: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5Up_13p6TeV_amcatnloFXFX-pythia8","mg35x_",year)),xsecRun3['TTW']), # TTW we have syst
+        245: (findDIR(pathEx("/TTLNu-1Jets_TuneCP5Down_13p6TeV_amcatnloFXFX-pythia8","mg35x_",year)),xsecRun3['TTW']), # TTW we have syst
+        #
+        246: (findDIR(path("TTG-1Jets_PTG-10to100_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),4.22*1000),
+        247: (findDIR(path("TTG-1Jets_PTG-100to200_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),0.41*1000),
+        248: (findDIR(path("TTG-1Jets_PTG-200_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),0.13*1000),
+        249: (findDIR(path("TTG-1Jets_TuneCP5_13p6TeV_amcatnloFXFXold-pythia8")),4.629*1000),
     }
-
-    # TODO: add the signal aMCNLO sample, for the training we can use the powheg
 
     folder = 'MINIv6NANOv15-v1'
 
@@ -373,17 +399,27 @@ def BuildDict(year):
             -66: ("Run2025D/Muon1/*/*/*/*/*",dirNameScratch),
             -67: ("Run2025E/Muon0/*/*/*/*/*",dirNameScratch),
             -68: ("Run2025E/Muon1/*/*/*/*/*",dirNameScratch),
-            #
             -69: ("Run2025F/Muon0/*/*/*/*/*",dirNameScratch),
             -70: ("Run2025F/Muon1/*/*/*/*/*",dirNameScratch),
             -71: ("Run2025G/Muon0/*/*/*/*/*",dirNameScratch),
             -72: ("Run2025G/Muon1/*/*/*/*/*",dirNameScratch),
+            #
             -161: ("Run2025B/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
             -162: ("Run2025C/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
             -163: ("Run2025D/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
             -164: ("Run2025E/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
             -165: ("Run2025F/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
             -166: ("Run2025G/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
+        },
+        "2026": {
+            -81: ("Run2026B/Muon0/*/*/*/*/*",dirNameScratch),
+            -82: ("Run2026B/Muon1/*/*/*/*/*",dirNameScratch),
+            -83: ("Run2026B/Muon2/*/*/*/*/*",dirNameScratch),
+            -84: ("Run2026B/Muon3/*/*/*/*/*",dirNameScratch),
+            -85: ("Run2026D/Muon0/*/*/*/*/*",dirNameScratch),
+            -86: ("Run2026D/Muon1/*/*/*/*/*",dirNameScratch),
+            -87: ("Run2026D/Muon2/*/*/*/*/*",dirNameScratch),
+            -88: ("Run2026D/Muon3/*/*/*/*/*",dirNameScratch),
         }
     }
 
@@ -491,8 +527,9 @@ def loadCorrectionSet(year):
     if year == 22023: subDirName = "2023_Summer23BPix"
     if year == 2024: subDirName = "2024"
     if year == 2025: subDirName = "2025"
+    if year == 2026: subDirName = "2025"
 
-    if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year==2025):
+    if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year==2025 or year==2026):
         print('loadMuonScale()')
 #        amendJsonFile("/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/"+subDirName+"/latest/muon_scalesmearing.json.gz")
         amendJsonFile("config/POG/MUO/JSON_VXBS/"+subDirName+"/schemaV2.json")
@@ -511,10 +548,10 @@ def loadCorrectionSet(year):
 
     print('loadDYturbo()')
     ROOT.gROOT.ProcessLine(
-        f'auto csetZ1 = correction::CorrectionSet::from_file("./config/THeory/qT_correction_dyturbo_76.0_106.0.json");'
+        f'auto csetZ1 = correction::CorrectionSet::from_file("./config/THeory/qt_norm_reweight_ZR.json");'
     )
     ROOT.gROOT.ProcessLine(
-        f'auto csetZ2 = correction::CorrectionSet::from_file("./config/THeory/qT_correction_dyturbo_105.0_160.0.json");'
+        f'auto csetZ2 = correction::CorrectionSet::from_file("./config/THeory/qt_norm_reweight_SB.json");'
     )
 
     ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
@@ -557,6 +594,7 @@ def readDataQuality(year):
         "22023": "Cert_Collisions2023_366442_370790_Golden.json",
         "2024":  "Cert_Collisions2024_378981_386951_Golden.json",
         "2025":  "Cert_Collisions2025_391658_398903_Golden.json",
+        "2026":  "Cert_Collisions2026_401624_403937_golden.json",
     }
 
     fname = json_map.get(str(year))

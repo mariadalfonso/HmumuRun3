@@ -50,11 +50,27 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    for h in [hTT2L, hTop, hZg, hVV, hEWK, hDY]:
 
       print('Integral ',h.GetName(), " = ", h.Integral())
-      BKGstack.Add(h.GetValue())
+      hist = h.GetValue()
+
+      # Remove negative bins
+      for ibin in range(1, hist.GetNbinsX() + 1):
+         if hist.GetBinContent(ibin) < 0.0:
+            hist.SetBinContent(ibin, 0.0)
+            hist.SetBinError(ibin, 0.0)   # or keep the original error, see below
+
+      BKGstack.Add(hist)
 
    for h in [hWH, hTTH, hZH, hVBFH, hggH]:
-      print('Integral ',h.GetName(), " = ", h.Integral())      
-      SIGstack.Add(h.GetValue())
+      print('Integral ',h.GetName(), " = ", h.Integral())
+      hist = h.GetValue()
+
+      # Remove negative bins
+      for ibin in range(1, hist.GetNbinsX() + 1):
+         if hist.GetBinContent(ibin) < 0.0:
+            hist.SetBinContent(ibin, 0.0)
+            hist.SetBinError(ibin, 0.0)   # or keep the original error, see below
+
+      SIGstack.Add(hist)
 
    labelsH = ["", "n_top", "n_W", "resolved (5jets)"]
    labelsL = ["", "H_{#mu#mu}+e", "H_{#mu#mu}+ee", "H_{#mu#mu}+#mu", "H_{#mu#mu}+#mu#mu", "H_{#mu#mu}+e#mu"]
@@ -64,17 +80,25 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
       if not h:
          continue  # skip null histograms
 
+      hist = h.GetValue()
+
+      # Remove negative bins
+      for ibin in range(1, hist.GetNbinsX() + 1):
+         if hist.GetBinContent(ibin) < 0.0:
+            hist.SetBinContent(ibin, 0.0)
+            hist.SetBinError(ibin, 0.0)   # or keep the original error, see below
+
       if item==210:
          # Set labels for the 6 bins
          for i, lab in enumerate(labelsL, start=1):
-            h.GetXaxis().SetBinLabel(i, lab)
+            hist.GetXaxis().SetBinLabel(i, lab)
 
       if item==211:
          # Set labels for the 4 bins
          for i, lab in enumerate(labelsH, start=1):
-            h.GetXaxis().SetBinLabel(i, lab)
+            hist.GetXaxis().SetBinLabel(i, lab)
 
-      allstack.Add(h.GetValue())
+      allstack.Add(hist)
 
    stack = allstack
 

@@ -7,7 +7,6 @@ import sys
 
 ROOT.gROOT.SetBatch(True)
 
-#from settings import paramsClass1, paramsClass2, paramsMulti
 from settings import *
 
 import matplotlib
@@ -19,6 +18,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve, auc
+from scipy.ndimage import gaussian_filter1d
 
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import ConfusionMatrixDisplay
@@ -26,25 +26,29 @@ from sklearn.metrics import ConfusionMatrixDisplay
 from LoadTree import loadTree
 from LoadTree import vv, tt2l, ttV
 
+#myDir='/work/submit/mariadlf/HmumuRun3/ROOTFILES/newID_'
 myDir='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
-
 
 years = ['_12022', '_22022', '_12023', '_22023', '_2024']
 
-category = sys.argv[1]
+#category = sys.argv[1]
 
+category="ggHcat"
 #category="VBFcat"
-#category="ggHcat"
-#category="VHcat"
-#category="VLcat"
-#category="TTHcat"
 #category="TTLcat"
+#category="VLcat"
+#
+#category="VHcat"
+#category="TTHcat"
 #category="Zinvcat"
 mytree = ROOT.TChain('events')
 for year in years:
     mytree = loadTree(mytree, myDir, category, year )
 
-doMultiClass=False
+doMultiClass=True
+if category=="Zinvcat": doMultiClass=False
+if category=="TTHcat": doMultiClass=False
+if category=="VHcat": doMultiClass=False
 
 if category in ["Zinvcat","TTLcat"]:
     params = paramsClass2.copy()
@@ -53,7 +57,7 @@ else:
 
 signal_map = {
     "VBFcat": ["10"],
-    "ggHcat": ["11"],
+    "ggHcat": ["11","10"],
     "VHcat": ["12","13","14"],
     "VLcat": ["12","13","14"],
     "Zinvcat": ["14"],
@@ -62,19 +66,55 @@ signal_map = {
 }
 
 class_map = {
+    "ggHcat": {
+        0: ["11"],                         # ggH  # -- main signal is 0
+        1: ["10"],                         # VBF
+        2: ["100","103","104","109"],      # BKGA
+    },
     "VBFcat": {
-        0: ["10"],                         # VBF
+        0: ["10"],                         # VBF  # -- main signal is 0
         1: ["11"],                         # ggH
-        2: ["100","103","104","109","108","110"],   # BKGA
+        2: ["100","103","104","109"],      # BKGA
         3: ["101","99","98"]               # BKGB
+    },
+    "VLcat": {
+	0: ["12","13"],                    # 3l
+        1: ["14"],                         # 4l
+        2: ["201","202","203","206","207","208","209","210"] + ["204","211","215"],  # BKGA 2l-3l
+        3: ["205","212","213","214","216"] # BKGA 4l
+    },
+    "TTLcat": {
+	0: ["15"],                    # 3l
+        1: ["12","13","14"],
+        2: tt2l+ ["221", "222", "224","226","227","228","229"] + ["107","105","106"] + ["242","243","244","245"] + ["225","227","228","230"],
+        3: ["223","225"] + ["230","231","232","233","234","235","236"],
     }
 }
 
+labels_map = {
+    "ggHcat": ["ggH", "qqH", "DY-allJets"],
+    "VBFcat": ["qqH", "ggH", "DY-QCD", "DY-EWK"],
+    "VLcat": ["WH", "ZH", "2l3l", "4l"],
+    "TTLcat": ["ttH","VH","tt2l+ttW","ttZ"]
+}
+
+if doMultiClass:
+
+    sizeClasses = len(labels_map[category])
+    signal_classes = [0, 1]
+    background_classes = list(range(2, sizeClasses))
+
+else:
+
+    signal_classes = [1]
+    background_classes = [0]
+
+
 # note inclusive 100, 103, 104 might disturb
 bkg_map = {
-    "VBFcat": ["100","103","104","109","108","110"] + ["101","99","98"],# DY QCD + EWK
-    "ggHcat": ["100","103","104","109","108","110"], # DY (incl and mass binned)
-    "VHcat": ["109"] + ["114","115","116","117","122","123","124","125"] + tt2l,
+    "VBFcat": ["100","103","104","109"] + ["101","99","98"],# DY QCD + EWK
+    "ggHcat": ["100","103","104","109"], # DY (incl and mass binned)
+    "VHcat": ["109"] + ["114","115","116","117","122","123","124","125"] + tt2l + vv,
     "VLcat": vv, # diboson
     "Zinvcat": tt2l, # top 2l
     "TTHcat": tt2l + ["109"], # ttbar2l both powheg nominal and altern ; DY as well
@@ -85,23 +125,29 @@ bkg_map = {
 #labelForPNG = "_DYEWK"
 #if doMultiClass: labelForPNG = "_multiclass"
 #else: labelForPNG = ""
-labelForPNG = "_Sigma1"
+#labelForPNG = "_RelSigma1"
+
+labelForPNG = ""
+
+extraFolder = ""
+if doMultiClass: extraFolder = "multiclass/"
 
 dir_map = {
-    "VBFcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/VBF/",
-    "ggHcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/ggH/",
-    "VHcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/VH/",
-    "VLcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/VL/",
-    "Zinvcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/Zinv/",
-    "TTHcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/TTH/",
-    "TTLcat": "/home/submit/mariadlf/public_html/HMUMU_MVA/TTL/"
+    "VBFcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/VBF/{extraFolder}",
+    "ggHcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/ggH/{extraFolder}",
+    "VHcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/VH/{extraFolder}",
+    "VLcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/VL/{extraFolder}",
+    "Zinvcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/Zinv/{extraFolder}",
+    "TTHcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/TTH/{extraFolder}",
+    "TTLcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/TTL/{extraFolder}"
 }
 
 variables_map = {
-    "VBFcat": ["HiggsCandCorrPt", "RPt", "Mjj", "dEtaJJ", "ZepVar", "minDetaDiMuVBF", "dPhiJJ", "Muon1_norm_pt", "Muon2_norm_pt","jetVBF2_Pt","jetVBF1_Pt","jetVBF1_Eta", "jetVBF2_Eta","CenEta","CenPt"],#"minDphiDiMuVBF"],
-    "ggHcat": ["HiggsCandCorrPt", "Muon1_norm_pt", "Muon2_norm_pt", "nGoodJetsAll","Jet1_Pt"],
+    "VBFcat": ["HiggsCandCorrPt", "RPt", "Mjj", "dEtaJJ", "ZepVar", "minDetaDiMuVBF", "dPhiJJ", "Muon1_norm_pt", "Muon2_norm_pt","jetVBF2_Pt","jetVBF1_Pt","jetVBF1_Eta", "jetVBF2_Eta","CenEta","CenPt"],#,"ptAsy","log_Mjj"],#"minDphiDiMuVBF"],
+    "ggHcat": ["HiggsCandCorrPt", "Muon1_norm_pt", "Muon2_norm_pt", "nGoodJetsAll","Jet1_Pt","Jet1_Eta","deltaRJet1H"],
     "Zinvcat": ["HiggsCandCorrPt", "Muon1_norm_pt","Muon2_norm_pt","PuppiMET_pt","dPhiMETH","RPt"],
-    "VLcat": ["HiggsCandCorrPt", "category","Muon1_norm_pt","Muon2_norm_pt","Lepton_Pt","Lepton2_Pt","VMass","PuppiMET_pt","dPhiVH","dEtaVH","RPt"],
+    "VLcat": ["HiggsCandCorrPt", "category","Muon1_norm_pt","Muon2_norm_pt","Lepton_Pt","Lepton2_Pt","RPt","PuppiMET_pt","dPhiVH","dEtaVH","VMass"],  ##,"dPhiWH","dEtaWH","dPhiZH","dEtaZH","ZMassPull","WMassPull"]
+    #    ,"dPhiWH","dEtaWH","dPhiZH","dEtaZH","ZMassPull","WMassPull"
     "TTLcat": ["HiggsCandCorrPt", "category","Muon1_norm_pt","Muon2_norm_pt"]+["Lepton_Pt","Lepton2_Pt","PuppiMET_pt","dEtaLepH","mt","dPhiMETH","MetBisectorProj"] + ["HT","dEta_j1j2","mbb","Centrality"] + ["Jet1_Pt","Lepton_Eta","Lepton2_Eta"],
     "VHcat": ["HiggsCandCorrPt", "goodWjj_discr", "goodWjj_mass", "dEtaWjjH","dPhiWjjH","Muon1_norm_pt","Muon2_norm_pt","RPt"],
     "TTHcat": ["HiggsCandCorrPt", "HT", "nGoodJetsAll","category","Centrality","Jet1_Eta"] + ["PuppiMET_pt", "MetBisectorProj","dPhiMETH"] + [ "WTopJetDiscr","TopMassReco","TopPairChi2","dEta_j1j2","mindR_H_BJet"],
@@ -217,7 +263,7 @@ def make_plots(df):
 
         print(f" → Saved {var}_sig_bkg.png")
 
-def plotCovMatrix(matrixTXT):
+def plotCovMatrix(matrixTXT,sample_name):
 
     df = pd.read_csv(matrixTXT, sep="\t", index_col=0)
 
@@ -250,7 +296,7 @@ def plotCovMatrix(matrixTXT):
     plt.title("Feature Correlation Matrix")
     plt.tight_layout()
 
-    plt.savefig(f"{dir_map[category]}/correlation_matrix_{category}{labelForPNG}.png", dpi=200)
+    plt.savefig(f"{dir_map[category]}/correlation_matrix_{category}_{sample_name}{labelForPNG}.png", dpi=200)
     plt.close()
 
     print("✅ Saved correlation_matrix.png")
@@ -259,35 +305,52 @@ def load_process_class(class_id, variables, drawPlot=False):
 
     # Heavy-lifting in C++ and remote access of data
     df = ROOT.RDataFrame(mytree)
-    df = df.Filter("(HiggsCandCorrMass>(125-20) and HiggsCandCorrMass<(125+20))","HiggsMass within reasonable range 125+-20")
-    # FOR VH - VL - TTH - TTL
-    #df = df.Filter("(HiggsCandCorrMass>(125-25) and HiggsCandCorrMass<(125+25))","HiggsMass within reasonable range 125+-25")
-#    df = df.Define("Muon1_norm_pt", "HiggsCandCorrPt>0 ? Muon1_pt/HiggsCandCorrMass: 0.f")
-#    df = df.Define("Muon2_norm_pt", "HiggsCandCorrPt>0 ? Muon2_pt/HiggsCandCorrMass: 0.f")
-    df = df.Define("Muon1_norm_pt", "HiggsCandCorrPt>0 ? Muon1_pt/HiggsCandCorrPt: 0.f")
-    df = df.Define("Muon2_norm_pt", "HiggsCandCorrPt>0 ? Muon2_pt/HiggsCandCorrPt: 0.f")
+    df = df.Filter("(HiggsCandCorrMass>(110) and HiggsCandCorrMass<(150))","HiggsMass within reasonable range 125+-20") # Run2 selection
+#    df = df.Define("HiggsCandCorrPt_norm", "HiggsCandCorrMass>0 ? HiggsCandCorrPt/HiggsCandCorrMass: 0.f")
+    if category == "TTLcat":
+        df = df.Define("Muon1_norm_pt", "HiggsCandCorrPt>0 ? Muon1_pt/HiggsCandCorrPt: 0.f")
+        df = df.Define("Muon2_norm_pt", "HiggsCandCorrPt>0 ? Muon2_pt/HiggsCandCorrPt: 0.f")
+    else:
+        df = df.Define("Muon1_norm_pt", "HiggsCandCorrMass>0 ? Muon1_pt/HiggsCandCorrMass: 0.f")
+        df = df.Define("Muon2_norm_pt", "HiggsCandCorrMass>0 ? Muon2_pt/HiggsCandCorrMass: 0.f")
+
 #    df = df.Define("log_Mjj", "log(1.+Mjj)")
+    df = df.Define("ptAsy", "(Muon1_pt-Muon2_pt)/(Muon1_pt+Muon2_pt)")
 #    df = df.Define("log_HT", "log(1.+HT)")
 #    df = df.Define("log_MET", "log(1.+PuppiMET_pt)")
 #    df = df.Define("log_HiggsPt", "log(1.+HiggsCandCorrPt)")
 
 
-    if doMultiClass:
+    conditionSig="true"
+    if category == "VLcat" or category == "TTLcat":
+        conditionSig="Muon1_genPartFlav==1 and Muon2_genPartFlav==1 and Lepton_genPartFlav==1"  # this does nothing
+
+    # IMPORTANT: multiclass classID 0-1-signal and 2-3-BKG
+    if doMultiClass and ( category == "VBFcat" or  category == "ggHcat"):
         ids = class_map[category][class_id]
         filt = " || ".join([f"mc == {x}" for x in ids])
 
         df = df.Filter(filt)
 
+    elif doMultiClass and (category == "VLcat" or  category == "TTLcat"):  ## to evolve to subsplit in category
+        ids = class_map[category][class_id]
+        filt = " || ".join([f"mc == {x}" for x in ids])
+
+        df = df.Filter(conditionSig)
+        df = df.Filter(filt)
+
     else:
-        if class_id == 1 and drawPlot: make_plots(df) # only make the plot once
+
+#        if class_id == 1 and drawPlot: make_plots(df) # only make the plot once
 
         sig_ids = signal_map[category]
         bkg_ids = bkg_map[category]
 
+        # IMPORTANT: binary classID 1-signal and 0-BKG
         if class_id == 1:
             sig_filter = " || ".join([f"mc == {mid}" for mid in sig_ids])
             df = df.Filter(sig_filter)
-        elif class_id == 0 and not doMultiClass:
+        elif class_id == 0:
             bkg_filter = " || ".join([f"mc == {mid}" for mid in bkg_ids])
             df = df.Filter(bkg_filter)
         else:
@@ -402,45 +465,163 @@ def overtraining(bdt, train_data, train_labels, train_weights, test_data, test_l
 
     print(f"📊 Saved overtraining to: {outfile}")
 
-def plot_score_vs_mass(bdt, data, variables):
+def plot_mass_correlations(data, variables, bkg_mask):
 
-    # predict signal score
-    if doMultiClass:
-        score = bdt.predict_proba(data[variables].to_numpy())[:,0]
-    else:
-        score = bdt.predict_proba(data[variables].to_numpy())[:,1]
+    corrs = []
+
+    mass = data.loc[bkg_mask, "HiggsCandCorrMass"]
+
+    for v in variables:
+
+        x = data.loc[bkg_mask, v]
+
+        corr = np.corrcoef(x, mass)[0,1]
+
+        corrs.append((v, corr))
+
+    # sort by absolute correlation
+    corrs.sort(key=lambda x: abs(x[1]), reverse=True)
+
+    names  = [x[0] for x in corrs]
+    values = [x[1] for x in corrs]
+
+    plt.figure(figsize=(10,6))
+
+    plt.barh(names, values)
+
+    plt.axvline(0, color="black")
+    plt.xlabel(r"Corr(variable,$m_{\mu\mu}$)")
+    plt.title("Background correlation with dimuon mass")
+
+    plt.tight_layout()
+
+    outfile = (
+        dir_map[category]
+        + f"mass_correlation_bkg_{category}{labelForPNG}.png"
+    )
+
+    plt.savefig(outfile, dpi=200)
+    plt.close()
+
+    print(f"Saved {outfile}")
+
+def plot_score_vs_mass(score, sig_mask, bkg_mask, data):
+
 
     mass = data["HiggsCandCorrMass"].values
 
-    plt.figure(figsize=(8,6))
+    # Check for NaN values
+    valid_mask = ~(np.isnan(score) | np.isnan(mass))
+    score = score[valid_mask]
+    mass = mass[valid_mask]
+    sig_mask = sig_mask[valid_mask]
+    bkg_mask = bkg_mask[valid_mask]
 
-    plt.hist2d(
-        mass,
-        score,
-        bins=[60,50],
-        range=[[105,145],[0,1]]
+    corr_sig = np.corrcoef(score[sig_mask], mass[sig_mask])[0,1]
+    corr_bkg = np.corrcoef(score[bkg_mask], mass[bkg_mask])[0,1]
+
+    print("corr(score,mass) signal =", corr_sig)
+    print("corr(score,mass) bkg    =", corr_bkg)
+
+    plot_mass_correlations(
+        data,
+        variables_map[category] + variables_resolution[category],
+        bkg_mask
     )
 
-    plt.xlabel(r"$m_{\mu\mu}$ [GeV]")
-    plt.ylabel("BDT score")
-    plt.title("BDT score vs Higgs mass")
-    plt.colorbar(label="Events")
+    for name, mask in [("sig", sig_mask), ("bkg", bkg_mask)]:
 
-    outfile = dir_map[category] + f"score_vs_mass_{category}{labelForPNG}.png"
-    plt.tight_layout()
-    plt.savefig(outfile,dpi=200)
-    plt.close()
+        plt.figure(figsize=(8,6))
 
-    print(f"📊 Saved: {outfile}")
+        plt.hist2d(
+            mass[mask],
+            score[mask],
+            bins=[60,50],
+            range=[[105,155],[0,1]]
+        )
 
-def plot_confusion_matrix(bdt, X_test, y_test):
+        plt.xlabel(r"$m_{\mu\mu}$ [GeV]")
+        plt.ylabel("BDT score")
+        plt.title(f"{name}: BDT score vs mass")
+        plt.colorbar(label="Events")
 
-    y_pred = bdt.predict(X_test)
+        outfile = (
+            dir_map[category]
+            + f"score_vs_mass_{name}_{category}{labelForPNG}.png"
+        )
 
-    labels = ["qqH", "ggH", "DY-QCD", "DY-EWK"]
+        plt.tight_layout()
+        plt.savefig(outfile, dpi=200)
+        plt.close()
+
+        print(f"Saved {outfile}")
+
+
+def plot_mass_in_score_bins(score, sig_mask, bkg_mask, data, variables):
+
+    mass = data["HiggsCandCorrMass"].values
+
+    for v in variables:
+
+        corr = np.corrcoef(
+            data.loc[bkg_mask,v],
+        data.loc[bkg_mask,"HiggsCandCorrMass"]
+        )[0,1]
+
+        print(f"{v:25s} {corr: .4f}")
+
+    score_bins = np.arange(0, 1.01, 0.1)
+
+    for name, mask in [("sig", sig_mask), ("bkg", bkg_mask)]:
+
+        plt.figure(figsize=(8,6))
+
+        for low, high in zip(score_bins[:-1], score_bins[1:]):
+
+            sel = (
+                mask
+                & (score >= low)
+                & (score < high)
+            )
+
+            if np.sum(sel) < 10:
+                continue
+
+            plt.hist(
+                mass[sel],
+                bins=60,
+                range=(105,155),
+                density=True,
+                histtype="step",
+                linewidth=1.5,
+                label=f"{low:.1f}-{high:.1f}"
+            )
+
+        plt.xlabel(r"$m_{\mu\mu}$ [GeV]")
+        plt.ylabel("Normalized events")
+        plt.title(f"{category} {name}: mass in score bins")
+        plt.legend(
+            ncol=2,
+            fontsize=8
+        )
+
+        outfile = (
+            dir_map[category]
+            + f"mass_in_score_bins_{name}_{category}{labelForPNG}.png"
+        )
+
+        plt.tight_layout()
+        plt.savefig(outfile, dpi=200)
+        plt.close()
+
+        print(f"Saved {outfile}")
+
+def plot_confusion_matrix(y_true, y_pred, test_weights):
+
+    labels = labels_map[category]
 
     # weighted yields (if desired)
-    cm = confusion_matrix(y_test, y_pred)
+    cm = confusion_matrix(y_true, y_pred)
 
     # normalize rows
     cm_frac = cm.astype(float) / cm.sum(axis=1)[:, np.newaxis]
@@ -449,7 +630,7 @@ def plot_confusion_matrix(bdt, X_test, y_test):
 
     disp = ConfusionMatrixDisplay(
         confusion_matrix=cm_frac,
-        display_labels=labels
+        display_labels=labels,
     )
 
     disp.plot(
@@ -466,30 +647,13 @@ def plot_confusion_matrix(bdt, X_test, y_test):
 
     print("saved:", outfile)
 
-#def diagnostic(bdt,test_data,test_labels,variables):
 def diagnostic(bdt,proba,y_true_binary,variables):                                          
 
-    # Probabilities (what you actually want)
-#    proba = bdt.predict_proba(test_data)
+    P_sig = proba[:, signal_classes].sum(axis=1)
+    P_bkg = proba[:, background_classes].sum(axis=1)
 
-    if doMultiClass:
-        P_vbf  = proba[:,0]
-        P_ggh  = proba[:,1]
-        P_bkga = proba[:,2]
-        P_bkgb = proba[:,3]
-
-        y_score = (P_vbf + P_ggh) / (P_vbf + P_ggh + P_bkga + P_bkgb)
-        y_score = P_vbf / (P_vbf + P_ggh + P_bkga + P_bkgb)
-#        y_score = P_sig / (P_sig + P_bkg1 + P_bkg2 + 1e-12)
-
-    else:
-        P_sig  = proba[:, 1]
-        P_bkg = proba[:, 0]
-        y_score = P_sig / (P_sig + P_bkg + 1e-12)
-
+    y_score = P_sig / (P_sig + P_bkg + 1e-12)
     print("Score range:", y_score.min(), y_score.max())
-    # Convert labels → binary (signal vs all)
-#    y_true_binary = (test_labels == 1).astype(int)
 
     # -------------------------------------------------
     # ROC
@@ -546,15 +710,9 @@ def diagnostic(bdt,proba,y_true_binary,variables):
 
         print(f"📊 Saved feature importance ({imp}) to: {outfile}")
 
-def plot_score_signed_vs_abs(bdt, data, variables):
+def plot_score_signed_vs_abs(score, sig_mask, bkg_mask, data):
 
-    #"this is FULL dataset (sig + bkg + even + odd mixed)"
-    X = data[variables].to_numpy()
-    score = bdt.predict_proba(X)[:,0] if doMultiClass else \
-        bdt.predict_proba(X)[:,1]
-
-    sig = data["target"] == 1
-    bkg = data["target"] == 0
+    # --------
 
     w_signed = data["weight"].values
     w_abs    = np.abs(w_signed)
@@ -564,15 +722,15 @@ def plot_score_signed_vs_abs(bdt, data, variables):
     plt.figure(figsize=(8,6))
 
     # signal
-    plt.hist(score[sig], bins=bins,
-             weights=w_signed[sig],
+    plt.hist(score[sig_mask], bins=bins,
+             weights=w_signed[sig_mask],
              density=True,
              histtype='step',
              linewidth=2,
              label="sig signed")
 
-    plt.hist(score[sig], bins=bins,
-             weights=w_abs[sig],
+    plt.hist(score[sig_mask], bins=bins,
+             weights=w_abs[sig_mask],
              density=True,
              histtype='step',
              linewidth=2,
@@ -580,15 +738,15 @@ def plot_score_signed_vs_abs(bdt, data, variables):
              label="sig abs")
 
     # background
-    plt.hist(score[bkg], bins=bins,
-             weights=w_signed[bkg],
+    plt.hist(score[bkg_mask], bins=bins,
+             weights=w_signed[bkg_mask],
              density=True,
              histtype='step',
              linewidth=2,
              label="bkg signed")
 
-    plt.hist(score[bkg], bins=bins,
-             weights=w_abs[bkg],
+    plt.hist(score[bkg_mask], bins=bins,
+             weights=w_abs[bkg_mask],
              density=True,
              histtype='step',
              linewidth=2,
@@ -610,6 +768,12 @@ def compare_even_odd(score_even, score_odd,
                      y_even, y_odd,
                      w_even, w_odd):
 
+    sig_mask_even = np.isin(y_even, signal_classes)
+    sig_mask_odd  = np.isin(y_odd, signal_classes)
+
+    bkg_mask_even = np.isin(y_even, background_classes)
+    bkg_mask_odd  = np.isin(y_odd, background_classes)
+
     bins = np.linspace(0, 1, 50)
 
     plt.figure(figsize=(8,6))
@@ -617,17 +781,17 @@ def compare_even_odd(score_even, score_odd,
     # -------------------------
     # SIGNAL
     # -------------------------
-    plt.hist(score_even[y_even == 1],
+    plt.hist(score_even[sig_mask_even],
              bins=bins,
-             weights=w_even[y_even == 1],
+             weights=w_even[sig_mask_even],
              density=True,
              histtype='step',
              linewidth=2,
              label="Even (signal)")
 
-    plt.hist(score_odd[y_odd == 1],
+    plt.hist(score_odd[sig_mask_odd],
              bins=bins,
-             weights=w_odd[y_odd == 1],
+             weights=w_odd[sig_mask_odd],
              density=True,
              histtype='step',
              linewidth=2,
@@ -637,17 +801,17 @@ def compare_even_odd(score_even, score_odd,
     # -------------------------
     # BACKGROUND
     # -------------------------
-    plt.hist(score_even[y_even == 0],
+    plt.hist(score_even[bkg_mask_even],
              bins=bins,
-             weights=w_even[y_even == 0],
+             weights=w_even[bkg_mask_even],
              density=True,
              histtype='step',
              linewidth=2,
              label="Even (bkg)")
 
-    plt.hist(score_odd[y_odd==0],
+    plt.hist(score_odd[bkg_mask_odd],
              bins=bins,
-             weights=w_odd[y_odd == 0],             
+             weights=w_odd[bkg_mask_odd],
              density=True,
              histtype='step',
              linewidth=2,
@@ -667,7 +831,7 @@ def compare_even_odd(score_even, score_odd,
     print("saved", outfile)
     
 
-def train_one_fold(data, train_mask, variables, verbose):
+def train_one_fold(data, train_mask, variables, verbose ): #, labelForPNG):
 
     # -------------------------------------------------
     # Split even odd
@@ -691,37 +855,14 @@ def train_one_fold(data, train_mask, variables, verbose):
     train_weights = data.loc[train_mask, "weight_balanced"]
     test_weights  = data.loc[test_mask,  "weight_balanced"]
 
-    print("Sum weights (train):", train_weights.sum())
-    print("Signal weight sum  :", train_weights[train_labels==1].sum())
-    print("Bkg weight sum     :", train_weights[train_labels==0].sum())
+    # ✅ Keep test_data_df for later plotting with proper indexing
+    test_data_df = data.loc[test_mask].copy()
 
-    # -------------------------------------------------
-    # TRAINING: BETTER PARAMETERS FOR CLASS IMBALANCE
-    # -------------------------------------------------
-    ## NOTE: scale_pos_weight is WRONG in multiclass
+    sig_mask = np.isin(test_labels, signal_classes)
+    bkg_mask = np.isin(test_labels, background_classes)
 
-    if not doMultiClass:
-
-        n_signal = (train_labels == 1).sum()
-        n_background = (train_labels == 0).sum()
-        n_total = len(train_labels)
-
-        print(f"Train: {n_signal} signal ({100*n_signal/n_total:.1f}%), {n_background} bkg ({100*n_background/n_total:.1f}%)")
-        print(f"Imbalance: {n_background/n_signal:.3f}")
-
-        scale_pos_weight = n_background / max(n_signal, 1)
-
-        print(f"\n✅ Signal samples: {n_signal}, Background: {n_background}")
-        print(f"✅ Scale pos weight: {scale_pos_weight:.2f}\n")
-
-        params["scale_pos_weight"] = scale_pos_weight
-
-    print("\n" + "="*60)
-    print("CLASS BALANCE DIAGNOSTICS")
-    print("="*60)
-
-    n_signal = (train_labels == 1).sum()
-    n_background = (train_labels == 0).sum()
+    n_signal = sig_mask.sum()
+    n_background = bkg_mask.sum()
     n_total = len(train_labels)
 
     print(f"Train set:")
@@ -730,12 +871,33 @@ def train_one_fold(data, train_mask, variables, verbose):
     print(f"  Background: {n_background} ({100*n_background/n_total:.1f}%)")
     print(f"  Imbalance ratio (bkg/sig): {n_background/max(n_signal,1):.2f}")
 
+    # -------------------------------------------------
+    # TRAINING: BETTER PARAMETERS FOR CLASS IMBALANCE
+    # -------------------------------------------------
+    ## NOTE: scale_pos_weight is WRONG in multiclass
+
+    params_local = params.copy()
+
+    if not doMultiClass:
+        scale_pos_weight = n_background / max(n_signal, 1)
+        params_local["scale_pos_weight"] = scale_pos_weight
+        print(f"✅ Scale pos weight: {scale_pos_weight:.2f}")
+    else:
+        # Ensure it's not set for multiclass
+        params_local.pop("scale_pos_weight", None)
+
+    print("\n" + "="*60)
+    print("CLASS BALANCE DIAGNOSTICS")
+    print("="*60)
+
+
     print(f"\nWeighted balance:")
-    sig_w_sum = train_weights[train_labels == 1].sum()
-    bkg_w_sum = train_weights[train_labels == 0].sum()
+    sig_w_sum = test_weights[sig_mask].sum()
+    bkg_w_sum = test_weights[bkg_mask].sum()
     print(f"  Signal weight sum:     {sig_w_sum:.6f}")
     print(f"  Background weight sum: {bkg_w_sum:.6f}")
     print(f"  Weight ratio: {bkg_w_sum/max(sig_w_sum,1e-8):.2f}")
+
 
     print(f"\nLabel dtype: {train_labels.dtype}")
     print(f"Label unique: {np.unique(train_labels)}")
@@ -785,7 +947,7 @@ def train_one_fold(data, train_mask, variables, verbose):
             elif ks_stat > 0.05 and ks_stat < 0.15: comment='very weak'
             elif ks_stat > 0.15 and ks_stat < 0.30: comment='some discrimination'
             elif ks_stat > 0.30: comment='STRONG'
-            
+
             print(
                 f"{v:20s}",
                 "⟨sig⟩ =", sig.mean(),
@@ -797,14 +959,13 @@ def train_one_fold(data, train_mask, variables, verbose):
         # Sanity checks
         print("Any NaNs in train_data:", train_data.isna().any().any())
         print("Any infs in train_data:", np.isinf(train_data.values).any())
-        
+
         print("Mean train weight:", train_weights.mean())
         print("Min train weight :", train_weights.min())
         print("Max train weight :", train_weights.max())
 
-
     # -------------------------------------------------
-    # TRAIN
+    # TRAINING
     # -------------------------------------------------
 
     train_data = train_data.to_numpy()
@@ -816,7 +977,7 @@ def train_one_fold(data, train_mask, variables, verbose):
     test_weights = test_weights.to_numpy()
 
     eval_set = [(train_data, train_labels), (test_data, test_labels)]
-    bdt = xgb.XGBClassifier(**params)
+    bdt = xgb.XGBClassifier(**params_local)
 
     bdt.fit(train_data, train_labels,
             sample_weight=train_weights,
@@ -830,55 +991,316 @@ def train_one_fold(data, train_mask, variables, verbose):
     print("Training complete.")
 
     if verbose:
-        fOutName = f"output/classification_model_{category}.root"
+        if doMultiClass: fOutName = f"output/classification_model_multiclass_{category}.root"
+        else: fOutName = f"output/classification_model_{category}.root"
         model_name = f"bdt_model_{category}"
         print("variables",variables)
         print("Export model ",model_name)
-        
+
         ROOT.TMVA.Experimental.SaveXGBoost(bdt, model_name, fOutName, num_inputs=len(variables))
         print(f"output written to {fOutName} with name {model_name}")
-        
+
         variables_ = ROOT.TList()
         for var in variables:
             print(var)
             variables_.Add(ROOT.TObjString(var))
         fOut = ROOT.TFile(fOutName, "UPDATE")
         fOut.WriteObject(variables_, "variables")
+        fOut.Close()
         print('FILE SAVED')
-        
+
     # -------------------------------------------------
     # DIAGNOSTIC
     # -------------------------------------------------
 
     if verbose:
-    
+        ## only the main signal
         overtraining(bdt, train_data, train_labels, train_weights, test_data, test_labels, test_weights)
 
-        proba = bdt.predict_proba(test_data)
-
-        if doMultiClass:
-            plot_confusion_matrix(bdt, test_data, test_labels)
-            y_true_binary = (test_labels == 0).astype(int)
-
-        else:
-            y_true_binary = (test_labels == 1).astype(int)
-        diagnostic(bdt,proba,y_true_binary,variables)
+    proba = bdt.predict_proba(test_data)
 
     if doMultiClass:
-        proba = bdt.predict_proba(test_data)
-
-        print("\nMean predicted probs")
-        print("VBF :", proba[:,0].mean())
-        print("ggH :", proba[:,1].mean())
-        print("BKGA:", proba[:,2].mean())
-        print("BKGB:", proba[:,3].mean())
-
-        score = bdt.predict_proba(test_data)[:,0]
-
+        y_true_binary = np.isin(test_labels, signal_classes).astype(int)
+        y_pred = np.argmax(proba, axis=1)
+        plot_confusion_matrix(test_labels, y_pred, test_weights)
     else:
-        score = bdt.predict_proba(test_data)[:,1]
+        y_true_binary = (test_labels == 1).astype(int)
+
+    diagnostic(bdt,proba,y_true_binary,variables)
+
+    # -------------------------------------------------
+    # FINAL SCORE
+    # -------------------------------------------------
+
+    P_sig = proba[:, signal_classes].sum(axis=1)
+    P_bkg = proba[:, background_classes].sum(axis=1)
+
+    score = P_sig
+
+    # -------------------------------------------------
+    # EXTRA FUNCTIONS diagnostic
+    # -------------------------------------------------
+
+    if verbose:
+        plot_score_vs_mass(score, sig_mask, bkg_mask, test_data_df)
+        plot_mass_in_score_bins(score, sig_mask, bkg_mask, test_data_df, variables)
+        plot_score_signed_vs_abs(score, sig_mask, bkg_mask, test_data_df)
 
     return score,test_labels,test_weights,bdt
+
+
+def correlation_diagnostics(train_variables):
+
+    print("\n" + "="*80)
+    print("CORRELATION DIAGNOSTICS")
+    print("="*80)
+
+    variables_hm = (
+        train_variables
+        + ["HiggsCandCorrMass"]
+        + ["HiggsCandMassErr"]
+    )
+
+    # --------------------------
+    # load samples
+    # --------------------------
+
+    if doMultiClass:
+        # Load all classes defined in labels_map
+        num_classes = len(labels_map[category])
+        class_ids_to_load = list(range(num_classes))
+    else:
+        # For binary: load only signal (1) and background (0)
+        class_ids_to_load = [0, 1]
+
+    class_samples = {}
+    for c in class_ids_to_load:
+        print(f"  Loading class {c}...")
+        class_samples[c] = load_process_class(c, variables_hm, False if not doMultiClass else None)
+
+    data = pd.concat(
+        [class_samples[c] for c in class_ids_to_load],
+        ignore_index=True
+    )
+
+    # Create subsamples
+    samples = {
+        "all": data.copy(),
+        "sig": pd.concat(
+            [class_samples[c] for c in class_ids_to_load if c in signal_classes],
+            ignore_index=True
+        ),
+        "bkg": pd.concat(
+            [class_samples[c] for c in class_ids_to_load if c in background_classes],
+            ignore_index=True
+        ),
+    }
+
+    sig_mask = data["target"].isin(signal_classes)
+    bkg_mask = data["target"].isin(background_classes)
+
+
+    # --------------------------
+    # save separately
+    # --------------------------
+
+    for sample_name, df in samples.items():
+
+        print(f"\n--- {sample_name.upper()} ---")
+
+        corr_df = df[variables_hm].corr()
+
+        out_corr = (f"output/correlation_matrix{category}_{sample_name}.txt")
+        corr_df.round(3).to_csv(out_corr,sep="\t")
+        print(f"📐 saved {out_corr}")
+
+        plotCovMatrix(out_corr,sample_name)
+
+        # ----------------------
+        # correlation wrt mass
+        # ----------------------
+
+        print("\nCorrelation with Higgs mass")
+
+        mass_corr = (
+            corr_df["HiggsCandCorrMass"]
+            .drop("HiggsCandCorrMass")
+            .sort_values(
+                key=lambda x: np.abs(x),
+                ascending=False
+            )
+        )
+
+        for v,c in mass_corr.items():
+            print(f"{v:25s} {c:8.4f}")
+
+        print("\nCorrelation with mass error")
+
+        err_corr = (
+            corr_df["HiggsCandMassErr"]
+            .drop("HiggsCandMassErr")
+            .sort_values(
+                key=lambda x: np.abs(x),
+                ascending=False
+            )
+        )
+
+        for v,c in err_corr.items():
+            print(f"{v:25s} {c:8.4f}")
+
+    # --------------------------
+    # feature diagnostics
+    # --------------------------
+
+    print("\n=== FEATURE DIAGNOSTICS ===")
+
+    for v in train_variables:
+
+        x = samples["all"][v].values
+
+        print(f"\n{v}")
+        print("  min:", np.min(x))
+        print("  max:", np.max(x))
+        print("  std:", np.std(x))
+        print("  unique:", len(np.unique(x)))
+
+
+
+def build_training_weights(data,
+                           doMultiClass=False,
+                           flatten_background=True,
+                           signal_sigma_power=1.0,
+                           signal_relative_sigma=True):
+
+    w = data["weight"].abs().to_numpy().clip(min=1e-10)
+
+    weights = w.copy()
+
+def build_training_weights(data,
+                           doMultiClass=False,
+                           flatten_background=True,
+                           signal_sigma_power=1.0,
+                           signal_relative_sigma=True):
+
+    w = data["weight"].abs().to_numpy().clip(min=1e-10)
+    weights = w.copy()
+
+    if doMultiClass:
+        nclass = len(np.unique(data["target"]))
+
+        # ✅ CORRECT: Weight inversely by class frequency
+        class_weights = {}
+        total_weight = 0
+
+        for k in range(nclass):
+            mask = data["target"] == k
+            class_sum = weights[mask].sum()
+            class_weights[k] = 1.0 / max(class_sum, 1e-10)
+            total_weight += class_weights[k]
+
+        # Normalize so average weight across all classes = 1
+        for k in range(nclass):
+            class_weights[k] /= total_weight / nclass
+
+        # Apply per-class weights
+        for k in range(nclass):
+            mask = data["target"] == k
+            weights[mask] *= class_weights[k]
+
+        # Final normalization to mean=1
+        weights /= weights.mean()
+
+        print("✅ Multiclass weights per class:")
+        for k in range(nclass):
+            mask = data["target"] == k
+            print(f"   Class {k}: weight sum = {weights[mask].sum():.2e}")
+
+        return weights
+
+    ###############################################################
+    # for Binary
+
+    sig_mask = data["target"] == 1
+    bkg_mask = data["target"] == 0
+
+    ###############################################################
+    # Signal weighting
+    ###############################################################
+
+    sigma = data["HiggsCandMassErr"].to_numpy()
+
+    sigma_safe = np.where(
+        (sigma <= 0) | (~np.isfinite(sigma)),
+        1e-3,
+        sigma,
+    )
+
+    if signal_relative_sigma:
+
+        mass = data["HiggsCandCorrMass"].to_numpy()
+
+        mass_safe = np.where(
+            (mass <= 0) | (~np.isfinite(mass)),
+            125.,
+            mass,
+        )
+
+        sigma_used = sigma_safe / mass_safe
+
+    else:
+
+        sigma_used = sigma_safe
+
+    weights[sig_mask] *= (
+        1.0 / np.power(sigma_used[sig_mask], signal_sigma_power)
+    )
+
+    ###############################################################
+    # Background flattening
+    ###############################################################
+
+    if flatten_background:
+
+        mass = data["HiggsCandCorrMass"].to_numpy()
+
+        bins = np.linspace(110,150,41)
+
+        hist, edges = np.histogram(
+            mass[bkg_mask],
+            bins=bins,
+            weights=w[bkg_mask]
+        )
+
+        #
+        # smooth to avoid huge fluctuations
+        #
+        hist = gaussian_filter1d(hist.astype(float), sigma=1.5)
+
+        hist = np.maximum(hist,1e-6)
+
+        inv = 1./hist
+
+        #
+        # normalize so average weight = 1
+        #
+        inv *= hist.sum()/np.sum(hist*inv)
+
+        ibin = np.clip(
+            np.digitize(mass,edges)-1,
+            0,
+            len(inv)-1
+        )
+
+        weights[bkg_mask] *= inv[ibin][bkg_mask]
+
+    ###############################################################
+    # Final normalization
+    ###############################################################
+
+    weights[sig_mask] /= weights[sig_mask].mean()
+    weights[bkg_mask] /= weights[bkg_mask].mean()
+
+    return weights
 
 def _test_XGB_class(label):
 
@@ -892,146 +1314,61 @@ def _test_XGB_class(label):
 
     variables = train_variables + aux_variables
 
-    sig_df = load_process_class(1,  variables, False)
+    # --------------------------
+    # load samples
+    # --------------------------
+
     if doMultiClass:
-        c0 = load_process_class(0, variables)
-        c1 = load_process_class(1, variables)
-        c2 = load_process_class(2, variables)
-        c3 = load_process_class(3, variables)
-        data = pd.concat([c0,c1,c2,c3], ignore_index=True)
-
+        num_classes = len(labels_map[category])
+        class_ids_to_load = list(range(num_classes))
     else:
-        bkg_df = load_process_class(0, variables, False)
-        data = pd.concat([sig_df, bkg_df], ignore_index=True)
+        class_ids_to_load = [0, 1]  # binary: signal and background only
 
-#    data = data.sample(frac=1, random_state=42)
-#    data["event"] = np.arange(len(data))
+    class_samples = {}
+    for c in class_ids_to_load:
+        class_samples[c] = load_process_class(c, variables, False if not doMultiClass else None)
+
+    data = pd.concat(
+        [class_samples[c] for c in class_ids_to_load],
+        ignore_index=True
+    )
+
+    ## full dataset
+    sig_mask = data["target"].isin(signal_classes)
+    bkg_mask = data["target"].isin(background_classes)
 
     # -------------------------------------------------
     # WEIGHTS: SIMPLER APPROACH
     # -------------------------------------------------
-    if doMultiClass:
-        sig_mask = data["target"].values == 0
-        bkg1_mask = data["target"].values == 1
-        bkg2_mask = data["target"].values == 2
-        bkg3_mask = data["target"].values == 3
-
-    else:
-        sig_mask = data["target"] == 1
-        bkg_mask = data["target"] == 0
 
     w = data["weight"].abs().clip(lower=1e-10)
 
-    if False:
+    data["weight_balanced"] = build_training_weights(
+        data,
+        doMultiClass=doMultiClass,
+        flatten_background=False,
+        signal_sigma_power=1,
+        signal_relative_sigma=True,
+    )
 
-        # Normalize per class to mean=1
-        sig_avg = w[sig_mask].mean()
-        bkg_avg = w[bkg_mask].mean()
+    print("\n" + "="*60)
+    print("WEIGHT DIAGNOSTICS (AFTER SCALING)")
+    print("="*60)
 
-        data.loc[sig_mask, "weight_balanced"] = w[sig_mask] / sig_avg
-        data.loc[bkg_mask, "weight_balanced"] = w[bkg_mask] / bkg_avg
-
-    else:
-
-        if True:
-            # Apply mass error weighting: 1 / sigma^2
-            sigma = data["HiggsCandMassErr"].values
-            sigma_safe = np.where((sigma <= 0) | (~np.isfinite(sigma)), 1e-3, sigma)
-            w_with_sigma = w / (sigma_safe ** 2)
-#            w_with_sigma = w / (sigma_safe)
-
-        else:
-            sigma = data["HiggsCandMassErr"].values
-            mass  = data["HiggsCandCorrMass"].values
-
-            sigma_safe = np.where(
-                (sigma <= 0) | (~np.isfinite(sigma)),
-                1e-3,
-                sigma
-            )
-
-            mass_safe = np.where(
-                (mass <= 0) | (~np.isfinite(mass)),
-                125.0,
-                mass
-            )
-
-            rel_sigma = sigma_safe / mass_safe
-            w_with_sigma = w / (rel_sigma ** 2)
-
-        # Weight by mass resolution: events with better resolution get higher weight
-        w_with_sigma = w_with_sigma.clip(lower=1e-10)  # Safety
-
-        if doMultiClass:
-
-            w_balanced = np.zeros_like(w)
-
-            for k in range(4):
-                mask = data["target"] == k
-                avg = w[mask].mean()
-                w_balanced[mask] = w[mask] / avg
-
-            data["weight_balanced"] = w_balanced
-
-        else:
-            # Normalize per class to mean=1
-            sig_avg = w_with_sigma[sig_mask].mean()
-            bkg_avg = w_with_sigma[bkg_mask].mean()
-
-            data.loc[sig_mask, "weight_balanced"] = w_with_sigma[sig_mask] / sig_avg
-            data.loc[bkg_mask, "weight_balanced"] = w_with_sigma[bkg_mask] / bkg_avg
-
-            print("\n" + "="*60)
-            print("WEIGHT DIAGNOSTICS (AFTER SCALING)")
-            print("="*60)
-
-            train_weights_temp = data["weight_balanced"]
-            print(f"Scaled weight range: {train_weights_temp.min():.2e} to {train_weights_temp.max():.2e}")
-            print(f"Scaled weight mean: {train_weights_temp.mean():.2e}")
-            print(f"Signal weight avg: {train_weights_temp[sig_mask].mean():.4f}")
-            print(f"Bkg weight avg: {train_weights_temp[bkg_mask].mean():.4f}")
-            print(f"Signal weight sum: {train_weights_temp[sig_mask].sum():.2e}")
-            print(f"Bkg weight sum: {train_weights_temp[bkg_mask].sum():.2e}")
-            print("="*60 + "\n")
-
+    train_weights_temp = data["weight_balanced"]
+    print(f"Scaled weight range: {train_weights_temp.min():.2e} to {train_weights_temp.max():.2e}")
+    print(f"Scaled weight mean: {train_weights_temp.mean():.2e}")
+    print(f"Signal weight avg: {train_weights_temp[sig_mask].mean():.4f}")
+    print(f"Bkg weight avg: {train_weights_temp[bkg_mask].mean():.4f}")
+    print(f"Signal weight sum: {train_weights_temp[sig_mask].sum():.2e}")
+    print(f"Bkg weight sum: {train_weights_temp[bkg_mask].sum():.2e}")
+    print("="*60 + "\n")
 
     # -------------------------------------------------
     # Correlation check with HiggsCandCorrMass
     # -------------------------------------------------
 
-    variables_hm = train_variables + ["HiggsCandCorrMass", "HiggsCandMassErr"]
-
-    sig_df_hm = load_process_class(1,  variables_hm, True)
-    bkg_df_hm = load_process_class(0, variables_hm, False) ## NOTE: need to be updated for the multiclasee
-
-    data_hm = pd.concat([sig_df_hm, bkg_df_hm], ignore_index=True)
-    data_hm["event"] = np.arange(len(data_hm))
-
-    train_mask_hm = (data_hm["event"] % 2 == 0)
-
-    train_hm = data_hm.loc[train_mask_hm, variables_hm].to_numpy()
-
-    corr = np.corrcoef(train_hm, rowvar=False)
-    corr_df = pd.DataFrame(corr, index=variables_hm, columns=variables_hm).round(3)
-
-    out_corr = f"output/correlation_matrix{category}.txt"
-    corr_df.to_csv(out_corr, sep="\t")
-    # TO DO: this is mixed SIG-BKG correlation, split SIG and BKG
-
-    print(f"📐 Correlation matrix saved to {out_corr}")
-
-    plotCovMatrix(out_corr)
-
-    print("=== FEATURE DIAGNOSTICS ===")
-
-    for i, v in enumerate(variables_hm):
-        col = train_hm[:, i]
-
-        print(v)
-        print("  min:", np.min(col))
-        print("  max:", np.max(col))
-        print("  std:", np.std(col))
-        print("  unique (approx):", len(np.unique(col)))
+    correlation_diagnostics(train_variables)
 
     ###
     # -------------------------
@@ -1039,21 +1376,12 @@ def _test_XGB_class(label):
     print("Start training in 632")
 
     variables = [v.strip().strip("'").strip('"') for v in train_variables]
-    score_even, y_even, w_even, bdt_even = train_one_fold(data, data["event"] % 2 == 0, train_variables, True)
+    score_odd, y_odd, w_odd, bdt_odd  = train_one_fold(data, data["event"] % 2 == 1, train_variables, False ) #, labelForPNG)
+    score_even, y_even, w_even, bdt_even = train_one_fold(data, data["event"] % 2 == 0, train_variables, True ) #, labelForPNG)
 
-    score_odd, y_odd, w_odd, bdt_odd  = train_one_fold(data, data["event"] % 2 == 1, train_variables, False)
-
-    # -------------------------------------------------
-    # EXTRA FUNCTIONS
-    # -------------------------------------------------
-
-    mass_df = pd.concat([sig_df_hm, bkg_df_hm], ignore_index=True)
-    plot_score_vs_mass(bdt_even, mass_df, train_variables)
-
-    plot_score_signed_vs_abs(bdt_even, data, train_variables)
-
+    # below score is ok, but  not yet ok for multiclass
     compare_even_odd(score_even, score_odd, y_even, y_odd, w_even, w_odd)
-    
+
 if __name__ == "__main__":
 
     _test_XGB_class("default")

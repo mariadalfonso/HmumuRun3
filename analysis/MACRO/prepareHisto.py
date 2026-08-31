@@ -31,19 +31,20 @@ lumis={
     '_12018': 39.54,
     '_all': 86.92,      #19.52 + 7.7 + 59.70
     '_Run2': 138.,      #19.52 + 7.7 + 59.70
-    '_12022':7.98, # C-D
-    '_22022':26.67, # E, F, G
-    '_12023':17.794, #C
-    '_22023':9.451, #D
-    '_2024':109.95, #C-I
-    '_12024':26.52, #CDE
-    '_22024':82.44, #FGHI
-    '_2025':110.73,
-    '_2025C':20.78, #C
-    '_2025D':25.29, #D
-    '_2025E':14.00, #E
-    '_2025F':30.35, #F
-    '_2025G':25.23, #G
+    #
+    '12022':7.99, # C-D
+    '22022':26.68, # E, F, G
+    '12023':17.96, # C
+    '22023':9.68, # D
+    '2024':109.82, # C-I
+    '2025':110.59, # C-G
+    '2026':25.31 # C, B
+    #
+    '_2025C':21.63, #C
+    '_2025D':25.52, #D
+    '_2025E':14.15, #E
+    '_2025F':26.89, #F
+    '_2025G':22.40, #G
 }
 
 def deltaPhi(phi1,phi2):
@@ -60,6 +61,38 @@ float deltaPhi(float phi1, float phi2) {
     return abs(dphi);
 }
 """)
+
+
+def addOverflow(h, addUnderflow=False):
+    nb = h.GetNbinsX()
+
+    # Overflow -> last visible bin
+    h.SetBinContent(
+        nb,
+        h.GetBinContent(nb) + h.GetBinContent(nb + 1)
+    )
+    h.SetBinError(
+        nb,
+        (h.GetBinError(nb)**2 + h.GetBinError(nb + 1)**2)**0.5
+    )
+
+    if addUnderflow:
+        h.SetBinContent(
+            1,
+            h.GetBinContent(1) + h.GetBinContent(0)
+        )
+        h.SetBinError(
+            1,
+            (h.GetBinError(1)**2 + h.GetBinError(0)**2)**0.5
+        )
+
+    # Optional: clear overflow/underflow
+    h.SetBinContent(nb + 1, 0.)
+    h.SetBinError(nb + 1, 0.)
+
+    if addUnderflow:
+        h.SetBinContent(0, 0.)
+        h.SetBinError(0, 0.)
 
 
 # Create the plot
@@ -106,7 +139,7 @@ violet = (181 ,100, 227)
 from LoadTree import hmumu, hzgamma, hww
 from LoadTree import dy_2223,dy_24,dy_pt2223,dy_pt24,dy_minllo,dy_j
 from LoadTree import dyewk
-from LoadTree import vv,tt2l,ttV,top
+from LoadTree import vv,tt2l,ttV2223,ttV24,top
 
 def make_filter(ids):
     return " || ".join([f"mc=={x}" for x in ids])
@@ -157,6 +190,9 @@ def getHisto(mytree, category, item, year, nbin, low, high):
    if item == 107 : var = "jetVBF2_Eta"
    if item == 108 : var = "jetVBF1_Phi"
    if item == 109 : var = "jetVBF2_Phi"
+   if item == 110 : var = "deltaRJet1H"
+   if item == 111 : var = "jetVBF1_dPhiMET"
+   if item == 112 : var = "jetVBF2_dPhiMET"
 
    # for VH lep
    if item == 201: var = "Lepton_Pt"
@@ -189,6 +225,8 @@ def getHisto(mytree, category, item, year, nbin, low, high):
    if item == 268: var = "dEta_j1j2"
    if item == 269: var = "mindR_H_BJet"
    if item == 270: var = "mindR_H_AnyJet"
+   if item == 271: var = "LeadBJetPt"
+   if item == 272: var = "nGoodJetsTrk"
 
    # for ZinvH
    if item == 301: var = "PuppiMET_pt"
@@ -201,21 +239,44 @@ def getHisto(mytree, category, item, year, nbin, low, high):
    ## FILL the histograms
    ## -------------------
 
-   selectionMVA = "true"
+   selectionReg = "true"
+
+   #ZCR
+   #selectionReg = "HiggsCandCorrMass>70 and HiggsCandCorrMass<110"
+   #HiggsSideband
+   #selectionReg = "(HiggsCandCorrMass>110 and HiggsCandCorrMass<115) or ((HiggsCandCorrMass>135 and HiggsCandCorrMass<150))"
 
    # fit range
    #selectionMVA = "HiggsCandCorrMass>110 and HiggsCandCorrMass<150"
 
-   #ZCR
-   #selectionMVA = "HiggsCandCorrMass>70 and HiggsCandCorrMass<110"
-   #HiggsSideband
-   #selectionMVA = "(HiggsCandCorrMass>110 and HiggsCandCorrMass<115) or ((HiggsCandCorrMass>125 and HiggsCandCorrMass<135))"   
+   selectionMVA = "true"
+   if item == 99 :
+       print(category)
+       if category in ['ggHcat']: selectionMVA = '(var<0.5)'
+       if category in ['VBFcat']: selectionMVA = '(var<0.64)'
+       if category in ['VLcat']: selectionMVA = '(var<0.32)'
+       if category in ['VHcat']: selectionMVA = '(var<0.86)'
+       if category in ['TTHcat']: selectionMVA = '(var<0.80)'
+       if category in ['Zinvcat']: selectionMVA = '(var<0.78)'
    
    if item == 99 :
        print(category)
 
+   # DY pT reweighting
+   ggHcorr = "(mc==100 || mc==103 || mc==104 || mc==109) ? boson_ptWeight : 1."
+
+   # year-dependent normalization
+   if year == "_2025":
+       norm = "(mc>0) ? (110.59/109.82) : 1."
+   elif year == "_2026":
+       norm = "(mc>0) ? (25.31/109.82) : 1."
+   else:
+       norm = "1."
+
    weightSTD = "w_allSF"
-   df_common = df.Define("var","{}".format(var)).Define("weight","{}".format(weightSTD)).Filter(selectionMVA)
+   weightExpr = f"{weightSTD} * ({ggHcorr}) * ({norm})"
+
+   df_common = df.Define("var","{}".format(var)).Define("weight","{}".format(weightExpr)).Filter(selectionReg)
 
    #.Filter(selection)
    #.Filter("int(category)==3")
@@ -223,7 +284,7 @@ def getHisto(mytree, category, item, year, nbin, low, high):
    hDY = df_common.Filter(make_filter(dy_2223+dy_24+dy_pt2223+dy_pt24+dy_minllo+dy_j)).Histo1D(("hDY","h",nbin, low, high),"var","weight")
    hEWK = df_common.Filter(make_filter(dyewk)).Histo1D(("hEWK","h",nbin, low, high),"var","weight")
    hTT2L = df_common.Filter(make_filter(tt2l)).Histo1D(("hTT2L","h",nbin, low, high),"var","weight")
-   hTop = df_common.Filter(make_filter(top + ttV)).Histo1D(("hTop","h",nbin, low, high),"var","weight")
+   hTop = df_common.Filter(make_filter(top + ttV2223 + ttV24)).Histo1D(("hTop","h",nbin, low, high),"var","weight")
    hVV = df_common.Filter(make_filter(vv)).Histo1D(("hVV","h",nbin, low, high),"var","weight")
 
    hVBFH = df_common.Filter("(mc==10)").Histo1D(("hVBFH","h",nbin, low, high),"var","weight")
@@ -245,12 +306,14 @@ def getHisto(mytree, category, item, year, nbin, low, high):
    if hData: hData.SetMarkerSize(1.2)
    if hData: hData.SetLineWidth(2)      
    if hData: hData.SetLineColor(ROOT.kBlack)
+   if hData: addOverflow(hData)
 
    for h, color in zip([hDY, hTT2L, hTop, hVV, hEWK, hVBFH, hggH, hWH, hZH, hTTH, hZg], [azure, green, greenDark, orange, gold,redMed, redDark, redLight, redLight, redDark, orangeDark]):
        if h:
            h.SetLineWidth(3)
            h.SetLineColor(ROOT.TColor.GetColor(*color))
            h.SetFillColor(ROOT.TColor.GetColor(*color))
+           addOverflow(h)
 
    if hData: hData_ = MyHisto('hData', hData)
    #

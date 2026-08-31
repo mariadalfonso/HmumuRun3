@@ -6,6 +6,7 @@ using Vec_d = ROOT::VecOps::RVec<double>;
 using Vec_f = ROOT::VecOps::RVec<float>;
 using Vec_i = ROOT::VecOps::RVec<int>;
 using Vec_ui = ROOT::VecOps::RVec<unsigned int>;
+using Vec_s = ROOT::VecOps::RVec<short>;
 
 using stdVec_i = std::vector<int>;
 using stdVec_b = std::vector<bool>;
@@ -235,13 +236,51 @@ std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLor
 // above generic RDF analysis functinos
 // below analysis oriented functions
 
+
+float getGenPart_boson(Vec_f & GenPart_xyz, Vec_i & GenPart_status, Vec_i & GenPart_pdgId, Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
+
+  // this only works for Z
+
+  const size_t n = GenPart_pdgId.size();
+
+  for (size_t i = 0; i < n; ++i) {
+
+    if (std::abs(GenPart_pdgId[i]) != 13)
+      continue;
+
+    int mother1 = GenPart_genPartIdxMother[i];
+    if (mother1 < 0 || mother1 >= (int)n)
+      continue;
+
+    if (GenPart_pdgId[mother1] != typeBos)
+      continue;
+
+    for (size_t j = i + 1; j < n; ++j) {
+
+      if (GenPart_pdgId[i] + GenPart_pdgId[j] != 0)
+	continue;
+
+      int mother2 = GenPart_genPartIdxMother[j];
+
+      if (mother1 != mother2)
+	continue;
+
+      return GenPart_xyz[mother1];
+    }
+  }
+
+  return -999.f;
+
+}
+
 float getLHEPart_boson(Vec_f & LHEPart_xyz, Vec_i & LHEPart_status, Vec_i & LHEPart_pdgId, int typeBos=24) {
 
-  float var = -1;
+  float var = -999.;
   for (unsigned int j = 0; j < LHEPart_xyz.size(); ++j) {
 
     if(typeBos == 25 && abs(LHEPart_pdgId[j])==25 ) var = LHEPart_xyz[j];
-    else if ( abs(LHEPart_pdgId[j])==23 || abs(LHEPart_pdgId[j])==24 ) var = LHEPart_xyz[j]; 
+    else if ( typeBos == 23 && abs(LHEPart_pdgId[j])==23 ) var = LHEPart_xyz[j];
+    else if ( typeBos == 24 && abs(LHEPart_pdgId[j])==24 ) var = LHEPart_xyz[j];
 
   }
   return var;
@@ -577,8 +616,11 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
   else if (n == 2)  {
     // target hadronic final state
 
-    if (charges[0]*charges[1]>0) {idx_[0] = -1; idx_[1] = -1; } // looking for OS
-    idx_[0] = 0; idx_[1] = 1;
+    if (charges[0]*charges[1] > 0) {
+        return idx_;
+    }
+    idx_[0]=0;
+    idx_[1]=1;
 
   } else if (n == 4 and mode=="isVlep") {
     // target Z-->mumu and H--> mumu
@@ -798,6 +840,175 @@ float metBisectorProjection(const TLorentzVector& mu1,
     // projection perpendicular to bisector
     //    TVector2 perp(-bis.Y(), bis.X());
     //    return metvec * perp;
+
+}
+
+Vec_f DeltaRToJets(const TLorentzVector& obj,
+		   const Vec_f& pt,
+		   const Vec_f& eta,
+		   const Vec_f& phi)
+{
+    Vec_f out;
+
+    for (size_t i=0; i<pt.size(); ++i){
+        TLorentzVector j;
+        j.SetPtEtaPhiM(pt[i], eta[i], phi[i], 0.);
+        out.push_back(obj.DeltaR(j));
+    }
+
+    return out;
+}
+
+float MinDeltaRToJets(const TLorentzVector& obj,
+                      const Vec_f& pt,
+                      const Vec_f& eta,
+                      const Vec_f& phi)
+{
+    float mindr = 999.;
+
+    for (size_t i=0; i<pt.size(); ++i){
+        TLorentzVector j;
+        j.SetPtEtaPhiM(pt[i], eta[i], phi[i], 0.);
+        float dr = obj.DeltaR(j);
+        if (dr < mindr) mindr = dr;
+    }
+
+    return (pt.size()>0 ? mindr : -1.f);
+}
+
+float bestTopMass(const Vec_f& pt,
+                  const Vec_f& eta,
+                  const Vec_f& phi)
+{
+
+  float best=999.;
+  float target=172.5;
+
+  for(size_t i=0;i<pt.size();++i)
+   for(size_t j=i+1;j<pt.size();++j)
+    for(size_t k=j+1;k<pt.size();++k){
+
+      TLorentzVector a,b,c;
+      a.SetPtEtaPhiM(pt[i],eta[i],phi[i],0);
+      b.SetPtEtaPhiM(pt[j],eta[j],phi[j],0);
+      c.SetPtEtaPhiM(pt[k],eta[k],phi[k],0);
+
+      float m=(a+b+c).M();
+      if (fabs(m-target)<fabs(best-target))
+          best=m;
+   }
+
+  return best<999 ? best : -1;
+}
+
+float topPairChi2(const Vec_f& pt,
+                  const Vec_f& eta,
+                  const Vec_f& phi)
+{
+
+    const float mt0  = 172.5;
+    const float mW0  = 80.4;
+    const float sigT = 20.;
+    const float sigW = 10.;
+
+    int N = pt.size();
+    if (N < 5) return -1.;
+
+    auto J = [&](int i){
+        TLorentzVector v;
+        v.SetPtEtaPhiM(pt[i], eta[i], phi[i], 0.);
+        return v;
+    };
+
+    float best = 1e9;
+
+    //
+    // -------- case N >= 6 : two tops
+    //
+    if (N >= 6){
+
+        for (int a=0;a<N;a++)
+        for (int b=a+1;b<N;b++)
+        for (int c=b+1;c<N;c++)
+        {
+            std::vector<int> rem;
+            for (int x=0;x<N;x++)
+                if (x!=a && x!=b && x!=c) rem.push_back(x);
+
+            for (int d0=0; d0<(int)rem.size(); d0++)
+            for (int d1=d0+1; d1<(int)rem.size(); d1++)
+            for (int d2=d1+1; d2<(int)rem.size(); d2++)
+            {
+                int d=rem[d0], e=rem[d1], f=rem[d2];
+
+                auto ja=J(a), jb=J(b), jc=J(c);
+                auto jd=J(d), je=J(e), jf=J(f);
+
+                float mt1=(ja+jb+jc).M();
+                float mt2=(jd+je+jf).M();
+
+                float dW1 = std::min({
+                    fabs((ja+jb).M()-mW0),
+                    fabs((ja+jc).M()-mW0),
+                    fabs((jb+jc).M()-mW0)
+                });
+
+                float dW2 = std::min({
+                    fabs((jd+je).M()-mW0),
+                    fabs((jd+jf).M()-mW0),
+                    fabs((je+jf).M()-mW0)
+                });
+
+                float chi2 =
+                    pow((mt1-mt0)/sigT,2) +
+                    pow((mt2-mt0)/sigT,2) +
+                    pow(dW1/sigW,2) +
+                    pow(dW2/sigW,2);
+
+                if (chi2 < best) best = chi2;
+            }
+        }
+    }
+
+    //
+    // -------- case N == 5 : one top + one W
+    //
+    if (N == 5){
+
+        for (int a=0;a<N;a++)
+        for (int b=a+1;b<N;b++)
+        for (int c=b+1;c<N;c++)
+        {
+            std::vector<int> rem;
+            for (int x=0;x<N;x++)
+                if (x!=a && x!=b && x!=c) rem.push_back(x);
+
+            int d = rem[0];
+            int e = rem[1];
+
+            auto ja=J(a), jb=J(b), jc=J(c);
+            auto jd=J(d), je=J(e);
+
+            float mt = (ja+jb+jc).M();
+
+            float dWtop = std::min({
+                fabs((ja+jb).M()-mW0),
+                fabs((ja+jc).M()-mW0),
+                fabs((jb+jc).M()-mW0)
+            });
+
+            float dWrem = fabs((jd+je).M()-mW0);
+
+            float chi2 =
+                pow((mt-mt0)/sigT,2) +
+                pow(dWtop/sigW,2) +
+                pow(dWrem/sigW,2);
+
+            if (chi2 < best) best = chi2;
+        }
+    }
+
+    return best;
 
 }
 

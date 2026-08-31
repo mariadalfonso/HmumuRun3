@@ -28,7 +28,8 @@ hmumu   = [f"{i}" for i in range(10, 16)]       # 10–15
 hzgamma = [f"{i}" for i in range(20, 27)]       # 20-26
 hww     = [f"{i}" for i in range(30, 38)]       # 30–37
 vv      = [f"{i}" for i in range(201, 207)] + [f"{i}" for i in range(213, 217)]  # 201–206, 213–216
-ttV     = [f"{i}" for i in range(221, 238)]
+ttV24   = [f"{i}" for i in range(221, 238)] + ["249"]
+ttV2223 = [f"{i}" for i in range(221, 235)] + [f"{i}" for i in range(236, 240)] + ["246", "247", "248"]
 tt2l    = ["140"]
 top     = ["105", "106", "107"]
 dyewk   = ["101"]
@@ -50,9 +51,10 @@ def loadTree(mytree, directory_, category, year ):
         "_12023": ["-23", "-24"],
         "_22023": ["-31", "-32"],
         "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 … -54
-        "_12024" : [str(i) for i in range(-41, -47, -1)],  # -41 … -46
-        "_22024" : [str(i) for i in range(-47, -55, -1)],  # -47 … -54
+        "_12024" : [str(i) for i in range(-41, -47, -1)], # -41 … -46
+        "_22024" : [str(i) for i in range(-47, -55, -1)], # -47 … -54
         "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 … -72
+        "_2026" : [str(i) for i in range(-81, -89, -1)],  # -81 … -88
     }
 
     print(data_samples[year])
@@ -67,6 +69,7 @@ def loadTree(mytree, directory_, category, year ):
     if year == '_12024': year = '_2024'
     if year == '_22024': year = '_2024'
     if year == '_2025': year = '_2024'
+    if year == '_2026': year = '_2024'
 
     # Add Hmumu
     for tag in hmumu:
@@ -118,7 +121,11 @@ def loadTree(mytree, directory_, category, year ):
         safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
     # Add TTV
-    for tag in ttV:
-        safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
+    if year in {"_12022", "_22022", "_12023", "_22023"}:
+        for tag in ttV2223:
+            safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
+    elif year in {"_2024"}:
+        for tag in ttV24:
+            safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
     return mytree

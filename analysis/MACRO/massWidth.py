@@ -11,16 +11,15 @@ xvals = [0, 1, 2]
 xlabels = ["bdt0", "bdt1", "bdt2"]
 
 data = {
-    "ggH" : [1.621, 1.415, 1.087],
-    "VBF" : [1.600, 1.554, 1.517],
+    "ggH" : [1.77, 1.369, 1.31],
+    "VBF" : [1.7, 1.56, 1.46],
     #
-    "TTH" : [1.517, 1.561, 1.739],
-    "TTL" : [1.599, 1.643, 1.457],
+    "TTH" : [1.6, 1.6, 1.8],
+    "TTL" : [1.7, 1.6],
     #
-    "VH"  : [1.838, 1.962, 1.904],
-    "VL"  : [1.676, 1.603, 1.723],
-    "Zinv": [1.647, 1.705, 1.912],
-    
+    "VH"  : [1.9, 1.6, 1.9],
+    "VL"  : [2.0, 1.6, 1.5],
+    "Zinv": [1.8, 1.8, 1.9],
 }
 
 colors = [
@@ -43,8 +42,8 @@ colors = [
 c = ROOT.TCanvas("c", "Mass width", 900, 700)
 
 frame = ROOT.TH1F("frame", ";BDT category;Mass width [GeV]", 3, -0.5, 2.5)
-frame.SetMinimum(0.9)
-frame.SetMaximum(2.1)
+frame.SetMinimum(1.)
+frame.SetMaximum(2.5)
 
 for i, lab in enumerate(xlabels):
     frame.GetXaxis().SetBinLabel(i+1, lab)
@@ -62,9 +61,10 @@ graphs = []
 
 for ic, (name, vals) in enumerate(data.items()):
 
-    g = ROOT.TGraph(3)
+    n = len(vals)
+    g = ROOT.TGraph(n)
 
-    for i in range(3):
+    for i in range(n):
         g.SetPoint(i, xvals[i], vals[i])
 
     g.SetLineColor(colors[ic])
@@ -86,7 +86,7 @@ txt.SetNDC()
 txt.SetTextSize(0.04)
 txt.DrawLatex(0.15, 0.92, "Run3")
 
-c.SaveAs("~/public_html/HMUMU_FITS/MAY/massWidth_vs_BDT.png")
-c.SaveAs("~/public_html/HMUMU_FITS/MAY/massWidth_vs_BDT.pdf")
+c.SaveAs("~/public_html/HMUMU_FITS/JUL14/massWidth_vs_BDT_jul14.png")
+c.SaveAs("~/public_html/HMUMU_FITS/JUL14/massWidth_vs_BDT_jul14.pdf")
 
 #input("enter")
