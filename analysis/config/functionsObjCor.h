@@ -29,6 +29,17 @@ Vec_f computeMUcorrection(Vec_f mu_pt, Vec_f mu_eta, Vec_f mu_phi, Vec_i mu_char
 }
 */
 
+/*
+float computeHiggsPtCorrection(float HTXS_Higgs_pt, unsigned char HTXS_njets30){
+
+  float myCorr = csetH->at("nnlops_powheg_ratio_run3")->evaluate({HTXS_Higgs_pt,HTXS_njets30});
+  float new_pt = HTXS_Higgs_pt * myCorr;
+
+  return new_pt;
+
+}
+*/
+
 //on the Z
 float computeDYturbo(float boson_genPt, float boson_genMass){
 
@@ -72,6 +83,7 @@ Vec_f computeLeptonJetPtRatio(
     return out;
 }
 
+/*
 Vec_f reshapeBTVdiscr(MyCorrections corrSFs, Vec_f Jet_btagRobustParTAK4B, Vec_f Jet_partonFlavour, Vec_f Jet_eta, Vec_f Jet_pt, bool isData) {
 
   if (isData) return Jet_btagRobustParTAK4B; // do nothing
@@ -86,6 +98,7 @@ Vec_f reshapeBTVdiscr(MyCorrections corrSFs, Vec_f Jet_btagRobustParTAK4B, Vec_f
   return new_discr;
 
 }
+*/
 
 Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta, Vec_f ele_r9, Vec_f ele_gain, float event, float run, bool isData, string year){
 
@@ -139,8 +152,8 @@ Vec_b cleaningJetVetoMapMask(const Vec_f& jet_eta, const Vec_f& jet_phi, const s
 Vec_b cleaningJetIDMask(Vec_f jet_eta, Vec_f jet_chHEF, Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_neEmEF, Vec_f jet_muEF, Vec_f jet_chMultiplicity, Vec_f jet_neMultiplicity, string year) {                                                                                                                                                                                
   Vec_b jetID_mask(jet_eta.size(), true);                                                                                                                                             
   for (unsigned int idx = 0; idx < jet_eta.size(); ++idx) {                                                                                                                           
-    double jetID = corr_sf.eval_jetID(jet_eta[idx], jet_chHEF[idx], jet_neHEF[idx], jet_chEmEF[idx], jet_neEmEF[idx], jet_muEF[idx], jet_chMultiplicity[idx], jet_neMultiplicity[idx]); 
-    if (jetID < 0) jetID_mask[idx] = false;                                                                                                                                             
+    int jetID = corr_sf.eval_jetID(jet_eta[idx], jet_chHEF[idx], jet_neHEF[idx], jet_chEmEF[idx], jet_neEmEF[idx], jet_muEF[idx], jet_chMultiplicity[idx], jet_neMultiplicity[idx]); 
+    if (jetID == 0 ) jetID_mask[idx] = false;
   }                                                                                                                                                                                   
   return jetID_mask;                                                                                                                                                                  
 }

@@ -693,7 +693,7 @@ def analysis(files,year,mc,sumW):
 
     if mode == "isVBF":
         df = (df.Define("minDetaDiMuVBF","minDeta(HiggsCandCorrRapidity, jetVBF1_Eta, jetVBF2_Eta)")
-              .Define("minDphiDiMuVBF","minDphi(HiggsCandCorrPhi, jetVBF1_Eta, jetVBF2_Eta)")
+              .Define("minDphiDiMuVBF","minDphi(HiggsCandCorrPhi, jetVBF1_Phi, jetVBF2_Phi)")
               .Define("ZepVar","getZep(HiggsCandCorrRapidity, jetVBF1_Eta, jetVBF2_Eta)") # should I pass the Jet.rapidity() and has very large values
               .Define("CenEta","getEtaCen(HiggsCandCorrRapidity, jetVBF1_Eta, jetVBF2_Eta)")
               )

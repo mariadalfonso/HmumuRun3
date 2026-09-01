@@ -107,8 +107,8 @@ MyCorrections::MyCorrections(int year) {
   if(year == 2024) fileNameLUM = dirName+"LUM/"+subDirName+"puWeights_BCDEFGHI.json.gz";
   if(year == 2025) fileNameLUM = dirName+"LUM/"+subDirName+"puWeights_2025pp_Golden_Summer24_25ns_69200ub.json.gz";
 
+  std::string corrNameLUM = "";
   if(year == 2025 or year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
-    std::string corrNameLUM = "";
     if(year == 2018) corrNameLUM = "Collisions18_UltraLegacy_goldenJSON";
     if(year == 2017) corrNameLUM = "Collisions17_UltraLegacy_goldenJSON";
     if(year == 22016 or year == 12016) corrNameLUM = "Collisions16_UltraLegacy_goldenJSON";
@@ -155,15 +155,14 @@ MyCorrections::MyCorrections(int year) {
   const std::string subDirNameJME25 = "Run3-25Prompt-Summer24-NanoAODv15/"+folder;
   const std::string subDirNameJME26 = "Run3-26Prompt-Summer24-NanoAODv15/"+folder;
 
-  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025) {
+  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
 
-  std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
-  if ( year == 2025 ) fileNameJEC = dirName+"JME/"+subDirNameJME25+"jet_jerc.json.gz";
-  if ( year == 2026 ) fileNameJEC = dirName+"JME/"+subDirNameJME26+"jet_jerc.json.gz";
+    std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
+    if ( year == 2025 ) fileNameJEC = dirName+"JME/"+subDirNameJME25+"jet_jerc.json.gz";
+    if ( year == 2026 ) fileNameJEC = dirName+"JME/"+subDirNameJME26+"jet_jerc.json.gz";
 
-  auto csetJEC = correction::CorrectionSet::from_file(fileNameJEC);
+    auto csetJEC = correction::CorrectionSet::from_file(fileNameJEC);
 
-  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025) {
     const std::string jetType="AK4PFPuppi";
     const std::string suffix = "_DATA_L1L2L3Res_";
 
@@ -190,10 +189,11 @@ MyCorrections::MyCorrections(int year) {
 
   }
 
-  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025) {
+  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
 
     std::string fileNameFatJEC = dirName+"JME/"+subDirName+"fatJet_jerc.json.gz";
     if ( year == 2025 ) fileNameFatJEC = dirName+"JME/"+subDirNameJME25+"fatJet_jerc.json.gz";
+    if ( year == 2026 ) fileNameFatJEC = dirName+"JME/"+subDirNameJME26+"fatJet_jerc.json.gz";
 
     auto csetFatJEC = correction::CorrectionSet::from_file(fileNameFatJEC);
 
@@ -288,14 +288,14 @@ double MyCorrections::eval_jetCORR(double area, double eta, double phi, double p
   // add clipping (is done only in some era in correctionLib)
   pt = std::max(pt,30.000);
 
-  if (year == "2024" or year == "2025" or year == "22023") {
+  if (year == "22023" or year == "2024" or year == "2025" or year == "2026") {
     if(isData) return JECdata_->evaluate({area, eta,  pt, rho, phi, (float) run});
-    else JEC_->evaluate({area, eta, pt, rho, phi});
+    else return JEC_->evaluate({area, eta, pt, rho, phi});
   } else if (year == "12023" or year == "22022" or year == "12022") {
     if(isData) return JECdata_->evaluate({area, eta, pt, rho, (float) run});
     else return JEC_->evaluate({area, eta, pt, rho});
   } else {
-    std::cout << " what about 2026 ? " << std::endl;
+    std::cout << " missing AK4 case ? " << std::endl;
   }
 
   return 1.0;
@@ -304,14 +304,14 @@ double MyCorrections::eval_jetCORR(double area, double eta, double phi, double p
 
 double MyCorrections::eval_fatJetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc) {
 
-  if (year == "2024" or year == "2025" or year == "22023") {
+  if (year == "22023" or year == "2024" or year == "2025" or year == "2026") {
     if(isData) return fatJECdata_->evaluate({area, eta,  pt, rho, phi, (float) run});
-    else fatJEC_->evaluate({area, eta, pt, rho, phi});
+    else return fatJEC_->evaluate({area, eta, pt, rho, phi});
   } else if (year == "12023" or year == "22022" or year == "12022") {
     if(isData) return fatJECdata_->evaluate({area, eta, pt, rho, (float) run});
     else return fatJEC_->evaluate({area, eta, pt, rho});
   } else {
-    std::cout << " what about 2026 ? " << std::endl;
+    std::cout << " missing AK8 case ? " << std::endl;
   }
 
   return 1.0;

@@ -62,6 +62,13 @@ float deltaPhi(float phi1, float phi2) {
 }
 """)
 
+def removeNegBin(hist):
+
+    # Remove negative bins
+    for ibin in range(1, hist.GetNbinsX() + 1):
+        if hist.GetBinContent(ibin) < 0.0:
+            hist.SetBinContent(ibin, 0.0)
+            hist.SetBinError(ibin, 0.0)   # or keep the original error, see below
 
 def addOverflow(h, addUnderflow=False):
     nb = h.GetNbinsX()
@@ -314,6 +321,7 @@ def getHisto(mytree, category, item, year, nbin, low, high):
            h.SetLineColor(ROOT.TColor.GetColor(*color))
            h.SetFillColor(ROOT.TColor.GetColor(*color))
            addOverflow(h)
+           removeNegBin(h)
 
    if hData: hData_ = MyHisto('hData', hData)
    #
