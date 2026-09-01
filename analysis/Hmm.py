@@ -20,7 +20,7 @@ ncores = ROOT.GetThreadPoolSize()
 #ncores = 32
 ROOT.ROOT.EnableImplicitMT(ncores)
 
-with open("/home/submit/mariadlf/Hrare/CMSSW_10_6_27_new/src/HmumuRun3/analysis/config/selection.json") as jsonFile:
+with open("./config/selection.json") as jsonFile:
     jsonObject = json.load(jsonFile)
     jsonFile.close()
 
@@ -153,7 +153,7 @@ def doCategories(df,mc,year):
           .Filter("index_Mu[0]!= -1 and index_Mu[1]!= -1", "OS pair")
           .Define("Muon1_pt","Muon_bsConstrainedPt[goodMuons][index_Mu[0]]")
           .Define("Muon2_pt","Muon_bsConstrainedPt[goodMuons][index_Mu[1]]")
-          .Filter("(Muon1_pt > 26 || Muon2_pt > 26)","at least one >26 GeV to satisfy the trigger")
+          .Filter("(Muon_pt[goodMuons][index_Mu[0]] > 26 || Muon_pt[goodMuons][index_Mu[1]] > 26)","at least one >26 GeV to satisfy the trigger")
           .Define("Muon1_bsConstrainedChi2","Muon_bsConstrainedChi2[goodMuons][index_Mu[0]]")
           .Define("Muon2_bsConstrainedChi2","Muon_bsConstrainedChi2[goodMuons][index_Mu[1]]")
           .Define("Muon1_eta","Muon_eta[goodMuons][index_Mu[0]]")
@@ -249,16 +249,16 @@ def doCategories(df,mc,year):
         ("FILTER", "Sum(goodJetsAll)>1", "at least 2 jets"),
         ("FILTER", "index_VBFJets[0]!= -1 and index_VBFJets[1]!= -1", "both VBF jets"),
         ("FILTER", "dEtaJJ>2.5", "|dEta_{jj}| > 2.5"),
-        ("FILTER", "(jetVBF1_Eta*jetVBF2_Eta) < 0 ", "opposite hemisphere"),
-        ("FILTER", "(jetVBF1_Pt > 35 || jetVBF2_Pt > 35) && jetVBF1_Pt > 25 && jetVBF2_Pt > 25","at least one > 35 GeV and both above 25"),
+#        ("FILTER", "(jetVBF1_Eta*jetVBF2_Eta) < 0 ", "opposite hemisphere"), # SYNCH COMMENT
+#        ("FILTER", "(jetVBF1_Pt > 35 || jetVBF2_Pt > 35) && jetVBF1_Pt > 25 && jetVBF2_Pt > 25","at least one > 35 GeV and both above 25"), # SYNCH COMMENT
         ("FILTER", "Mjj>400", "M_{jj} > 400 GeV")
     ]
 
     # --- Category recipes ---
     # PUT first the things that cut most of the events i.e. met in Zinv
     categories = {
-        "isGGH":       mu_veto + ele_veto + bjet_veto + jet_veto, # + met_veto, # TO add the Vhad veto (fatJet & ptHmm>100)
-        "isVBF":       mu_veto + ele_veto + bjet_veto + vbf_filters, # + met_veto, # TO add the Vhad veto (fatJet & ptHmm>100)
+        "isGGH":       mu_veto + ele_veto + bjet_veto + jet_veto, # + met_veto, # TO add the Vhad veto (fatJet & ptHmm>100)  # SYNCH COMMENT
+        "isVBF":       mu_veto + ele_veto + bjet_veto + vbf_filters, # + met_veto, # TO add the Vhad veto (fatJet & ptHmm>100)  # SYNCH COMMENT
         "isZinv":      mu_veto + ele_veto + bjet_veto + met_filters,
         "isVlep":      bjet_veto,
         "isVhad":      mu_veto + ele_veto + bjet_veto, # + met_veto,
@@ -271,6 +271,7 @@ def doCategories(df,mc,year):
     # ---------
 
     if mode == "isZinv":
+
         df= (df.Define("METFilters","{}".format(selections["METFilters"]))
              .Filter("METFilters>0","Pass MET filters")
              .Define("dPhiMETH","deltaPhi((Muon1Vec+Muon2Vec).Phi(),PuppiMET_phi)")
@@ -659,7 +660,7 @@ def analysis(files,year,mc,sumW):
     if year=="2024" or year=="2025" or year=="2026":
         dfComm = dfComm.Define("jetID_mask", 'cleaningJetIDMask(Jet_eta, Jet_chHEF, Jet_neHEF, Jet_chEmEF, Jet_neEmEF, Jet_muEF, Jet_chMultiplicity, Jet_neMultiplicity, "{0}")'.format(year)) #  for nanov15 use the JetID
     else:
-        dfComm = dfComm.Define("jetID_mask", "cleaningJetSelMask(0, Jet_eta, Jet_neHEF, Jet_chEmEF, Jet_muEF, Jet_neEmEF, Jet_jetId)") # redo JetID for nanoV12,
+        dfComm = dfComm.Define("jetID_mask", "cleaningJetSelMask(1, Jet_eta, Jet_neHEF, Jet_chEmEF, Jet_muEF, Jet_neEmEF, Jet_jetId)") # redo JetID for nanoV12,
 
     df = doCategories(dfComm,mc,year)
 
@@ -686,6 +687,11 @@ def analysis(files,year,mc,sumW):
           .Define("cosThetaCS","CSvars.first")
           .Define("phiStarCS","CSvars.second")
           .Filter("(HiggsCandCorrMass>70 and HiggsCandCorrMass<200)","HiggsMass within reasonable range 70-200")
+          #
+          .Define("isZ","abs(HiggsCandCorrMass-91)<15")
+          .Define("isH","abs(HiggsCandCorrMass-125)<10")
+          .Define("isHSB","(HiggsCandCorrMass > 110 and HiggsCandCorrMass < 150 and abs(HiggsCandCorrMass - 125) >= 10)")
+          .Define("isZandHSB","(HiggsCandCorrMass > 76 and HiggsCandCorrMass < 115) or (HiggsCandCorrMass > 130 and HiggsCandCorrMass < 150)")
           )
 
     if mode == "isVhad":
@@ -806,6 +812,11 @@ def analysis(files,year,mc,sumW):
             "cosThetaCS",
             "phiStarCS",
             "classify",
+            "isZ",
+            "isH",
+            "isHSB",
+            "isZandHSB",
+            #
             "Muon1_pt",
             "Muon2_pt",
             "Muon1_eta",
@@ -1087,9 +1098,8 @@ def loopOnDataset(year):
 
     '''
     # below for training
-
     if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([141,142]) # extra TTbar (2024 not there yet)
-    if mode == "isVlep": mc.extend([208,209,210,211,212]) #VV amcNLO    (207 still missing)
+    if mode == "isVlep": mc.extend([207,208,209,210,211,212]) #VV amcNLO
 
 #    if year in ["2024"]:
 #        if mode == "isVhad": mc.extend([119,120,121])  # extra DY jet binned for ML training

@@ -66,7 +66,7 @@ private:
   correction::Correction::Ref jesUnc_;
   correction::Correction::Ref fatjesUnc_;
   correction::Correction::Ref vetoMaps_;
-  correction::Correction::Ref jetTightID_;
+  correction::Correction::Ref jetID_;
 
 };
 
@@ -228,9 +228,9 @@ MyCorrections::MyCorrections(int year) {
   if ( year == 2025 ) fileNameJetID = dirName+"JME/"+"Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/"+"jetid.json.gz";  // to be fixed when available
 
   auto csetJetID = correction::CorrectionSet::from_file(fileNameJetID);
-  const std::string tagNameJetID = "AK4PUPPI_Tight";
-  //  std::string tagNameJetID = "AK4PUPPI_TightLeptonVeto";
-  jetTightID_           = csetJetID->at(tagNameJetID);
+  //  const std::string tagNameJetID = "AK4PUPPI_Tight";
+  const std::string tagNameJetID = "AK4PUPPI_TightLeptonVeto";
+  jetID_ = csetJetID->at(tagNameJetID);
 
   // veto Map the jet
   std::string fileNameJetVeto = dirName+"JME/"+subDirName+"jetvetomaps.json.gz";
@@ -332,7 +332,7 @@ double MyCorrections::eval_jetID(float eta, float chHEF, float neHEF, float chEm
   eta = fabs(eta);
   int multiplicity = chMultiplicity + neMultiplicity;
   //"chEmEF" and "muEF" unused in 2024 but still needed
-  return jetTightID_->evaluate({eta, chHEF, neHEF, chEmEF, neEmEF, muEF, chMultiplicity, neMultiplicity, multiplicity});
+  return jetID_->evaluate({eta, chHEF, neHEF, chEmEF, neEmEF, muEF, chMultiplicity, neMultiplicity, multiplicity});
 
 };
 
