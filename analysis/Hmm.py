@@ -706,7 +706,7 @@ def analysis(files,year,mc,sumW):
         df = df.Define("Muon2_norm_pt", "HiggsCandCorrMass>0 ? Muon2_pt/HiggsCandCorrMass: 0.f")
 
     ## call MVA classification
-    df = callMVAclassification(df)
+#    df = callMVAclassification(df)
 
     ## FSR and muonBeamSpot also for Z ?
     ## check the FSR for electrons
@@ -826,7 +826,7 @@ def analysis(files,year,mc,sumW):
 #                "FsrPH_pt_ratio1",
             "PuppiMET_pt",
             "PuppiMET_phi",
-            "discrMVA0"
+#            "discrMVA0"
         ]
 
         # Mode-specific branches
