@@ -61,6 +61,7 @@ Vec_b cleaningMask(Vec_i indices, int size) {
   return mask;
 }
 
+/*
 int pickFsrForMuon(int muIdx,
                    const ROOT::VecOps::RVec<int>& mu_fsrIdx,
                    const ROOT::VecOps::RVec<float>& fsr_pt,
@@ -110,6 +111,72 @@ Vec_b fsrMask(Vec_i indices, int size) {
   return mask;
 }
 
+
+*/
+
+ROOT::VecOps::RVec<int> pickFsrForMuons(
+    const ROOT::VecOps::RVec<int>& mu_fsrIdx,
+    const ROOT::VecOps::RVec<float>& mu_pt,
+    const ROOT::VecOps::RVec<float>& fsr_pt,
+    const ROOT::VecOps::RVec<float>& fsr_dROverEt2,
+    const ROOT::VecOps::RVec<float>& fsr_iso)
+{
+    ROOT::VecOps::RVec<int> result(mu_fsrIdx.size(), -1);
+
+    for (size_t i = 0; i < mu_fsrIdx.size(); ++i) {
+
+        // Invalid muon / missing pT
+        if (i >= mu_pt.size() || mu_pt[i] <= 0)
+            continue;
+
+        int fsr_idx = mu_fsrIdx[i];
+
+        // No associated FSR or invalid index
+        if (fsr_idx < 0 ||
+            fsr_idx >= (int)fsr_pt.size() ||
+            fsr_idx >= (int)fsr_dROverEt2.size() ||
+            fsr_idx >= (int)fsr_iso.size())
+            continue;
+
+        // FSR selection
+        if ((fsr_pt[fsr_idx] / mu_pt[i]) < 0.4 &&
+            fsr_dROverEt2[fsr_idx] < 0.012 &&
+            fsr_iso[fsr_idx] < 1.8)
+        {
+            result[i] = fsr_idx;
+        }
+    }
+
+    return result;
+}
+
+ROOT::VecOps::RVec<float> isoCorrFSR(
+    const ROOT::VecOps::RVec<float>& mu_reliso,
+    const ROOT::VecOps::RVec<float>& mu_pt,
+    const ROOT::VecOps::RVec<int>& fsrIdx,
+    const ROOT::VecOps::RVec<float>& fsr_pt)
+{
+    ROOT::VecOps::RVec<float> result = mu_reliso;
+
+    for (size_t i = 0; i < mu_reliso.size(); ++i) {
+
+        if (i >= mu_pt.size() || mu_pt[i] <= 0)
+            continue;
+
+        if (i >= fsrIdx.size())
+            continue;
+
+        int idx = fsrIdx[i];
+
+        if (idx >= 0 && idx < (int)fsr_pt.size()) {
+            result[i] = (mu_reliso[i] * mu_pt[i] - fsr_pt[idx]) / mu_pt[i];
+        }
+    }
+
+    return result;
+}
+
+
 Vec_b fatJetMask(Vec_i FatJet_muonIdx3SJ, int muon1_idx, int muon2_idx) {
 
   Vec_b mask(FatJet_muonIdx3SJ.size(), true);
@@ -127,6 +194,30 @@ TLorentzVector MakeTLV(const float pt, const float eta, const float phi, const f
     return v;
 }
 
+TLorentzVector MakeTLVSum(const TLorentzVector& p1,
+                       int fsr_idx,
+		       const Vec_f& fsr_pt,
+                       const Vec_f& fsr_eta,
+                       const Vec_f& fsr_phi
+		       ) {
+
+  TLorentzVector ph;
+
+  // no associated FSR or invalid index
+  if (fsr_idx < 0 ||
+      fsr_idx >= (int)fsr_pt.size() ||
+      fsr_idx >= (int)fsr_eta.size() ||
+      fsr_idx >= (int)fsr_phi.size()) {
+    return p1;
+  }
+
+  ph.SetPtEtaPhiM(fsr_pt[fsr_idx],
+                  fsr_eta[fsr_idx],
+                  fsr_phi[fsr_idx], 0);
+
+  return p1 + ph;
+}
+
 float deltaPhi(float phi1, float phi2) {
   float result = phi1 - phi2;
   while (result > float(M_PI)) result -= float(2*M_PI);
@@ -142,6 +233,11 @@ float deltaR2(float eta1, float phi1, float eta2, float phi2) {
 
 float deltaR(float eta1, float phi1, float eta2, float phi2) {
   return std::sqrt(deltaR2(eta1,phi1,eta2,phi2));
+}
+
+Vec_b deltaRMask(const Vec_f & eta) {
+  Vec_b mask(eta.size(), true);
+  return mask;
 }
 
 Vec_b deltaRMask(float eta1, float phi1,
@@ -787,6 +883,13 @@ float getPtCen(const TLorentzVector& mu1, const TLorentzVector& mu2,
   TLorentzVector num = (HiggsCand-0.5*(diJets));
 
   return num.Pt()/diJets.Pt();
+
+}
+
+TLorentzVector Pair12(const TLorentzVector& mu1, const TLorentzVector& mu2) {
+
+  TLorentzVector HiggsCand = mu1 + mu2;
+  return mu1 + mu2;
 
 }
 

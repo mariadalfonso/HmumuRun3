@@ -5,6 +5,7 @@ using Vec_b = ROOT::VecOps::RVec<bool>;
 using Vec_f = ROOT::VecOps::RVec<float>;
 using Vec_i = ROOT::VecOps::RVec<int>;
 using Vec_ui = ROOT::VecOps::RVec<unsigned int>;
+using Vec_s = ROOT::VecOps::RVec<short>;
 
 /*
 Vec_f computeMUcorrection(Vec_f mu_pt, Vec_f mu_eta, Vec_f mu_phi, Vec_i mu_charge, Vec_ui mu_nTrackerLayers, bool isData, float event, float luminosityBlock ){

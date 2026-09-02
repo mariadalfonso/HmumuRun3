@@ -147,44 +147,66 @@ def doCategories(df,mc,year):
     if (mode == "isVlep" or mode == "isTTlep"): eleSel = selections["GOODelectronsTTH24"]
 
     #fix the muonPT it's 25 GeV for the one triggered
-    df = (df.Define("goodMuons","{}".format(muonSel))
+    df = (df.Define("fsrIdx_mu","pickFsrForMuons(Muon_fsrPhotonIdx, Muon_pt, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03)")
+          .Redefine("Muon_pfRelIso04_all","isoCorrFSR(Muon_pfRelIso04_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
+          .Define("goodMuons","{}".format(muonSel))
           .Filter("Sum(goodMuons)>=1","at least two good muons")
           .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
           .Filter("index_Mu[0]!= -1 and index_Mu[1]!= -1", "OS pair")
-          .Define("Muon1_pt","Muon_bsConstrainedPt[goodMuons][index_Mu[0]]")
-          .Define("Muon2_pt","Muon_bsConstrainedPt[goodMuons][index_Mu[1]]")
-          .Filter("(Muon_pt[goodMuons][index_Mu[0]] > 26 || Muon_pt[goodMuons][index_Mu[1]] > 26)","at least one >26 GeV to satisfy the trigger")
-          .Define("Muon1_bsConstrainedChi2","Muon_bsConstrainedChi2[goodMuons][index_Mu[0]]")
-          .Define("Muon2_bsConstrainedChi2","Muon_bsConstrainedChi2[goodMuons][index_Mu[1]]")
-          .Define("Muon1_eta","Muon_eta[goodMuons][index_Mu[0]]")
-          .Define("Muon2_eta","Muon_eta[goodMuons][index_Mu[1]]")
-          .Define("Muon1_phi","Muon_phi[goodMuons][index_Mu[0]]")
-          .Define("Muon2_phi","Muon_phi[goodMuons][index_Mu[1]]")
-          .Define("Muon1_sip3d","Muon_sip3d[goodMuons][index_Mu[0]]")
-          .Define("Muon2_sip3d","Muon_sip3d[goodMuons][index_Mu[1]]")
-          .Define("Muon1_jetPtRel","Muon_jetPtRelv2[goodMuons][index_Mu[0]]")
-          .Define("Muon2_jetPtRel","Muon_jetPtRelv2[goodMuons][index_Mu[1]]")
-          .Define("Muon1_jetRelIso","Muon_jetRelIso[goodMuons][index_Mu[0]]")
-          .Define("Muon2_jetRelIso","Muon_jetRelIso[goodMuons][index_Mu[1]]")
+          .Define("idx_mu1","Nonzero(goodMuons)[index_Mu[0]]")   # index into the FULL Muon collection
+          .Define("idx_mu2","Nonzero(goodMuons)[index_Mu[1]]")
+          .Define("Muon1_rawpt","Muon_pt[idx_mu1]")
+          .Define("Muon2_rawpt","Muon_pt[idx_mu2]")
+          .Filter("(Muon1_rawpt > 26 || Muon2_rawpt > 26)","at least one >26 GeV to satisfy the trigger")
+          .Define("Muon1_bsConstrainedChi2","Muon_bsConstrainedChi2[idx_mu1]")
+          .Define("Muon2_bsConstrainedChi2","Muon_bsConstrainedChi2[idx_mu2]")
+          .Define("Muon1_eta","Muon_eta[idx_mu1]") # those for SF can stay before fsr
+          .Define("Muon2_eta","Muon_eta[idx_mu2]")
+          .Define("Muon1_phi","Muon_phi[idx_mu1]")
+          .Define("Muon2_phi","Muon_phi[idx_mu2]")
+          .Define("Muon1_sip3d","Muon_sip3d[idx_mu1]")
+          .Define("Muon2_sip3d","Muon_sip3d[idx_mu2]")
+          .Define("Muon1_jetPtRel","Muon_jetPtRelv2[idx_mu1]")
+          .Define("Muon2_jetPtRel","Muon_jetPtRelv2[idx_mu2]")
+          .Define("Muon1_jetRelIso","Muon_jetRelIso[idx_mu1]")
+          .Define("Muon2_jetRelIso","Muon_jetRelIso[idx_mu2]")
+          .Define("Muon1Vec_", "MakeTLV(Muon_bsConstrainedPt[idx_mu1], Muon_eta[idx_mu1], Muon_phi[idx_mu1], muon_mass_)") # beam spotted corrected
+          .Define("Muon2Vec_", "MakeTLV(Muon_bsConstrainedPt[idx_mu2], Muon_eta[idx_mu2], Muon_phi[idx_mu2], muon_mass_)")
+          .Define("fsrIdx_mu1","fsrIdx_mu[idx_mu1]")
+          .Define("fsrIdx_mu2","fsrIdx_mu[idx_mu2]")
+#          .Define("FsrPH1_eta","fsrIdx_mu1>=0 ? FsrPhoton_eta[fsrIdx_mu1] : -1.f")
+#          .Define("FsrPH2_eta","fsrIdx_mu2>=0 ? FsrPhoton_eta[fsrIdx_mu2] : -1.f")
+#          .Define("FsrPH1_relIso03","fsrIdx_mu1>=0 ? FsrPhoton_relIso03[fsrIdx_mu1] : -1.f")
+#          .Define("FsrPH2_relIso03","fsrIdx_mu2>=0 ? FsrPhoton_relIso03[fsrIdx_mu2] : -1.f")
+#          .Define("FsrPH1_dROverEt2","fsrIdx_mu1>=0 ? FsrPhoton_dROverEt2[fsrIdx_mu1] : -1.f")
+#          .Define("FsrPH2_dROverEt2","fsrIdx_mu2>=0 ? FsrPhoton_dROverEt2[fsrIdx_mu2] : -1.f")
+#          .Define("FsrPH_pt_ratio0","fsrIdx_mu1>=0 ? FsrPhoton_pt[fsrIdx_mu1]/Muon1_rawpt : -1.f")
+#          .Define("FsrPH_pt_ratio1","fsrIdx_mu2>=0 ? FsrPhoton_pt[fsrIdx_mu2]/Muon2_rawpt : -1.f")
+          .Define("Muon1Vec", "MakeTLVSum(Muon1Vec_ ,fsrIdx_mu1, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi)") # beam spotted & FSR corrected
+          .Define("Muon2Vec", "MakeTLVSum(Muon2Vec_ ,fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi)")
+          .Define("Muon1_pt","Muon1Vec.Pt()")
+          .Define("Muon2_pt","Muon2Vec.Pt()")
           .Define("classify","topology(Muon1_eta, Muon2_eta)")
-          .Define("Muon1Vec", "MakeTLV(Muon1_pt, Muon1_eta, Muon1_phi, muon_mass_)")
-          .Define("Muon2Vec", "MakeTLV(Muon2_pt, Muon2_eta, Muon2_phi, muon_mass_)")
           ###
           # Jet_puIdDisc only for nanov15
           .Define("jetVeto_mask",'cleaningJetVetoMapMask(Jet_eta,Jet_phi,"{0}")'.format(year))
           #
-          .Define("jetMuon_mask", "cleaningMask(Muon_jetIdx[goodMuons],nJet)")
+#          .Define("jetMuon_mask", "cleaningMask(Muon_jetIdx[goodMuons],nJet)")
+          .Define("dRjetMu1_mask","deltaRMask((Muon1Vec).Eta(),(Muon1Vec).Phi(),Jet_eta,Jet_phi,0.4)")
+          .Define("dRjetMu2_mask","deltaRMask((Muon2Vec).Eta(),(Muon2Vec).Phi(),Jet_eta,Jet_phi,0.4)")
+          .Define("dRjetVlep1_mask","Jet_eta")
+          .Define("dRjetVlep2_mask","Jet_eta")
           #
           .Define("goodElectrons","{}".format(eleSel))
-          .Define("jetEle_mask", "cleaningMask(Electron_jetIdx[goodElectrons],nJet)")
+#          .Define("jetEle_mask", "cleaningMask(Electron_jetIdx[goodElectrons],nJet)")
           #
           .Define("BJETS", f"{BJETSmedium}")
           .Define("BJETSloose", f"{BJETSloose}")
           )
 
     if mc>0:
-        df = (df.Define("Muon1_genPartFlav","Muon_genPartFlav[goodMuons][index_Mu[0]]")
-              .Define("Muon2_genPartFlav","Muon_genPartFlav[goodMuons][index_Mu[1]]")
+        df = (df.Define("Muon1_genPartFlav","Muon_genPartFlav[idx_mu1]")
+              .Define("Muon2_genPartFlav","Muon_genPartFlav[idx_mu2]")
               .Define("boson_genMassZ","getGenPart_boson(GenPart_mass, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Define("boson_genPtZ","getGenPart_boson(GenPart_pt, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Redefine("boson_ptWeight","(float)computeDYturbo(boson_genPtZ, boson_genMassZ)")
@@ -328,8 +350,8 @@ def doCategories(df,mc,year):
              .Define("isMu",  "(category==3 || category==4) && idxExtraMu[0]!= -1")
              .Define("isEleZ", "(category==2) && idx_goodEls.size() > 1")
              .Define("isMuZ",  "(category==4) && idxExtraMu.size()>1 && idxExtraMu[1]!= -1")
-             .Define("Muon1_promptMVA","Muon_promptMVA[goodMuons][index_Mu[0]]")
-             .Define("Muon2_promptMVA","Muon_promptMVA[goodMuons][index_Mu[1]]")
+             .Define("Muon1_promptMVA","Muon_promptMVA[idx_mu1]")
+             .Define("Muon2_promptMVA","Muon_promptMVA[idx_mu2]")
              #
              #
              .Define("Lepton_Pt","isEle ? Electron_pt[idx_goodEls[0]]: isMu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]: -1 ")
@@ -355,6 +377,8 @@ def doCategories(df,mc,year):
              .Define("dPhiVH","(isEleZ or isMuZ) ? deltaPhi((Muon1Vec+Muon2Vec).Phi(),VBoson.Phi()): (isEle or isMu) ? deltaPhi((Muon1Vec+Muon2Vec).Phi(),VBoson.Phi()) : -999")
              .Define("RPt","getRpt(Muon1Vec, Muon2Vec, VBoson, TLorentzVector())")
              #
+             .Redefine("dRjetVlep1_mask","deltaRMask(Lepton_Eta,Lepton_Phi,Jet_eta,Jet_phi,0.4)")
+             .Redefine("dRjetVlep2_mask","deltaRMask(Lepton2_Eta,Lepton2_Phi,Jet_eta,Jet_phi,0.4)")
              .Define("goodJetsAll","{}".format(JETStrk))
              .Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f")
 #             .Define("m_wrongOSSF","wrongOSSFmass(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], index_Mu[0],index_Mu[1])")
@@ -368,11 +392,11 @@ def doCategories(df,mc,year):
 
         # Define leptonic category conditions
         category_map = {
-            1: f"({n_allJets}>2 && {n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",                   # W→e  (TTH semilep)
-            2: f"({n_allJets}>0 && {n_looseEle}==2 && {n_goodEle}==2 && {q_goodEle}==0 && {q_goodMu}==0 && {n_looseMu}==2 && {freeOfZee})",   # 2W→e (TTH dilep)
-            3: f"({n_allJets}>2 && {n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",                   # W→μ  (TTH semilep)
-            4: f"({n_allJets}>0 && {n_looseEle}==0 && {n_goodMu}==4 && {q_goodMu}==0 && {n_looseMu}==4 && {freeOfZ})",                        # 2W→μ (TTH dilep)
-            5: f"({n_allJets}>0 && {n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==3 && {q_goodMu}==1 && {n_looseMu}==3 && {freeOfZ})",      # W→eW→μ (TTH dilep)
+            1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",                   # W→e  (TTH semilep)
+            2: f"({n_looseEle}==2 && {n_goodEle}==2 && {q_goodEle}==0 && {q_goodMu}==0 && {n_looseMu}==2 && {freeOfZee})",   # 2W→e (TTH dilep)
+            3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",                   # W→μ  (TTH semilep)
+            4: f"({n_looseEle}==0 && {n_goodMu}==4 && {q_goodMu}==0 && {n_looseMu}==4 && {freeOfZ})",                        # 2W→μ (TTH dilep)
+            5: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==3 && {q_goodMu}==1 && {n_looseMu}==3 && {freeOfZ})",      # W→eW→μ (TTH dilep)
         }
 
         # Build a single expression with nested ternaries
@@ -383,8 +407,6 @@ def doCategories(df,mc,year):
         # In 3μ events, the non-Higgs-candidate μ+μ− pair (μμOS) must not have an invariant mass between 81 and 101 GeV, to suppress WZ and Z+jets backgrounds
 
         df= (df.Define("idx_goodEls", "Nonzero(goodElectrons)")
-             .Define("goodJetsAll","{}".format(JETStrk))
-             .Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f")
              #
              .Define("category", f"(int)({expr})")
              .Filter("category > 0", "Has valid category")
@@ -395,8 +417,8 @@ def doCategories(df,mc,year):
              .Define("is2Mu",  "(category==4) && idxExtraMu.size()>1 && idxExtraMu[1]!= -1")
              .Define("is1Ele1Mu",  "(category==5) && idxExtraMu.size()>0 && idxExtraMu[0]!= -1 && idx_goodEls.size() > 0")
              .Define("isEleLead","is1Ele1Mu && Electron_pt[idx_goodEls[0]] > Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]")
-             .Define("Muon1_promptMVA","Muon_promptMVA[goodMuons][index_Mu[0]]")
-             .Define("Muon2_promptMVA","Muon_promptMVA[goodMuons][index_Mu[1]]")
+             .Define("Muon1_promptMVA","Muon_promptMVA[idx_mu1]")
+             .Define("Muon2_promptMVA","Muon_promptMVA[idx_mu2]")
              #
              .Define("Lepton_Pt","isEle ? Electron_pt[idx_goodEls[0]]: isMu ? Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_pt[idx_goodEls[0]]: Muon_bsConstrainedPt[goodMuons][idxExtraMu[0]]) : -1 ")
              .Define("Lepton_Eta","isEle ? Electron_eta[idx_goodEls[0]]: isMu ? Muon_eta[goodMuons][idxExtraMu[0]]: is1Ele1Mu ? (isEleLead ? Electron_eta[idx_goodEls[0]]: Muon_eta[goodMuons][idxExtraMu[0]]) : -10 ")
@@ -413,6 +435,11 @@ def doCategories(df,mc,year):
              .Define("Lepton2_sip3d","is2Ele ? Electron_sip3d[idx_goodEls[1]]: is2Mu ? Muon_sip3d[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_sip3d[goodMuons][idxExtraMu[0]]: Electron_sip3d[idx_goodEls[0]]) : -1 ")
              .Define("Lepton2_promptMVA","is2Ele ? Electron_promptMVA[idx_goodEls[1]]: is2Mu ? Muon_promptMVA[goodMuons][idxExtraMu[1]]: is1Ele1Mu ? (isEleLead ? Muon_promptMVA[goodMuons][idxExtraMu[0]]: Electron_promptMVA[idx_goodEls[0]]) : -1 ")
              #
+             .Redefine("dRjetVlep1_mask","deltaRMask(Lepton_Eta,Lepton_Phi,Jet_eta,Jet_phi,0.4)")
+             .Redefine("dRjetVlep2_mask","deltaRMask(Lepton2_Eta,Lepton2_Phi,Jet_eta,Jet_phi,0.4)")
+             .Define("goodJetsAll","{}".format(JETStrk))
+             .Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f")
+             .Filter("(nGoodJetsAll>0 && (category==2 || category==4 || category==5)) || (nGoodJetsAll>2 && (category==1 || category==3))","Njet >0 for dileptons or > 2 for single lepton")
              .Define("bJet_pt",  "Jet_pt[BJETS]")
              .Define("bJet_eta", "Jet_eta[BJETS]")
              .Define("bJet_phi", "Jet_phi[BJETS]")
@@ -665,25 +692,16 @@ def analysis(files,year,mc,sumW):
     df = doCategories(dfComm,mc,year)
 
     # Zgamma has these: |dz| < 1.0 cm, |dxy| < 0.5 cm, SIP3D < 4
-    df = (df.Define("HiggsCandMass","Minv(Muon1Vec,Muon2Vec)")
-          .Define("HiggsCandMassErr","MinvErr(Muon1_pt, Muon_bsConstrainedPtErr[goodMuons][index_Mu[0]], Muon2_pt, Muon_bsConstrainedPtErr[goodMuons][index_Mu[1]])")
-          .Define("fsrIdx_mu1", "pickFsrForMuon(index_Mu[0], Muon_fsrPhotonIdx, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03, Muon1_pt)")
-          .Define("fsrIdx_mu2", "pickFsrForMuon(index_Mu[1], Muon_fsrPhotonIdx, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03, Muon2_pt)")
-          .Define("FsrPH1_eta","fsrIdx_mu1>=0 ? FsrPhoton_eta[fsrIdx_mu1] : -1.f")
-          .Define("FsrPH2_eta","fsrIdx_mu2>=0 ? FsrPhoton_eta[fsrIdx_mu2] : -1.f")
-          .Define("FsrPH1_relIso03","fsrIdx_mu1>=0 ? FsrPhoton_relIso03[fsrIdx_mu1] : -1.f")
-          .Define("FsrPH2_relIso03","fsrIdx_mu2>=0 ? FsrPhoton_relIso03[fsrIdx_mu2] : -1.f")
-          .Define("FsrPH1_dROverEt2","fsrIdx_mu1>=0 ? FsrPhoton_dROverEt2[fsrIdx_mu1] : -1.f")
-          .Define("FsrPH2_dROverEt2","fsrIdx_mu2>=0 ? FsrPhoton_dROverEt2[fsrIdx_mu2] : -1.f")
-          .Define("FsrPH_pt_ratio0","fsrIdx_mu1>=0 ? FsrPhoton_pt[fsrIdx_mu1]/Muon1_pt : -1.f")
-          .Define("FsrPH_pt_ratio1","fsrIdx_mu2>=0 ? FsrPhoton_pt[fsrIdx_mu2]/Muon2_pt : -1.f")
-          .Define("HiggsCandCorrMass","MinvCorr(Muon1Vec, Muon2Vec,fsrIdx_mu1, fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi, 0)")
-          .Define("HiggsCandCorrPt","MinvCorr(Muon1Vec, Muon2Vec,fsrIdx_mu1, fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi, 1)")
-          .Define("HiggsCandCorrRapidity","MinvCorr(Muon1Vec, Muon2Vec, fsrIdx_mu1, fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi, 2)")
-          .Define("HiggsCandCorrEta","MinvCorr(Muon1Vec, Muon2Vec, fsrIdx_mu1, fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi, 3)")
-          .Define("HiggsCandCorrPhi","MinvCorr(Muon1Vec, Muon2Vec, fsrIdx_mu1, fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi, 4)")
+    df = (df.Define("HiggsCandMass","Minv(Muon1Vec_,Muon2Vec_)") # BScorrected only
+          .Define("HiggsCandMassErr","MinvErr(Muon1Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu1], Muon2Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu2])")
+          .Define("HiggsCandCorr","Pair12(Muon1Vec,Muon2Vec)")
+          .Define("HiggsCandCorrMass","HiggsCandCorr.M()")
+          .Define("HiggsCandCorrPt","HiggsCandCorr.Pt()")
+          .Define("HiggsCandCorrEta","HiggsCandCorr.Eta()")
+          .Define("HiggsCandCorrPhi","HiggsCandCorr.Phi()")
+          .Define("HiggsCandCorrRapidity","HiggsCandCorr.Rapidity()")
           #
-          .Define("CSvars","CollinSopperAngles(Muon1Vec,Muon2Vec,Muon_charge[goodMuons][index_Mu[0]],Muon_charge[goodMuons][index_Mu[1]])")
+          .Define("CSvars","CollinSopperAngles(Muon1Vec,Muon2Vec,Muon_charge[idx_mu1],Muon_charge[idx_mu2])")
           .Define("cosThetaCS","CSvars.first")
           .Define("phiStarCS","CSvars.second")
           .Filter("(HiggsCandCorrMass>70 and HiggsCandCorrMass<200)","HiggsMass within reasonable range 70-200")
