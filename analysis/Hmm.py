@@ -1,6 +1,9 @@
 import ROOT
 import json
 import sys
+import os
+import argparse
+import getpass
 
 from utilsAna import loadUserCode
 from utilsAna import BuildDict, SwitchSample
@@ -20,6 +23,32 @@ ncores = ROOT.GetThreadPoolSize()
 #ncores = 32
 ROOT.ROOT.EnableImplicitMT(ncores)
 
+# --- setup run commands ---
+
+DEFAULT_OUTDIR = f"/work/submit/{getpass.getuser()}/HmumuRun3/ROOTFILES/"
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="H->mumu Run3 analysis: produce per-category snapshot ROOT files."
+    )
+    parser.add_argument("year",
+                        help="data-taking year, e.g. 12022, 22022, 12023, 22023, 2024, 2025, 2026")
+    parser.add_argument("mode",
+                        choices=["isVBF", "isGGH", "isZinv", "isVlep", "isVhad", "isTTlep", "isTThad"],
+                        help="analysis channel")
+    parser.add_argument("-o", "--outdir", default=DEFAULT_OUTDIR,
+                        help="output directory for snapshot files (default: %(default)s)")
+    return parser.parse_args()
+
+args = parse_args()
+year  = args.year
+mode  = args.mode
+myDir = args.outdir
+if not myDir.endswith("/"):
+    myDir += "/"   # keep trailing slash so existing f-string paths stay valid
+
+# --- setup selections ---
+
 with open("./config/selection.json") as jsonFile:
     jsonObject = json.load(jsonFile)
     jsonFile.close()
@@ -30,10 +59,6 @@ selections = {key: jsonObject[key] for key in ["GOODMUON", "GOODMUONTTH24","GOOD
 
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
-mode = sys.argv[2]  # expected: isVBF, isGGH, isVlep, isWhad, isTTlep, isTThad, isZinv
-
-# --- place to write the files and strings  ---
-myDir = '/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
 # --- Histogram output suffixes per mode ---
 mode_map = {
     "isVBF":   "VBFcat",
@@ -1061,6 +1086,7 @@ def analysis(files,year,mc,sumW):
             raise ValueError(f"Unknown mode: {mode}")
 
         outputFile = f"{myDir}{mode_map[mode]}/snapshot_mc_{mc}_{year}_{mode_map[mode]}.root"
+        os.makedirs(os.path.dirname(outputFile), exist_ok=True)
 
         snapshotOptions = ROOT.RDF.RSnapshotOptions()
         if mode == "isGGH":
@@ -1177,8 +1203,7 @@ if __name__ == "__main__":
 
     now = datetime.now()
     print('==> very beginning: ',now)
-
-    year=sys.argv[1]
+    print('myDir=',myDir)
     print('year=',year)
 
     loopOnDataset(year)

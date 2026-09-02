@@ -147,8 +147,6 @@ kfactor={
 
 def findDIR(directory,useXROOTD=False):
 
-    print('HELLO')
-    print(directory)
     counter = 0
     rootFiles = ROOT.vector('string')()
     maxFiles = 1000000000
@@ -173,7 +171,11 @@ def findDIR(directory,useXROOTD=False):
             if(counter > maxFiles): break
             rootFiles.push_back(filenames)
 
-    print(len(rootFiles))
+    if len(rootFiles) == 0:
+        print(f"WARNING findDIR: no ROOT files found under: {directory}")
+    else:
+        print(f"findDIR: {len(rootFiles)} files under {directory}")
+
     return rootFiles
 
 def BuildDict(year):
