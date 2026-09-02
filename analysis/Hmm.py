@@ -1171,8 +1171,8 @@ def loopOnDataset(year):
         "2025":  list(range(-161, -167, -1)),  # generates -61 to -70
     }
 
-#    data = data_map.get(year, [])
-    data = []
+    data = data_map.get(year, [])
+#    data = []
 
     readDataQuality(year)
 
