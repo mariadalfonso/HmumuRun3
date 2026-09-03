@@ -101,7 +101,7 @@ Vec_f reshapeBTVdiscr(MyCorrections corrSFs, Vec_f Jet_btagRobustParTAK4B, Vec_f
 }
 */
 
-Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta, Vec_f ele_r9, Vec_f ele_gain, float event, float run, bool isData, string year){
+Vec_f computeEleSSCorrection(MyCorrections corrSFs, const Vec_f& ele_pt, const Vec_f& ele_eta, const Vec_f& ele_r9, const Vec_f& ele_gain, const float event, const float run, bool isData, string year){
 
   std::vector<double> random_numbers(ele_pt.size(), 0.0);
 
@@ -123,7 +123,7 @@ Vec_f computeEleSSCorrection(MyCorrections corrSFs, Vec_f ele_pt, Vec_f ele_eta,
 
 }
 
-Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFactor, Vec_f jet_eta, Vec_f jet_phi, Vec_f jet_area, float rho, float run, bool isData, string year, string mc){
+Vec_f computeJECcorrection(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc){
 
   Vec_f new_jet; new_jet.resize(jet_pt.size());
   Vec_f raw_jet; raw_jet.resize(jet_pt.size());
@@ -134,7 +134,7 @@ Vec_f computeJECcorrection(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_rawFac
   return new_jet;                                                                                                                                                                     
 }                                                                                                                                                                                   
 
-Vec_f computeJECuncertainties(MyCorrections corrSFs, Vec_f jet_pt, Vec_f jet_eta){                                                                                                  
+Vec_f computeJECuncertainties(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec_f& jet_eta){
   Vec_f new_jet_delta; new_jet_delta.resize(jet_pt.size());
   int type = 0;                                                                                                                                                                       
   for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) new_jet_delta[idx] = corrSFs.eval_jesUnc(jet_eta[idx], jet_pt[idx], type );                                                  
@@ -150,7 +150,7 @@ Vec_b cleaningJetVetoMapMask(const Vec_f& jet_eta, const Vec_f& jet_phi, const s
   return jet_vetoMap_mask;                                                                                                                                                            
 }                                                                                                                                                                                   
 
-Vec_b cleaningJetIDMask(Vec_f jet_eta, Vec_f jet_chHEF, Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_neEmEF, Vec_f jet_muEF, Vec_f jet_chMultiplicity, Vec_f jet_neMultiplicity, string year) {                                                                                                                                                                                
+Vec_b cleaningJetIDMask(const Vec_f& jet_eta, const Vec_f& jet_chHEF, const Vec_f& jet_neHEF, const Vec_f& jet_chEmEF, const Vec_f& jet_neEmEF, const Vec_f& jet_muEF, const Vec_f& jet_chMultiplicity, const Vec_f& jet_neMultiplicity, string year) {
   Vec_b jetID_mask(jet_eta.size(), true);                                                                                                                                             
   for (unsigned int idx = 0; idx < jet_eta.size(); ++idx) {                                                                                                                           
     int jetID = corr_sf.eval_jetID(jet_eta[idx], jet_chHEF[idx], jet_neHEF[idx], jet_chEmEF[idx], jet_neEmEF[idx], jet_muEF[idx], jet_chMultiplicity[idx], jet_neMultiplicity[idx]); 
@@ -159,7 +159,7 @@ Vec_b cleaningJetIDMask(Vec_f jet_eta, Vec_f jet_chHEF, Vec_f jet_neHEF, Vec_f j
   return jetID_mask;                                                                                                                                                                  
 }
 
-Vec_b cleaningJetSelMask(int sel, Vec_f jet_eta, Vec_f jet_neHEF, Vec_f jet_chEmEF, Vec_f jet_muEF, Vec_f jet_neEmEF, Vec_ui jet_jetId){
+Vec_b cleaningJetSelMask(const int sel, const Vec_f& jet_eta, const Vec_f& jet_neHEF, const Vec_f& jet_chEmEF, const Vec_f& jet_muEF, const Vec_f& jet_neEmEF, const Vec_ui& jet_jetId){
 
   Vec_b jet_Sel_mask(jet_eta.size(), true);
   bool debug = false;

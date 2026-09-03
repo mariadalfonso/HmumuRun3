@@ -35,7 +35,7 @@ bool isGoodRunLS(const bool isData, const UInt_t run, const UInt_t lumi) {
   return match->first <= lumi && match->second >= lumi;
 }
 
-Vec_i indices(const int& size, const int& start = 0) {
+Vec_i indices(const int size, const int start = 0) {
     Vec_i res(size, 0);
     std::iota(std::begin(res), std::end(res), start);
     return res;
@@ -51,10 +51,10 @@ Vec_f NomUpDownVar(const float nom, const float up, const float down, float weig
   return res;
 }
 
-Vec_b cleaningMask(Vec_i indices, int size) {
+Vec_b cleaningMask(const Vec_i& idxs, int size) {
 
   Vec_b mask(size, true);
-  for (int idx : indices) {
+  for (int idx : idxs) {
     if(idx < 0) continue;
     mask[idx] = false;
   }
@@ -150,13 +150,9 @@ ROOT::VecOps::RVec<int> pickFsrForMuons(
     return result;
 }
 
-ROOT::VecOps::RVec<float> isoCorrFSR(
-    const ROOT::VecOps::RVec<float>& mu_reliso,
-    const ROOT::VecOps::RVec<float>& mu_pt,
-    const ROOT::VecOps::RVec<int>& fsrIdx,
-    const ROOT::VecOps::RVec<float>& fsr_pt)
+const Vec_f isoCorrFSR(const Vec_f& mu_reliso, const Vec_f& mu_pt, const Vec_i& fsrIdx, const Vec_f& fsr_pt)
 {
-    ROOT::VecOps::RVec<float> result = mu_reliso;
+    Vec_f result = mu_reliso;
 
     for (size_t i = 0; i < mu_reliso.size(); ++i) {
 
@@ -176,17 +172,17 @@ ROOT::VecOps::RVec<float> isoCorrFSR(
     return result;
 }
 
-
-Vec_b fatJetMask(Vec_i FatJet_muonIdx3SJ, int muon1_idx, int muon2_idx) {
+Vec_b fatJetMask(const Vec_i& FatJet_muonIdx3SJ, int muon1_idx, int muon2_idx) {
 
   Vec_b mask(FatJet_muonIdx3SJ.size(), true);
-  for (int idx : FatJet_muonIdx3SJ) {
-    if(idx < 0) continue;
-    if(idx == muon1_idx or idx == muon2_idx) mask[idx] = false;
+
+  for (size_t i = 0; i < FatJet_muonIdx3SJ.size(); ++i) {
+    int idx = FatJet_muonIdx3SJ[i];
+    if (idx >= 0 && (idx == muon1_idx || idx == muon2_idx)) mask[i] = false;
   }
+
   return mask;
 }
-
 
 TLorentzVector MakeTLV(const float pt, const float eta, const float phi, const float mass) {
     TLorentzVector v;
@@ -333,7 +329,7 @@ std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLor
 // below analysis oriented functions
 
 
-float getGenPart_boson(Vec_f & GenPart_xyz, Vec_i & GenPart_status, Vec_i & GenPart_pdgId, Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
+float getGenPart_boson(const Vec_f & GenPart_xyz, const Vec_i & GenPart_status, const Vec_i & GenPart_pdgId, const Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
 
   // this only works for Z
 
@@ -369,7 +365,7 @@ float getGenPart_boson(Vec_f & GenPart_xyz, Vec_i & GenPart_status, Vec_i & GenP
 
 }
 
-float getLHEPart_boson(Vec_f & LHEPart_xyz, Vec_i & LHEPart_status, Vec_i & LHEPart_pdgId, int typeBos=24) {
+float getLHEPart_boson(const Vec_f & LHEPart_xyz, const Vec_i & LHEPart_status, const Vec_i & LHEPart_pdgId, int typeBos=24) {
 
   float var = -999.;
   for (unsigned int j = 0; j < LHEPart_xyz.size(); ++j) {
@@ -382,7 +378,7 @@ float getLHEPart_boson(Vec_f & LHEPart_xyz, Vec_i & LHEPart_status, Vec_i & LHEP
   return var;
 }
 
-Vec_i getLHEPart_match(Vec_f & Jeta, Vec_f & Jphi, Vec_f & LHEPart_eta, Vec_f & LHEPart_phi, Vec_i & LHEPart_status, Vec_i & LHEPart_pdgId, bool isData) {
+Vec_i getLHEPart_match(const Vec_f & Jeta, const Vec_f & Jphi, const Vec_f & LHEPart_eta, const Vec_f & LHEPart_phi, const Vec_i & LHEPart_status, const Vec_i & LHEPart_pdgId, bool isData) {
 
   Vec_i idxMatch_(Jeta.size(), -1);
   if(isData) return idxMatch_;
@@ -413,20 +409,10 @@ int topology(float eta1, float eta2) {
   return topology;
 }
 
-
-
-int hardest_pt_idx(const Vec_f pts) {
-
-  int idx = -1;
-  float maxpt = -1.0f;
-  for (size_t i=0; i<pts.size(); ++i) {
-    if (pts[i] > maxpt) {
-      maxpt = pts[i];
-      idx = i;
-    }
-  }
-  return idx;
-
+// pass by const reference! your version copies the whole RVec on every event
+inline int hardest_pt_idx(const Vec_f& pts) {
+  if (pts.empty()) return -1;
+  return (int)ROOT::VecOps::ArgMax(pts);
 }
 
 /*
@@ -475,11 +461,11 @@ float MinvErr(const float pt1, const float err1, const float pt2, const float er
   return sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
 }
 
-float minDeta(const float& etaDiMu, const float& jetEta1, const float& jetEta2) {
+float minDeta(const float etaDiMu, const float jetEta1, const float jetEta2) {
   return   std::min(abs(etaDiMu-jetEta1),abs(etaDiMu-jetEta2));
 }
 
-float minDphi(const float& DiMu, const float& jet1, const float& jet2) {
+float minDphi(const float DiMu, const float jet1, const float jet2) {
   return   std::min(deltaPhi(DiMu,jet1),deltaPhi(DiMu,jet2));
 }
 
@@ -525,7 +511,7 @@ float MinvCorr(const TLorentzVector& p1,
     return 0.f;
 }
 
-bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const float& mass_){
+bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i& charges, const float mass_){
 // useful for the Wmunu + Hmm 3mu final state
 
   bool freeOfZ=true;
@@ -552,7 +538,7 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f
 
 }
 
-stdVec_i pickExtraMu(const ROOT::VecOps::RVec<float>& pts,
+stdVec_i pickExtraMu(const Vec_f& pts,
 		   int mu1_idx, int mu2_idx)
 {
 
@@ -573,10 +559,10 @@ stdVec_i pickExtraMu(const ROOT::VecOps::RVec<float>& pts,
   return idx_;
 }
 
-float wrongOSSFmass(const ROOT::VecOps::RVec<float>& pts,
-		    const ROOT::VecOps::RVec<float>& etas,
-		    const ROOT::VecOps::RVec<float>& phis,
-		    const ROOT::VecOps::RVec<int>& charges,
+float wrongOSSFmass(const Vec_f& pts,
+		    const Vec_f& etas,
+		    const Vec_f& phis,
+		    const Vec_f& charges,
 		    int mu1_idx, int mu2_idx)
 {
     const float Z_MASS = 91.1876;
@@ -846,8 +832,8 @@ stdVec_i getVBFIndicies(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
 }
 
-float getZep(const float& etaDiMu,
-	     const float& VBF1_eta, const float& VBF2_eta
+float getZep(const float etaDiMu,
+	     const float VBF1_eta, const float VBF2_eta
              ){
 
   float ZepVar = ( etaDiMu - (VBF1_eta+VBF2_eta)/2.0)/abs(VBF1_eta - VBF2_eta);
@@ -856,7 +842,7 @@ float getZep(const float& etaDiMu,
 
 }
 
-float getEtaCen(const float& etaDiMu, const float& jetEta1, const float& jetEta2) {
+float getEtaCen(const float etaDiMu, const float jetEta1, const float jetEta2) {
 
   float detaJJ = jetEta1 - jetEta2;
   float num = etaDiMu - (jetEta1+jetEta2)*0.5;
@@ -893,8 +879,8 @@ TLorentzVector Pair12(const TLorentzVector& mu1, const TLorentzVector& mu2) {
 
 }
 
-float Pair12Minv(const float& v1_Pt, const float& v1_Eta, const float& v1_Phi, const float& v1_Mass,
-                 const float& v2_Pt, const float& v2_Eta, const float& v2_Phi, const float& v2_Mass) {
+float Pair12Minv(const float v1_Pt, const float v1_Eta, const float v1_Phi, const float v1_Mass,
+                 const float v2_Pt, const float v2_Eta, const float v2_Phi, const float v2_Mass) {
   PtEtaPhiMVector p1(v1_Pt, v1_Eta, v1_Phi, v1_Mass);
   PtEtaPhiMVector p2(v2_Pt, v2_Eta, v2_Phi, v2_Mass);
   return (p1 + p2).M();
@@ -952,6 +938,7 @@ Vec_f DeltaRToJets(const TLorentzVector& obj,
 		   const Vec_f& phi)
 {
     Vec_f out;
+    out.reserve(pt.size());
 
     for (size_t i=0; i<pt.size(); ++i){
         TLorentzVector j;
