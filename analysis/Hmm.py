@@ -6,7 +6,8 @@ import argparse
 import getpass
 
 from utilsAna import loadUserCode
-from utilsAna import BuildDict, SwitchSample
+from utilsAna import SwitchSample
+from datasets import BuildDict, getMCList, getDataList
 from utilsAna import readDataQuality
 from utilsAna import computeWeigths
 from utilsAna import lumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
@@ -1111,56 +1112,7 @@ def loopOnDataset(year):
     ## both data and MC
     loadCorrectionSet(int(year))
 
-    mc = []
-    mc.extend([10,11,12,13,14,15,17])
-    if year in ["12022", "22022", "12023", "22023"]: mc.extend([20,21,22,23,24,25]) #Zgamma
-    if year=="2024": mc.extend([20,21,22,23,24,26]) #Zgamma
-    #if year=="2024": mc.extend([30,31,32,33,34,35,36,37])
-
-    if mode == "isVhad":
-        if year in ["2024"]: mc.extend([122,123,124,125]) # extra DY pt binned for ML training (new)
-        if year in ["12022", "22022", "12023", "22023"]: mc.extend([114,115,116,117]) # extra DY pt binned for ML training (check Zeynep xsection ..)
-    else:
-        if year=="2024": mc.extend([103,104])   #DY
-        else: mc.extend([100])    #DY madgpragh
-
-    mc.extend([101])    #DY EWK
-    if mode == "isVBF": mc.extend([99,98])    #DY EWK
-
-    mc.extend([140])    #TT2l (was 102)
-
-    mc.extend([201,202,203,204,205,206]) #VV powheg
-    mc.extend([213,214,215,216])     #VVV
-    mc.extend([221,222,223,224,226,227,228,229,230,231,232,233,234,235,236,237])    #ttV
-
-    if year=="2024": mc.extend([225]) #ttZqq (for 22-23 use the TT lep binned)
-    else: mc.extend([238,239])
-    if year=="2024": mc.extend([249]) #ttGamma
-    else: mc.extend([246,247,248])
-
-    mc.extend([107,105,106]) # tt1l, tW
-
-    '''
-    # below for training
-    if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([141,142]) # extra TTbar (2024 not there yet)
-    if mode == "isVlep": mc.extend([207,208,209,210,211,212]) #VV amcNLO
-
-#    if year in ["2024"]:
-#        if mode == "isVhad": mc.extend([119,120,121])  # extra DY jet binned for ML training
-#    if year in ["12022", "22022", "12023", "22023"]:
-#        if mode == "isVhad": mc.extend([111,112,113])  # extra DY jet binned for ML training
-
-    if mode == "isTTlep" or mode == "isVlep" or mode == "isZinv" or mode == "isTThad":
-        if year in ["12022", "22022", "12023", "22023"]: mc.extend([242,243,244,245])  # extra TTW syst var
-        mc.extend([143,144,145,146,147,148,149])  # extra TT2l syst var
-
-    if mode == "isVBF" or mode == "isGGH" or mode == "isVhad" or mode == "isTThad": mc.extend([109]) # extra DY jet mass binned
-#    if mode == "isVBF" or mode == "isGGH": mc.extend([108,110]) # extra DY jet mass binned (no point those will break MVA)
-
-    if mode == "isGGH" or mode == "isTThad":
-        mc.extend([126,127]) # MINNLO
-        if year in ["12022", "2024"]: mc.extend([128])
-    '''
+    mc = getMCList(year, mode)
 
     for sampleNOW in mc:
         files, xsec = SwitchSample(thisdict, sampleNOW)
@@ -1170,27 +1122,7 @@ def loopOnDataset(year):
         sumW = computeWeigths(rdf,xsec)
         analysis(files,year,sampleNOW,sumW)
 
-    data_map = {
-        "12022": [-11, -12, -13, -14],
-        "22022": [-15, -16, -17],
-        "12023": [-23, -24],
-        "22023": [-31, -32],
-        "2024":  list(range(-41, -55, -1)),  # generates -41 to -54
-        "2025":  list(range(-61, -73, -1)),  # generates -61 to -70
-        "2026":  list(range(-81, -89, -1)),  # generates -81 to -88
-    }
-
-    data_map_jpsi = {
-#        "12022": [-11, -12, -13, -14],
-        "22022": [-116,-117], # missing (E -115)
-        "12023": [-123],
-        "22023": [-131],
-        "2024":  list(range(-141, -148, -1)),
-        "2025":  list(range(-161, -167, -1)),  # generates -61 to -70
-    }
-
-    data = data_map.get(year, [])
-#    data = []
+    data = getDataList(year, mode)
 
     readDataQuality(year)
 
