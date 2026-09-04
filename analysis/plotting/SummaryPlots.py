@@ -24,7 +24,7 @@ CATEGORIES = ["VBFcat", "ggHcat", "VLcat", "TTLcat", "TTHcat",
 # Which plot groups each category can draw. "mass" always runs.
 # Names map to the plot*() functions / plotMuons() below.
 DEFAULT_INDIR  = f"/work/submit/{getpass.getuser()}/HmumuRun3/ROOTFILES/"
-DEFAULT_OUTDIR = f"/home/submit/{getpass.getuser()}/HmumuRun3/output_plots/"
+DEFAULT_OUTDIR = f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/"
 
 # Plot groups the user can request via --plots. "all" expands to the
 # category-appropriate set (mass + the category's own function + muons).
@@ -246,9 +246,8 @@ def plot(varname):
       line2.SetLineColor(11)
       line2.Draw()
 
-   string = category+year
    os.makedirs(myOutDir, exist_ok=True)   # create the (per-group) output dir on demand
-   c.SaveAs(myOutDir+"Stack"+varname+"_"+string+".png")
+   c.SaveAs(f"{myOutDir}{varname}_{category}{year}_Stack.png")
    print(varname+".png")
 
 
@@ -355,6 +354,11 @@ def plotMuons():
    plot("muon2_eta")
    plot("dimuon_pt")
    plot("dimuon_eta")
+   plot("dimuon_rapidity")
+   plot("muon1_norm_pt")
+   plot("muon2_norm_pt")
+   plot("costhetacs")
+   plot("phistarcs")
    if category == "VLcat" or category == "TTLcat" or category == "TTHcat":
       plot("muon1_sip3d")
       plot("muon2_sip3d")
