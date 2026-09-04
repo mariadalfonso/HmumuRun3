@@ -10,6 +10,7 @@ from LoadTree import loadTree
 from prepareHisto import getHisto
 import plot_style
 from plot_style import lumis
+import plot_vars
 
 plot_style.setup_style()
 
@@ -76,30 +77,49 @@ mytree = ROOT.TChain('events')
 mytree = loadTree(mytree, dirLOCAL_, category, year)
 
 
-def plot(item, nbin, low, high, doLog, plotString, titleX):
+# Process groups (stacking order matters; legend order matches original).
+BKG_PROCS = ["hTT2L", "hTop", "hZg", "hVV", "hEWK", "hDY"]
+SIG_PROCS = ["hWH", "hTTH", "hZH", "hVBFH", "hggH"]
 
-   listHisto = getHisto(mytree, category, item, year, nbin, low, high, blind=args.blind)
+LEGEND_BKG = [
+    ("hData", "Data",                        "lep"),
+    ("hDY",   "DY+jets (QCD)",                "f"),
+    ("hEWK",  "DY+jets (EWK)",                "f"),
+    ("hVV",   "VV + VVV",                     "f"),
+    ("hTT2L", "t#bar{t} 2l",                  "f"),
+    ("hTop",  "Top (1l, tW/tZq, ttV/4t)",     "f"),
+    ("hZg",   "H#rightarrowZ#gamma + jets",   "f"),
+]
+LEGEND_SIG_LEP = [("hTTH", "ttH", "l"), ("hWH", "WH", "l"), ("hZH", "ZH", "l")]
+LEGEND_SIG_HAD = [("hVBFH", "VBF H", "l"), ("hggH", "ggH", "l")]
+LEP_CATEGORIES = ["VLcat", "TTLcat", "TTHcat", "VHcat", "Zinvcat"]
+
+
+def _style_ratio_axis(axis, offset):
+   """Apply the shared absolute-pixel ratio-pad text style to one axis."""
+   axis.SetTitleFont(plot_style.RATIO_FONT_ABS)
+   axis.SetLabelFont(plot_style.RATIO_FONT_ABS)
+   axis.SetTitleSize(plot_style.RATIO_TITLE_SIZE_PX)
+   axis.SetLabelSize(plot_style.RATIO_LABEL_SIZE_PX)
+   axis.SetTitleOffset(offset)
+
+
+def plot(varname):
+
+   nbin, low, high = plot_vars.get_binning(varname)
+   doLog = varname in plot_vars.get_logy_vars()
+   titleX = plot_vars.get_xlabel(varname)
+
+   listHisto = getHisto(mytree, category, varname, year, nbin, low, high, blind=args.blind)
 
    if not listHisto:                       # variable missing from the snapshot
-      print(f"   -> skipped '{plotString}' (item {item}): input not available")
+      print(f"   -> skipped '{varname}': input not available")
       return
 
-   for obj in listHisto:
-      if obj.name == 'hData': hData = obj.hOBJ
-      #
-      if obj.name == 'hZH': hZH = obj.hOBJ
-      if obj.name == 'hWH': hWH = obj.hOBJ
-      if obj.name == 'hTTH': hTTH = obj.hOBJ
-      if obj.name == 'hVBFH': hVBFH = obj.hOBJ
-      if obj.name == 'hggH': hggH = obj.hOBJ
-      if obj.name == 'hZg': hZg = obj.hOBJ
-      #
-      if obj.name == 'hDY': hDY = obj.hOBJ
-      if obj.name == 'hTT2L': hTT2L = obj.hOBJ
-      if obj.name == 'hTop': hTop = obj.hOBJ
-      if obj.name == 'hVV': hVV = obj.hOBJ
-      if obj.name == 'hEWK': hEWK = obj.hOBJ
-   
+   hists = {obj.name: obj.hOBJ for obj in listHisto}
+   hData = hists.get('hData')
+   hDY = hists.get('hDY')
+
    c, pad1, pad2 = plot_style.make_canvas_pads(doLog)
 
    # Draw stackXS: backgrounds stacked+filled; signal drawn unstacked as
@@ -107,8 +127,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    BKGstack = ROOT.THStack()
    SIGstack = ROOT.THStack()
 
-   labelsH = ["", "n_top", "n_W", "resolved (5jets)"]
-   labelsL = ["", "H_{#mu#mu}+e", "H_{#mu#mu}+ee", "H_{#mu#mu}+#mu", "H_{#mu#mu}+#mu#mu", "H_{#mu#mu}+e#mu"]
+   bin_labels = plot_vars.get_bin_labels(varname)   # None unless categorical
 
    def _clean_and_label(h):
       """Remove negative bins and apply category-axis bin labels; returns the TH1."""
@@ -117,21 +136,20 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
          if hist.GetBinContent(ibin) < 0.0:
             hist.SetBinContent(ibin, 0.0)
             hist.SetBinError(ibin, 0.0)
-      if item==210:
-         for i, lab in enumerate(labelsL, start=1):
-            hist.GetXaxis().SetBinLabel(i, lab)
-      if item==211:
-         for i, lab in enumerate(labelsH, start=1):
+      if bin_labels:
+         for i, lab in enumerate(bin_labels, start=1):
             hist.GetXaxis().SetBinLabel(i, lab)
       return hist
 
-   for h in [hTT2L, hTop, hZg, hVV, hEWK, hDY]:
+   for name in BKG_PROCS:
+      h = hists.get(name)
       if not h:
          continue
       print('Integral ',h.GetName(), " = ", h.Integral())
       BKGstack.Add(_clean_and_label(h))
 
-   for h in [hWH, hTTH, hZH, hVBFH, hggH]:
+   for name in SIG_PROCS:
+      h = hists.get(name)
       if not h:
          continue
       print('Integral ',h.GetName(), " = ", h.Integral())
@@ -146,7 +164,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    if hData and hDY: stack.SetMaximum(rangeYax*max(hData.GetValue().GetMaximum(),hDY.GetValue().GetMaximum()))
    if hDY: stack.SetMinimum(hDY.GetValue().GetMaximum()/1000000);
 
-   if item==99:
+   if varname == "mva":
       stack.SetMinimum(hDY.GetValue().GetMaximum()/1000000000);
 
    pad1.cd()
@@ -164,7 +182,7 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
    stack.GetXaxis().SetLabelSize(0)     # glued layout: x-axis shown only on ratio pad
    stack.GetXaxis().SetTitleSize(0)
 
-   if item==4:
+   if varname == "mass":
       stack.GetYaxis().SetTitle("Events/ 1 [GeV]")
    stack.GetYaxis().SetTitleOffset(1.1)
    stack.GetYaxis().SetLabelSize(0.04)
@@ -184,24 +202,11 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
     
    ratio.Divide(mcTOT)
    ratio.GetYaxis().SetTitle("data/MC")
-   ratio.GetYaxis().SetRangeUser(0.5,1.5)
-#   if item==4: ratio.GetYaxis().SetRangeUser(0.75,1.25)
-   if item==4: ratio.GetYaxis().SetRangeUser(0.90,1.10) # mass
-   if item==5: ratio.GetYaxis().SetRangeUser(0.75,1.25) # PT
+   ratio.GetYaxis().SetRangeUser(*plot_vars.get_ratio_range(varname))
    if 'CR' in dirLOCAL_: ratio.GetYaxis().SetRangeUser(0.,2.5)
-   if (item==205): ratio.GetYaxis().SetRangeUser(0.,2.)
    ratio.GetXaxis().SetTitle(titleX)    # single x-axis title on the bottom pad
-   ratio.GetXaxis().SetTitleFont(plot_style.RATIO_FONT_ABS)
-   ratio.GetXaxis().SetLabelFont(plot_style.RATIO_FONT_ABS)
-   ratio.GetXaxis().SetTitleSize(plot_style.RATIO_TITLE_SIZE_PX)
-   ratio.GetXaxis().SetLabelSize(plot_style.RATIO_LABEL_SIZE_PX)
-   ratio.GetXaxis().SetTitleOffset(plot_style.RATIO_X_TITLE_OFFSET)
-
-   ratio.GetYaxis().SetTitleFont(plot_style.RATIO_FONT_ABS)
-   ratio.GetYaxis().SetLabelFont(plot_style.RATIO_FONT_ABS)
-   ratio.GetYaxis().SetTitleSize(plot_style.RATIO_TITLE_SIZE_PX)
-   ratio.GetYaxis().SetLabelSize(plot_style.RATIO_LABEL_SIZE_PX)
-   ratio.GetYaxis().SetTitleOffset(plot_style.RATIO_Y_TITLE_OFFSET)
+   _style_ratio_axis(ratio.GetXaxis(), plot_style.RATIO_X_TITLE_OFFSET)
+   _style_ratio_axis(ratio.GetYaxis(), plot_style.RATIO_Y_TITLE_OFFSET)
    
    ratio.Draw("pe")
    lineZero = ROOT.TLine(mcTOT.GetXaxis().GetXmin(), 1.,  mcTOT.GetXaxis().GetXmax(), 1.)
@@ -219,150 +224,144 @@ def plot(item, nbin, low, high, doLog, plotString, titleX):
 #   legend.SetTextAlign(32)
    legend.SetTextAlign(12)  # left align for readability
 
-   if hData and hData.Integral()>0: legend.AddEntry(hData.GetValue(), "Data" ,"lep")
-   if hDY and hDY.Integral()>0: legend.AddEntry(hDY.GetValue(), "DY+jets (QCD)", "f")
-   if hEWK and hEWK.Integral()>0: legend.AddEntry(hEWK.GetValue(), "DY+jets (EWK)", "f")
-   if hVV and hVV.Integral()>0: legend.AddEntry(hVV.GetValue(), "VV + VVV", "f")
-   if hTT2L and hTT2L.Integral()>0: legend.AddEntry(hTT2L.GetValue(), "t#bar{t} 2l", "f")
-   if hTop and hTop.Integral()>0: legend.AddEntry(hTop.GetValue(), "Top (1l, tW/tZq, ttV/4t)", "f")
-   if hZg and hZg.Integral()>0: legend.AddEntry(hZg.GetValue(), "H#rightarrowZ#gamma + jets", "f")
-   if category in ["VLcat", "TTLcat", "TTHcat", "VHcat", "Zinvcat"]:
-      if hTTH and hTTH.Integral()>0: legend.AddEntry(hTTH.GetValue(), "ttH", "l")
-      if hWH and hWH.Integral()>0: legend.AddEntry(hWH.GetValue(), "WH", "l")
-      if hZH and hZH.Integral()>0: legend.AddEntry(hZH.GetValue(), "ZH", "l")
-   else:
-      if hVBFH and hVBFH.Integral()>0: legend.AddEntry(hVBFH.GetValue(), "VBF H", "l")
-      if hggH and hggH.Integral()>0: legend.AddEntry(hggH.GetValue(), "ggH", "l")
+   sig_entries = LEGEND_SIG_LEP if category in LEP_CATEGORIES else LEGEND_SIG_HAD
+   for name, label, style in LEGEND_BKG + sig_entries:
+      h = hists.get(name)
+      if h and h.Integral() > 0:
+         legend.AddEntry(h.GetValue(), label, style)
    legend.Draw();
 
    
    # CMS label + lumi/energy (official style via plot_style / cmsstyle)
    _cmslabel = plot_style.cms_label(pad1, year)
 
-   # Add TLine blind
-   line1 = ROOT.TLine( 110, 0, 110, 500000.)
-   line1.SetLineColor(11);
-   if item==4: line1.Draw()
-   line2 = ROOT.TLine( 150, 0, 150, 500000.)
-   line2.SetLineColor(11);
-   if item==4: line2.Draw()
+   # Add TLine(s) marking the blinded region, if this variable is blinded
+   blind_range = plot_vars.get_blind_range(varname)
+   if blind_range is not None:
+      lo, hi = blind_range
+      line1 = ROOT.TLine(lo, 0, lo, 500000.)
+      line1.SetLineColor(11)
+      line1.Draw()
+      line2 = ROOT.TLine(hi, 0, hi, 500000.)
+      line2.SetLineColor(11)
+      line2.Draw()
 
    string = category+year
    os.makedirs(myOutDir, exist_ok=True)   # create the (per-group) output dir on demand
-   c.SaveAs(myOutDir+"Stack"+plotString+"_"+string+".png")
-#   c.SaveAs(myOutDir+"Stack"+plotString+"_"+string+"_HSB.png")
-#   c.SaveAs(myOutDir+"Stack"+plotString+"_"+string+"_ZCR.png")
-   print(plotString+".png")
+   c.SaveAs(myOutDir+"Stack"+varname+"_"+string+".png")
+   print(varname+".png")
 
 
 def plotVBF():
    
-   plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
+   plot("mva")
    '''
-   plot(104, 200, 0. , 200., True, "jetVBF1_Pt","jetVBF1_Pt")
-   plot(105, 200, 0. , 200., True, "jetVBF2_Pt","jetVBF2_Pt")   
-   plot(106, 100, -5. , 5., True, "jetVBF1_Eta","#eta jetVBF1")
-   plot(107, 100, -5. , 5., True, "jetVBF2_Eta","#eta jetVBF2")
+   plot("jetvbf1_pt")
+   plot("jetvbf2_pt")
+   plot("jetvbf1_eta")
+   plot("jetvbf2_eta")
 
-   plot(100, 100, 0. , 1000., True, "Mjj","Mjj")
-   plot(101, 100, 0. , 10., True, "dEtaJJ","dEtaJJ")
-   plot(102, 100, 0. , 1., True, "Rpt","Rpt")
-   plot(103, 100, 0. , 2., True, "ZepVar","ZepVar")
-   plot(301, 100, 0. , 500., False, "PuppiMET_Pt","PuppiMET_Pt")
+   plot("mjj")
+   plot("detajj")
+   plot("rpt")
+   plot("zepvar")
+   plot("puppimet_pt_vbf")
    '''
 
 def plotVHlep():
 
-   plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
-   plot(210, 5, 0. , 5., False, "category","category")
+   plot("mva")
+   plot("category_vlcat")
 
    '''
-   plot(102, 100, 0. , 1., True, "Rpt","Rpt")
+   plot("rpt")
 
-   plot(201, 100, 10. , 100., False, "Lepton_Pt","Lepton_Pt")
-   plot(301, 300, 0. , 300., True, "PuppiMET_Pt","PuppiMET_Pt")
-   plot(212, 150, 0. , 150., False, "mt","mt")
+   plot("lepton_pt")
+   plot("puppimet_pt_vhlep")
+   plot("mt_vhlep")
    '''
 
 def plotTTHlep():
 
-   plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
-   plot(210, 6, 0. , 6., False, "category","category")
+   plot("mva")
+   plot("category_ttlcat")
 
    '''
-   plot(201, 100, 10. , 100., False, "Lepton_Pt","Lepton_Pt")
-   plot(203, 60, -3. , 3., False, "Lepton_Eta","Lepton_Eta")
-   plot(202, 100, 10. , 100., False, "Lepton2_Pt","Lepton2_Pt")
-   plot(301, 100, 0. , 500., True, "PuppiMET_Pt","PuppiMET_Pt")
-   plot(212, 30, 0. , 150., False, "mt","mt")
-   plot(263, 200, 0. , 1000., True, "HT","HT")
-   plot(260, 150, 10. , 160., False, "Jet1_Pt","Jet1_Pt")
-   plot(265, 100, -5. , 5., False, "Jet1_Eta","Jet1_Eta")
+   plot("lepton_pt")
+   plot("lepton_eta")
+   plot("lepton2_pt")
+   plot("puppimet_pt_tthlep_tthad")
+   plot("mt_tthlep")
+   plot("ht")
+   plot("jet1_pt_tthlep")
+   plot("jet1_eta")
    '''
 
 def plotVHhad():
 
-   plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
+   plot("mva")
 
    '''
-   plot(251, 50, 60. , 110., True, "goodWjj_mass","goodWjj_mass")
-   plot(252, 50, 0.75, 1., True, "goodWjj_discr","goodWjj_discr")
-   plot(253, 40, 150. , 550., True, "goodWjj_pt","goodWjj_pt")
-   plot(255, 60, -3. , 3., True, "goodWjj_eta","goodWjj_eta")
-   plot(254, 50, 0. , 5., True, "goodWjjPtOverHpt","goodWjjPtOverHpt")
-   plot(255, 60, 0. , 2.5, True, "dEtaWjjH","dEtaWjjH")
-   plot(256, 100, 0. , 6.28, True, "dPhiWjjH","dPhiWjjH")
-   plot(102, 100, 0. , 1., True, "Rpt","Rpt")
+   plot("goodwjj_mass")
+   plot("goodwjj_discr")
+   plot("goodwjj_pt")
+   plot("goodwjj_eta")
+   plot("goodwjjptoverhpt")
+   plot("detawjjh")
+   plot("dphiwjjh")
+   plot("rpt")
    '''
 
 def plotTThad():
 
-   plot(211, 4, 0. , 4., False, "category","category")
-   plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
+   plot("category_tthcat")
+   plot("mva")
    '''
-   plot(260, 100, 10. , 200., False, "Jet1_Pt","Jet1_Pt")
-   plot(265, 100, -5. , 5., False, "Jet1_Eta","Jet1_Eta")
-   plot(261, 150, 50. , 200., True, "WTopJetMass","WTopJetMass")
-   plot(262, 50, 0.5 , 1., False, "WTopJetDiscr","WTopJetDiscr")
-   plot(263, 200, 0. , 1000., True, "HT","HT")
-   plot(264, 10, 0. , 10., True, "Njets","Njets")
-#   plot(267, 10, 0. , 10., False, "nBMjets","nBMjets")
+   plot("jet1_pt_tthad")
+   plot("jet1_eta")
+   plot("wtopjetmass")
+   plot("wtopjetdiscr")
+   plot("ht")
+   plot("njets")
+#   plot("nbmjets")
 
-   plot(301, 100, 0. , 500., True, "PuppiMET_Pt","PuppiMET_Pt")
-   plot(266, 35, 0. , 350., True, "TopMassReco", "TopMassReco")
-   plot(268, 30, 0. , 3., True, "dEta_j1j2", "dEta_j1j2")
+   plot("puppimet_pt_tthlep_tthad")
+   plot("topmassreco")
+   plot("deta_j1j2")
 
-   plot(269, 30, 0. , 6.5, True, "mindR_H_BJet", "mindR_H_BJet")
-   plot(270, 30, 0. , 6.5, True, "mindR_H_AnyJet", "mindR_H_AnyJet")
+   plot("mindr_h_bjet")
+   plot("mindr_h_anyjet")
    '''
 
 def plotZinvH():
 
-   plot(99, 100, 0. , 1., True, "discrMVA", "MVA discr")
+   plot("mva")
    '''
-   plot(305, 50, 0. , 3.5, True, "dPhiMETH","dPhiMETH")
-   plot(102, 100, 0. , 1., True, "Rpt","Rpt")
+   plot("dphimeth")
+   plot("rpt")
 
-   plot(302, 50, 0. , 5., True, "PuppiMET_PtOverHpt","PuppiMET_PtOverHpt")
+   plot("puppimet_ptoverhpt")
 
-   plot(301, 400, 0. , 400., False, "PuppiMET_Pt","PuppiMET_Pt")
-   plot(303, 50, 0. , 3.5, True, "deltaPhiMETMu1","deltaPhiMETMu1")
-   plot(304, 50, 0. , 3.5, True, "deltaPhiMETMu2","deltaPhiMETMu2")
+   plot("puppimet_pt_zinv")
+   plot("deltaphimetmu1")
+   plot("deltaphimetmu2")
    '''
 
 def plotMuons():
 
-   plot(10, 100, 0. , 200., True, "Muon1_pt", "p_{T}^{#mu_{1}} [GeV]")
-   plot(11, 100, 0. , 200., True, "Muon2_pt", "p_{T}^{#mu_{2}} [GeV]")
-   plot(12, 60, -3. , 3., True, "Muon1_eta", "#eta^{#mu_{1}}")
-   plot(13, 60, -3. , 3., True, "Muon2_eta", "#eta^{#mu_{2}}")
+   plot("muon1_pt")
+   plot("muon2_pt")
+   plot("muon1_eta")
+   plot("muon2_eta")
+   plot("dimuon_pt")
+   plot("dimuon_eta")
    if category == "VLcat" or category == "TTLcat" or category == "TTHcat":
-      plot(14, 100, -0. , 20., True, "Muon1_sip3d", "Muon1_sip3d")
-      plot(15, 100, -0. , 20., True, "Muon2_sip3d", "Muon2_sip3d")
-#   plot(16, 200, 0.1 , 20.1, False, "FsrPH_pt", "p^{T}_{#gammaFSR} [GeV]")
-#   plot(18, 60, -3.14 , 3.14, False, "Muon1_phi", "#phi_{#mu^{1}}")
-#   plot(19, 60, -3.14 , 3.14, False, "Muon2_phi", "#phi_{#mu^{2}}")
-   plot(20, 60, 0. , 6., True, "dEtaMuons", "|#Delta#eta(#mu^{1}, #mu^{2})|")
+      plot("muon1_sip3d")
+      plot("muon2_sip3d")
+#   plot("fsrph_pt")
+#   plot("muon1_phi")
+#   plot("muon2_phi")
+   plot("deta_muons")
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +371,7 @@ def plotMuons():
 # Groups are non-overlapping and each maps to one small draw_* function:
 #   mass     -> dimuon Higgs candidate mass          (all categories)
 #   mva      -> BDT/MVA discriminant                 (all categories)
-#   category -> category-index plot (item 210/211)   (VLcat/TTLcat/TTHcat only)
+#   category -> category-index plot (category_vlcat/ttlcat/tthcat)  (VLcat/TTLcat/TTHcat only)
 #   muons    -> muon kinematics                      (all categories)
 #
 # The per-category plot*() functions above (plotVBF, plotVHlep, ...) are kept
@@ -382,21 +381,21 @@ def plotMuons():
 
 
 def draw_mass():
-    plot(4, 130, 70., 200., True, "HCandCorrMass", "m_{#mu#mu} [GeV]")
+    plot("mass")
 
 
 def draw_mva():
-    plot(99, 100, 0., 1., True, "discrMVA", "MVA discr")
+    plot("mva")
 
 
 def draw_category():
     # category-index plot; binning differs per category, only defined for some
     if category == "VLcat":
-        plot(210, 5, 0., 5., False, "category", "category")
+        plot("category_vlcat")
     elif category == "TTLcat":
-        plot(210, 6, 0., 6., False, "category", "category")
+        plot("category_ttlcat")
     elif category == "TTHcat":
-        plot(211, 4, 0., 4., False, "category", "category")
+        plot("category_tthcat")
     else:
         print(f"[plots] 'category' index plot not defined for {category} — skipping")
 

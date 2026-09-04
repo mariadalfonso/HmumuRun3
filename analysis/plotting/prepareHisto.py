@@ -88,100 +88,23 @@ from LoadTree import hmumu, hzgamma, hww
 from LoadTree import dy_2223,dy_24,dy_pt2223,dy_pt24,dy_minllo,dy_j
 from LoadTree import dyewk
 from LoadTree import vv,tt2l,ttV2223,ttV24,top
+import plot_vars
 
 def make_filter(ids):
     return " || ".join([f"mc=={x}" for x in ids])
 
 
-def getHisto(mytree, category, item, year, nbin, low, high, blind=True):
+def getHisto(mytree, category, varname, year, nbin, low, high, blind=True):
 
    ####
 
    df = RDataFrame(mytree)
 
    ## -------------------   
-   ## PUT here some PRESELECTION
+   ## PRESELECTION
    ## -------------------
-   
-   ## -------------------   
-   ## PUT here some Variable
-   ## -------------------   
-   if item == 4 : var = "HiggsCandCorrMass"
-   if item == 5 : var = "HiggsCandCorrPt"
-   if item == 6 : var = "HiggsCandCorrRapidity"
-   if item == 7 : var = "HiggsCandMassErr/HiggsCandCorrMass"
-   ##
-   if item == 10 : var = "Muon1_pt"
-   if item == 11 : var = "Muon2_pt"
-   if item == 12 : var = "Muon1_eta"
-   if item == 13 : var = "Muon2_eta"
-   if item == 14 : var = "Muon1_sip3d"
-   if item == 15 : var = "Muon2_sip3d"
-   if item == 16 : var = "FsrPH_pt"
-   if item == 17 : var = "FsrPH_eta"
-   if item == 18 : var = "Muon1_phi"
-   if item == 19 : var = "Muon2_phi"
-   if item == 20 : var = "fabs(Muon1_eta-Muon2_eta)"
-   if item == 95 : var = "PV_npvsGood"
 
-   if item == 99 : var = "discrMVA0"
-#   if item == 98 : var = "log10(discrMVA0)"
-
-   # for VBF
-   if item == 100 : var = "Mjj"   
-   if item == 101 : var = "dEtaJJ"
-   if item == 102 : var = "RPt"
-   if item == 103 : var = "ZepVar"
-   if item == 104 : var = "jetVBF1_Pt"
-   if item == 105 : var = "jetVBF2_Pt"
-   if item == 106 : var = "jetVBF1_Eta"
-   if item == 107 : var = "jetVBF2_Eta"
-   if item == 108 : var = "jetVBF1_Phi"
-   if item == 109 : var = "jetVBF2_Phi"
-   if item == 110 : var = "deltaRJet1H"
-   if item == 111 : var = "jetVBF1_dPhiMET"
-   if item == 112 : var = "jetVBF2_dPhiMET"
-
-   # for VH lep
-   if item == 201: var = "Lepton_Pt"
-   if item == 202: var = "Lepton2_Pt"
-   if item == 203: var = "Lepton_Eta"
-   if item == 210: var = "category"
-   if item == 211: var = "category"
-   if item == 212: var = "mt"
-   if item == 213: var = "m_wrongOSSF"
-
-   # for VH had
-   if item == 251: var = "goodWjj_mass"
-   if item == 252: var = "goodWjj_discr"
-   if item == 253: var = "goodWjj_pt"
-   if item == 254: var = "goodWjj_pt/HiggsCandCorrPt"
-#   if item == 253: var = "FatJet_pNet_mass[0]"
-   if item == 255: var = "goodWjj_eta"
-   if item == 256: var = "dEtaWjjH"
-   if item == 257: var = "dPhiWjjH"
-
-   # for TTH had
-   if item == 260: var = "Jet1_Pt"
-   if item == 261: var = "WTopJetMass"
-   if item == 262: var = "WTopJetDiscr"
-   if item == 263: var = "HT"
-   if item == 264: var = "nGoodJetsAll"
-   if item == 265: var = "Jet1_Eta"
-   if item == 266: var = "TopMassReco"
-   if item == 267: var = "nBMjets"
-   if item == 268: var = "dEta_j1j2"
-   if item == 269: var = "mindR_H_BJet"
-   if item == 270: var = "mindR_H_AnyJet"
-   if item == 271: var = "LeadBJetPt"
-   if item == 272: var = "nGoodJetsTrk"
-
-   # for ZinvH
-   if item == 301: var = "PuppiMET_pt"
-   if item == 302: var = "PuppiMET_pt/HiggsCandCorrPt"
-   if item == 303: var = "deltaPhi(PuppiMET_phi,Muon1_phi)"
-   if item == 304: var = "deltaPhi(PuppiMET_phi,Muon2_phi)"
-   if item == 305: var = "dPhiMETH"
+   var = plot_vars.get_expr(varname)
 
    ## -------------------
    ## FILL the histograms
@@ -198,7 +121,7 @@ def getHisto(mytree, category, item, year, nbin, low, high, blind=True):
    #selectionMVA = "HiggsCandCorrMass>110 and HiggsCandCorrMass<150"
 
    selectionMVA = "true"
-   if item == 99 :
+   if varname == "mva":
        print(category)
        if category in ['ggHcat']: selectionMVA = '(var<0.5)'
        if category in ['VBFcat']: selectionMVA = '(var<0.64)'
@@ -206,9 +129,6 @@ def getHisto(mytree, category, item, year, nbin, low, high, blind=True):
        if category in ['VHcat']: selectionMVA = '(var<0.86)'
        if category in ['TTHcat']: selectionMVA = '(var<0.80)'
        if category in ['Zinvcat']: selectionMVA = '(var<0.78)'
-   
-   if item == 99 :
-       print(category)
 
    # DY pT reweighting
    ggHcorr = "(mc==100 || mc==103 || mc==104 || mc==109) ? boson_ptWeight : 1."
@@ -232,7 +152,7 @@ def getHisto(mytree, category, item, year, nbin, low, high, blind=True):
    try:
        df_common = df.Define("var","{}".format(var)).Define("weight","{}".format(weightExpr)).Filter(selectionReg)
    except BaseException as e:
-       print(f"⚠️  item {item}: cannot build variable '{var}' "
+       print(f"⚠️  '{varname}': cannot build variable '{var}' "
              f"(likely a missing branch: {type(e).__name__}) — skipping this plot")
        return None
 
@@ -251,16 +171,17 @@ def getHisto(mytree, category, item, year, nbin, low, high, blind=True):
    hZH = df_common.Filter("mc==14").Histo1D(("hZH","h",nbin, low, high),"var","weight")
    hTTH = df_common.Filter("mc==15").Histo1D(("hTTH","h",nbin, low, high),"var","weight")
    hZg = df_common.Filter(make_filter(hzgamma+hww)).Histo1D(("hZg","h",nbin, low, high),"var","weight")
-   
+
    # data histogram, with optional blinding of the signal-sensitive region.
    # blinding only affects data (hData); MC histograms are never blinded.
+   blind_range = plot_vars.get_blind_range(varname)   # e.g. (110,150) for "mass"
    if not blind:
        print('[getHisto] UNBLINDED data')
        hData = df_common.Filter("mc<0").Histo1D(("hData","h",nbin, low, high),"var","weight")
-   elif item == 4:
-       # blind the 110-150 GeV mass window
-       hData = df_common.Filter("mc<0 and (var<110 or var>150)").Histo1D(("hData","h",nbin, low, high),"var","weight")
-   elif item == 99:
+   elif blind_range is not None:
+       lo, hi = blind_range
+       hData = df_common.Filter(f"mc<0 and (var<{lo} or var>{hi})").Histo1D(("hData","h",nbin, low, high),"var","weight")
+   elif varname == "mva":
        # blind above the per-category MVA cut
        hData = df_common.Filter("mc<0 and {}".format(selectionMVA)).Histo1D(("hData","h",nbin, low, high),"var","weight")
    else:
@@ -300,6 +221,6 @@ def getHisto(mytree, category, item, year, nbin, low, high, blind=True):
    hZg_ = MyHisto('hZg', hZg)
 
    listHisto = [hDY_, hTT2L_, hTop_, hVV_, hEWK_, hData_, hVBFH_, hggH_, hWH_, hZH_, hTTH_, hZg_]
-   print(item)
+   print(varname)
 
    return listHisto
