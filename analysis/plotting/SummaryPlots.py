@@ -23,6 +23,13 @@ CATEGORIES = ["VBFcat", "ggHcat", "VLcat", "TTLcat", "TTHcat",
 
 # Which plot groups each category can draw. "mass" always runs.
 # Names map to the plot*() functions / plotMuons() below.
+#
+# Each run produces TWO regions by default: "Inclusive" (m_mumu in
+# [70,200] GeV, subject to --blind/--unblind) and "SR_sideband" (m_mumu in
+# [110,120] or [130,150] GeV, always unblinded -- the restriction itself
+# excludes the innermost [120,130] core, which is what makes that safe).
+# Pass --no-SR-sideband to produce only the Inclusive region. See REGIONS
+# below for the single source of truth on both regions' behaviour.
 DEFAULT_INDIR  = f"/work/submit/{getpass.getuser()}/HmumuRun3/ROOTFILES/"
 DEFAULT_OUTDIR = f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/"
 
@@ -47,9 +54,17 @@ def parse_args():
     p.add_argument("--plots", nargs="+", default=["all"], choices=PLOT_GROUPS,
                    help="which plot groups to draw (default: all)")
     p.add_argument("--blind", dest="blind", action="store_true", default=True,
-                   help="blind data in the signal region (default: on)")
+                   help="blind data in the signal region (default: on; "
+                        "applies to the Inclusive region only)")
     p.add_argument("--unblind", dest="blind", action="store_false",
-                   help="disable blinding (use with care)")
+                   help="disable blinding for the Inclusive region (use with care)")
+    p.add_argument("--plot-SR-sideband", dest="plot_sr_sideband", action="store_true",
+                   default=True,
+                   help="also produce SR-sideband-restricted plots "
+                        "(m_mumu in [110,120] or [130,150] GeV) in a sibling "
+                        "SR_sideband/ folder (default: on)")
+    p.add_argument("--no-SR-sideband", dest="plot_sr_sideband", action="store_false",
+                   help="skip the SR-sideband plots, only produce Inclusive")
     return p.parse_args()
 
 
@@ -94,6 +109,51 @@ LEGEND_SIG_LEP = [("hTTH", "ttH", "l"), ("hWH", "WH", "l"), ("hZH", "ZH", "l")]
 LEGEND_SIG_HAD = [("hVBFH", "VBF H", "l"), ("hggH", "ggH", "l")]
 LEP_CATEGORIES = ["VLcat", "TTLcat", "TTHcat", "VHcat", "Zinvcat"]
 
+# Display names for the mass-range label's category line. Best-guess naming
+# based on the physics each category targets -- adjust freely, this is the
+# only place these strings live.
+CATEGORY_LABELS = {
+   "VBFcat":  "VBF cat.",
+   "ggHcat":  "ggF cat.",
+   "VLcat":   "VH-lep cat.",
+   "TTLcat":  "ttH-lep cat.",
+   "TTHcat":  "ttH-had cat.",
+   "VHcat":   "VH-had cat.",
+   "Zinvcat": "Zinv cat.",
+}
+
+# SR-sideband mass restriction: m_mumu in [110,120] or [130,150] GeV,
+# deliberately excluding the innermost [120,130] core. Independent of
+# plot_vars.get_blind_range("dimu_mass") (110,150) -- that's the FULL blind
+# window used for the Inclusive region's --blind/--unblind mass-window logic;
+# this is a narrower, two-piece window.
+SR_SIDEBAND_FILTER = ("((HiggsCandCorrMass>=110 && HiggsCandCorrMass<=120) || "
+                       "(HiggsCandCorrMass>=130 && HiggsCandCorrMass<=150))")
+
+# Per-region behaviour, single source of truth for both the getHisto() call
+# and the on-plot label text. region_filter=None means "no extra mass
+# restriction here -- use the existing --blind/--unblind mass-window logic
+# instead"; a non-None filter means "restrict to this window and show
+# unblinded data everywhere, since the restriction itself is the safety
+# mechanism" (see plot() below).
+REGIONS = {
+   "Inclusive": {
+      "region_filter": None,
+      "label": "m_{#mu#mu}#in[70, 200] GeV",
+   },
+   "SR_sideband": {
+      "region_filter": SR_SIDEBAND_FILTER,
+      "label": "m_{#mu#mu}#in[110, 120]#cup[130, 150] GeV",
+   },
+}
+
+# Set by run_group() before each pass through a group's plot(...) calls;
+# read implicitly by plot() the same way it already reads
+# category/year/mytree. Lets plotVBF()/plotMuons()/etc. and their internal
+# plot("varname") calls stay completely unchanged -- they don't need to know
+# which region is currently being drawn.
+current_region = "Inclusive"
+
 
 def _style_ratio_axis(axis, offset):
    """Apply the shared absolute-pixel ratio-pad text style to one axis."""
@@ -106,17 +166,38 @@ def _style_ratio_axis(axis, offset):
 
 def plot(varname):
 
+   region = REGIONS[current_region]
    nbin, low, high = plot_vars.get_binning(varname)
    doLog = True # varname in plot_vars.get_logy_vars()
    titleX = plot_vars.get_xlabel(varname)
 
-   listHisto = getHisto(mytree, category, varname, year, nbin, low, high, blind=args.blind)
+   if region["region_filter"] is not None:
+      listHisto = getHisto(mytree, category, varname, year, nbin, low, high,
+                            blind=False, region_filter=region["region_filter"])
+   else:
+      listHisto = getHisto(mytree, category, varname, year, nbin, low, high, blind=args.blind)
 
    if not listHisto:                       # variable missing from the snapshot
-      print(f"   -> skipped '{varname}': input not available")
+      print(f"   -> skipped '{varname}' [{current_region}]: input not available")
       return
 
    hists = {obj.name: obj.hOBJ for obj in listHisto}
+
+   # Signal should always reflect the FULL (unrestricted) predicted yield,
+   # regardless of which region is being drawn. The Inclusive/SR_sideband
+   # split is about validating BACKGROUND and DATA shapes near vs. away from
+   # the peak, not about truncating the signal prediction -- a narrow
+   # resonance's signal concentrates almost entirely in [120,130], the exact
+   # core SR_sideband excludes, so leaving it region-restricted would show
+   # only a tiny, misleading sliver of the true expected signal.
+   if region["region_filter"] is not None:
+      sig_listHisto = getHisto(mytree, category, varname, year, nbin, low, high, blind=False)
+      if sig_listHisto:
+         sig_hists = {obj.name: obj.hOBJ for obj in sig_listHisto}
+         for name in SIG_PROCS:
+            if name in sig_hists:
+               hists[name] = sig_hists[name]
+
    hData = hists.get('hData')
    hDY = hists.get('hDY')
 
@@ -237,20 +318,60 @@ def plot(varname):
    # CMS label + lumi/energy (official style via plot_style / cmsstyle)
    _cmslabel = plot_style.cms_label(pad1, year)
 
-   # Add TLine(s) marking the blinded region, if this variable is blinded
-   blind_range = plot_vars.get_blind_range(varname)
-   if blind_range is not None:
-      lo, hi = blind_range
-      line1 = ROOT.TLine(lo, 0, lo, 500000.)
-      line1.SetLineColor(11)
-      line1.Draw()
-      line2 = ROOT.TLine(hi, 0, hi, 500000.)
-      line2.SetLineColor(11)
-      line2.Draw()
+   # Add TLine(s) marking the blinded region (Inclusive only), or the
+   # SR-sideband mass-range label (unconditional for every variable, since
+   # the restriction itself -- not a per-variable blind check -- is what
+   # makes unblinded data safe there).
+   if region["region_filter"] is not None:
+      pad1.cd()
+      cat_label = CATEGORY_LABELS.get(category, category)
+      mass_label_lines = [
+         "H #rightarrow #mu#mu",
+         f"{cat_label} ({year.lstrip('_')})",
+         region["label"],
+      ]
+      _masslabel = ROOT.TLatex()
+      _masslabel.SetNDC()
+      _masslabel.SetTextFont(42)
+      _masslabel.SetTextSize(0.035)
+      y0, dy = 0.85, 0.045
+      for i, line in enumerate(mass_label_lines):
+         _masslabel.DrawLatex(plot_style.PAD_LEFT_MARGIN + 0.05, y0 - i * dy, line)
+   else:
+      blind_range = plot_vars.get_blind_range(varname)
+      if blind_range is not None:
+         lo, hi = blind_range
+         line1 = ROOT.TLine(lo, 0, lo, 500000.)
+         line1.SetLineColor(11)
+         line1.Draw()
+         line2 = ROOT.TLine(hi, 0, hi, 500000.)
+         line2.SetLineColor(11)
+         line2.Draw()
+      elif varname != "mva":
+         # No mass-window blinding applies here (mva uses its own score-based
+         # cut instead). Label the broad mass range the underlying events span
+         # -- that breadth is why it's safe to show unblinded data: it's the
+         # full snapshot window (Hmm.py's preselection), not narrowed to the
+         # signal region specifically. Category/year line is built from the
+         # actual `category`/`year` being plotted, not hardcoded to one run.
+         pad1.cd()
+         cat_label = CATEGORY_LABELS.get(category, category)
+         mass_label_lines = [
+            "H #rightarrow #mu#mu",
+            f"{cat_label} ({year.lstrip('_')})",
+            region["label"],
+         ]
+         _masslabel = ROOT.TLatex()
+         _masslabel.SetNDC()
+         _masslabel.SetTextFont(42)
+         _masslabel.SetTextSize(0.035)
+         y0, dy = 0.85, 0.045
+         for i, line in enumerate(mass_label_lines):
+            _masslabel.DrawLatex(plot_style.PAD_LEFT_MARGIN + 0.05, y0 - i * dy, line)
 
-   os.makedirs(myOutDir, exist_ok=True)   # create the (per-group) output dir on demand
+   os.makedirs(myOutDir, exist_ok=True)   # create the (per-region, per-group) output dir on demand
    c.SaveAs(f"{myOutDir}{varname}_{category}{year}_Stack.png")
-   print(varname+".png")
+   print(f"{varname} [{current_region}].png")
 
 
 def plotVBF():
@@ -424,17 +545,33 @@ ALL_GROUPS = ["mass", "mva", "category", "muons"]
 
 
 def run_group(name):
-    """Point the output at a clear per-group subdirectory, then draw it.
+    """Point the output at a clear per-group, per-region subdirectory, then
+    draw it -- once for "Inclusive" always, and again for "SR_sideband" if
+    --plot-SR-sideband is enabled (default: on).
 
-    Output layout:  <outdir>/<category>_<year>/<group>/Stack<var>_<cat>_<year>.png
-    The directory is created lazily inside plot() right before each SaveAs, so
-    no empty folders are left for groups that draw nothing (e.g. 'category' in
-    a category that has no index plot).
+    Output layout: <outdir>/<category>_<year>/<group>/<region>/<var>_<cat>_<year>_Stack.png
+    EXCEPT the "mass" group, which skips the region split entirely and
+    writes straight to <category>_<year>/mass/ -- the SR-sideband window is
+    just a truncated/gapped view of the same dimu_mass spectrum, so showing
+    it as a second copy doesn't add information the way it does for other
+    variables. The directory is created lazily inside plot() right before
+    each SaveAs, so no empty folders are left for groups that draw nothing
+    (e.g. 'category' in a category that has no index plot).
     """
-    global myOutDir
-    myOutDir = os.path.join(baseOutDir, f"{category}{year}", name) + "/"
-    print(f"[plots] group '{name}' -> {myOutDir}")
-    GROUP_FUNCS[name]()
+    global myOutDir, current_region
+    if name == "mass":
+        current_region = "Inclusive"
+        myOutDir = os.path.join(baseOutDir, f"{category}{year}", name) + "/"
+        print(f"[plots] group '{name}' -> {myOutDir}")
+        GROUP_FUNCS[name]()
+        return
+
+    regions_to_run = ["Inclusive"] + (["SR_sideband"] if args.plot_sr_sideband else [])
+    for region_name in regions_to_run:
+        current_region = region_name
+        myOutDir = os.path.join(baseOutDir, f"{category}{year}", name, region_name) + "/"
+        print(f"[plots] group '{name}' region '{region_name}' -> {myOutDir}")
+        GROUP_FUNCS[name]()
 
 
 def main():
@@ -447,7 +584,10 @@ def main():
 
     print(f"[plots] category={category} year={year.lstrip('_')} "
           f"groups={groups}")
-    print(f"[plots] blinding: {'ON (data blinded in signal region)' if args.blind else 'OFF (UNBLINDED)'}")
+    print(f"[plots] blinding (Inclusive region only): "
+          f"{'ON (data blinded in signal region)' if args.blind else 'OFF (UNBLINDED)'}")
+    print(f"[plots] SR-sideband region: {'ON' if args.plot_sr_sideband else 'OFF'} "
+          f"(m_mumu in [110,120] or [130,150] GeV, unconditionally unblinded)")
     print(f"[plots] base output dir: {baseOutDir}")
 
     for name in groups:

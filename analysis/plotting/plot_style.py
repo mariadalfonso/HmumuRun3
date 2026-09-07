@@ -167,7 +167,7 @@ DATA_MARKER_SIZE = 1.2
 DATA_LINE_WIDTH = 2
 
 # legend
-LEGEND_POS = (0.42, 0.60, 0.95, 0.88)   # widened: the old (0.45,0.60,0.95,0.88)
+LEGEND_POS = (0.5, 0.60, 0.95, 0.88)   # widened: the old (0.45,0.60,0.95,0.88)
                                           # box was too narrow for the longest
                                           # entry, causing column overlap
 LEGEND_NCOLUMNS = 2
