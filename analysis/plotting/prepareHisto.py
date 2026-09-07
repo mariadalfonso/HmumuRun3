@@ -94,7 +94,7 @@ def make_filter(ids):
     return " || ".join([f"mc=={x}" for x in ids])
 
 
-def getHisto(mytree, category, varname, year, nbin, low, high, blind=True):
+def getHisto(mytree, category, varname, year, nbin, low, high, blind=True, region_filter=None):
 
    ####
 
@@ -151,6 +151,11 @@ def getHisto(mytree, category, varname, year, nbin, low, high, blind=True):
    # plain Exception subclass, so a narrower `except Exception` can miss them.
    try:
        df_common = df.Define("var","{}".format(var)).Define("weight","{}".format(weightExpr)).Filter(selectionReg)
+       if region_filter:
+           # applied identically to every process (backgrounds, signals, data)
+           # so it's a shared, single-source-of-truth restriction, e.g. a
+           # Higgs-mass sideband/window split for MC shape comparisons.
+           df_common = df_common.Filter(region_filter)
    except BaseException as e:
        print(f"⚠️  '{varname}': cannot build variable '{var}' "
              f"(likely a missing branch: {type(e).__name__}) — skipping this plot")
@@ -176,7 +181,8 @@ def getHisto(mytree, category, varname, year, nbin, low, high, blind=True):
    # blinding only affects data (hData); MC histograms are never blinded.
    blind_range = plot_vars.get_blind_range(varname)   # e.g. (110,150) for "mass"
    if not blind:
-       print('[getHisto] UNBLINDED data')
+       if blind_range is not None:
+           print('[getHisto] UNBLINDED data')
        hData = df_common.Filter("mc<0").Histo1D(("hData","h",nbin, low, high),"var","weight")
    elif blind_range is not None:
        lo, hi = blind_range

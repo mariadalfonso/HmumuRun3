@@ -107,7 +107,7 @@ def _style_ratio_axis(axis, offset):
 def plot(varname):
 
    nbin, low, high = plot_vars.get_binning(varname)
-   doLog = varname in plot_vars.get_logy_vars()
+   doLog = True # varname in plot_vars.get_logy_vars()
    titleX = plot_vars.get_xlabel(varname)
 
    listHisto = getHisto(mytree, category, varname, year, nbin, low, high, blind=args.blind)
@@ -182,8 +182,10 @@ def plot(varname):
    stack.GetXaxis().SetLabelSize(0)     # glued layout: x-axis shown only on ratio pad
    stack.GetXaxis().SetTitleSize(0)
 
-   if varname == "mass":
-      stack.GetYaxis().SetTitle("Events/ 1 [GeV]")
+   if varname == "dimu_mass":
+      stack.GetYaxis().SetTitle("Events / GeV")
+   else:
+      stack.GetYaxis().SetTitle("Events")
    stack.GetYaxis().SetTitleOffset(1.1)
    stack.GetYaxis().SetLabelSize(0.04)
    stack.GetYaxis().SetTitleSize(0.045)
@@ -362,6 +364,11 @@ def plotMuons():
    if category == "VLcat" or category == "TTLcat" or category == "TTHcat":
       plot("muon1_sip3d")
       plot("muon2_sip3d")
+   if category == "ggHcat" or category == "TTHcat":
+      # nGoodJetsAll is only written to the snapshot for isGGH/isTThad (see
+      # Hmm.py's mode_branches) -- guard so other categories don't hit the
+      # missing-branch skip every run.
+      plot("njets")
 #   plot("fsrph_pt")
 #   plot("muon1_phi")
 #   plot("muon2_phi")
@@ -385,7 +392,7 @@ def plotMuons():
 
 
 def draw_mass():
-    plot("mass")
+    plot("dimu_mass")
 
 
 def draw_mva():
