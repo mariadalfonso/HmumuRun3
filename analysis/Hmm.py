@@ -1116,7 +1116,10 @@ def loopOnDataset(year):
 
     for sampleNOW in mc:
         files, xsec = SwitchSample(thisdict, sampleNOW)
-        print(f"mc={mc}, outside the function: {len(files)}")
+        if len(files) == 0:
+            print(f"WARNING: no files found for MC sample {sampleNOW}, skipping")
+            continue
+        print(f"mc={sampleNOW}, outside the function: {len(files)}")
         rdf = ROOT.RDataFrame("Runs", files) # make sure this is not the distributed
 
         sumW = computeWeigths(rdf,xsec)
@@ -1128,7 +1131,10 @@ def loopOnDataset(year):
 
     for sampleNOW in data:
         files = SwitchSample(thisdict,sampleNOW)[0]
-        print('outside the function: ', len(files))
+        if len(files) == 0:
+            print(f"WARNING: no files found for data sample {sampleNOW}, skipping")
+            continue
+        print(f"data={sampleNOW}, outside the function: {len(files)}")
         analysis(files,year,sampleNOW,1.)
 
 if __name__ == "__main__":

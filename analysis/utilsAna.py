@@ -92,7 +92,15 @@ kfactor={
 
 def SwitchSample(thisdict,argument):
 
-    return thisdict.get(argument, "BKGdefault, xsecDefault")
+    if argument not in thisdict:
+        raise KeyError("sample ID %s not present in the dataset dictionary" % argument)
+
+    files, xsec = thisdict[argument]
+    if isinstance(files, str):     # a path pattern from samples.yaml: glob it now
+        from datasets import findDIR
+        files = findDIR(files)
+
+    return files, xsec
 
 def computeWeigths(rdf,xsec):
 
