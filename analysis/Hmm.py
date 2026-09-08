@@ -43,6 +43,10 @@ def parse_args():
                         help="override the sample list with an explicit selection: ids "
                              "(11, -41), group names (signal_hmm, vv), 'mc', 'data', globs "
                              "('DYto2Mu*'), or @file. Comma-separated.")
+    parser.add_argument("--maxfiles", type=int, default=0, metavar="N",
+                        help="process only the first N files of each sample. The "
+                             "normalisation is computed from the same subset, so the "
+                             "output is correct but with reduced statistics.")
     parser.add_argument("-j", "--ncores", type=int, default=0,
                         help="ROOT implicit-MT threads; 0 means all available cores. "
                              "Set this when running several processes at once.")
@@ -1106,6 +1110,18 @@ def analysis(files,year,mc,sumW):
         print('==> ends: ',now)
 
 
+def limit_files(files):
+    """Truncate a file list for --maxfiles benchmarking runs."""
+    if not args.maxfiles or len(files) <= args.maxfiles:
+        return files
+    sel = ROOT.vector("string")()
+    for k in range(args.maxfiles):
+        sel.push_back(files[k])
+    print(f"  --maxfiles: using {len(sel)} of {len(files)} files "
+          f"(normalisation computed from this subset)")
+    return sel
+
+
 def loopOnDataset(year):
 
     thisdict = BuildDict(year)
@@ -1131,9 +1147,12 @@ def loopOnDataset(year):
         if len(files) == 0:
             print(f"WARNING: no files found for MC sample {sampleNOW}, skipping")
             continue
+        files = limit_files(files)
         print(f"mc={sampleNOW}, outside the function: {len(files)}")
-        rdf = ROOT.RDataFrame("Runs", files) # make sure this is not the distributed
 
+        # sumW over exactly the files being processed, so a --maxfiles subset
+        # is normalised for itself rather than for the whole sample
+        rdf = ROOT.RDataFrame("Runs", files) # make sure this is not the distributed
         sumW = computeWeigths(rdf,xsec)
         analysis(files,year,sampleNOW,sumW)
 
@@ -1145,6 +1164,7 @@ def loopOnDataset(year):
         if len(files) == 0:
             print(f"WARNING: no files found for data sample {sampleNOW}, skipping")
             continue
+        files = limit_files(files)
         print(f"data={sampleNOW}, outside the function: {len(files)}")
         analysis(files,year,sampleNOW,1.)
 
