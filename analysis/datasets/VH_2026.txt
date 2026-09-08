@@ -1,0 +1,60 @@
+# VH 2026 -- sample list for isVhad
+# generated 2026-09-08 01:26 from config/samples.yaml by tools/make_datasets.py (prompt data stream)
+#
+# Committed to git: regenerate only when the datasets change.
+# Comment a line out to skip that sample.
+
+# --- MC (43) ---
+10     # VBF*Hto2Mu_*M-125
+11     # GluGlu*Hto2Mu_*M-125
+12     # WminusH*Hto2Mu_*M-125
+13     # WplusH*Hto2Mu_*M-125
+14     # ZH*Hto2Mu_*M-125
+15     # TTH*Hto2Mu_*M-125
+17     # BBH-Hto2Mu_*M-125
+101    # EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7
+140    # TTto2L2Nu
+201    # WZto2L2Q
+202    # ZZto2L2Nu
+203    # ZZto2L2Q
+204    # WZto3LNu
+205    # ZZto4L
+206    # WWto2L2Nu
+213    # WZZ*
+214    # ZZZ*
+215    # WWW*
+216    # WWZ*
+221    # TTLNu-1Jets
+222    # TTLNu-EWK
+223    # TTLL_*MLL-4to50
+224    # TTLL_*MLL-50
+226    # TZQB-Zto2L-4FS_*MLL-30
+227    # TWZ*Tto2Q*WtoLNu*Zto2L*DR1
+228    # TWZ*TtoLNu*Wto2Q*Zto2L*DR1
+229    # TWZ*TtoLNu*WtoLNu*Zto2L*DR1
+230    # TTTT
+231    # TTWZ
+232    # TTWW
+233    # TTZZ
+234    # TTW-WtoQQ-1Jets
+235    # TTTWminus-DR1
+236    # TTTWplus-DR1
+237    # TTNuNu
+238    # TTZ-ZtoQQ-TTto2L2Nu-1Jets
+239    # TTZ-ZtoQQ-TTtoLNu2Q-1Jets
+246    # TTG-1Jets_PTG-10to100
+247    # TTG-1Jets_PTG-100to200
+248    # TTG-1Jets_PTG-200
+107    # TTtoLNu2Q
+105    # TWminusto2L2Nu
+106    # TbarWplusto2L2Nu
+
+# --- data (8) ---
+-81    # Run2026B/Muon0
+-82    # Run2026B/Muon1
+-83    # Run2026B/Muon2
+-84    # Run2026B/Muon3
+-85    # Run2026D/Muon0
+-86    # Run2026D/Muon1
+-87    # Run2026D/Muon2
+-88    # Run2026D/Muon3

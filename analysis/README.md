@@ -16,6 +16,7 @@ conda env create --name pyenv --file=environment.yml
 analysis/
   Hmm.py                  event loop, one category at a time
   run_all.py              parallel submission (Slurm on SubMIT)
+  make_datasets.py        regenerates the datasets/*.txt sample lists
   config/
     samples.yaml          dataset definitions: paths, xsecs, BRs, groups
     selection.json        object selections
@@ -26,11 +27,13 @@ analysis/
     ...
   tools/
     datasets.py           reads samples.yaml: paths, xsecs, selections
-    make_datasets.py      generates the datasets/*.txt lists
     utilsAna.py           corrections, weights, data quality
     helper_tmva.py        MVA inference helpers
     validate_datasets.py  checks samples.yaml against the legacy datasets.py
 ```
+
+The three scripts at the top level are the entry points you run;
+everything in `tools/` is imported by them.
 
 Run everything from the `analysis/` directory.
 
@@ -119,9 +122,9 @@ Comment a line out to skip that sample without touching `samples.yaml`.
 ### Regenerating
 
 ```
-python tools/make_datasets.py --write-all              # every category and year
-python tools/make_datasets.py --write 2024 isVBF       # just one
-python tools/make_datasets.py --show 2024 isVBF        # print, write nothing
+python make_datasets.py --write-all              # every category and year
+python make_datasets.py --write 2024 isVBF       # just one
+python make_datasets.py --show 2024 isVBF        # print, write nothing
 ```
 
 Do this after adding a sample to `samples.yaml` or changing a group, then

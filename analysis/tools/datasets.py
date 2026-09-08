@@ -13,7 +13,7 @@ Execution lives in Hmm.loopOnDataset.
   Sample lists (datasets/<tag>_<year>.txt):
     - list_path(year, mode)   -> canonical path of the committed list
     - read_list(path, ...)    -> ids from a list file
-    (writing them lives in tools/make_datasets.py)
+    (writing them lives in make_datasets.py)
 
   Definition (what each ID is):
     - BuildDict(year)     : {ID: (path pattern, xsec)}   [no I/O]
@@ -388,5 +388,5 @@ def read_list(path, year, mode, stream="prompt"):
     if not os.path.isfile(path):
         raise FileNotFoundError(
             f"sample list not found: {path}\n"
-            f"  generate it with:  python tools/make_datasets.py --write {year} {mode}")
+            f"  generate it with:  python make_datasets.py --write {year} {mode}")
     return resolve_ids(year, mode, f"@{path}", stream)

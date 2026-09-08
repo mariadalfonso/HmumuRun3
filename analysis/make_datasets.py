@@ -6,9 +6,9 @@ Reads config/samples.yaml (via tools/datasets.py) and writes one text file
 per category and year: datasets/<tag>_<year>.txt. Those files are committed
 to git, so this only needs running when the datasets change.
 
-    python tools/make_datasets.py --write-all           # every category and year
-    python tools/make_datasets.py --write 2024 isVBF    # just one
-    python tools/make_datasets.py --show 2024 isVBF     # print, write nothing
+    python make_datasets.py --write-all           # every category and year
+    python make_datasets.py --write 2024 isVBF    # just one
+    python make_datasets.py --show 2024 isVBF     # print, write nothing
 
 Nothing in the analysis imports this module; Hmm.py and run_all.py read the
 generated files through datasets.read_list.
@@ -41,7 +41,7 @@ def write_list(year, mode, path=None, ids=None, stream="prompt"):
         fh.write(f"# {CATEGORY[mode]} {year} -- sample list for {mode}\n")
         fh.write(f"# generated {datetime.now().strftime('%Y-%m-%d %H:%M')} "
                  f"from config/{os.path.basename(SAMPLES_YAML)} "
-                 f"by tools/make_datasets.py ({stream} data stream)\n")
+                 f"by make_datasets.py ({stream} data stream)\n")
         fh.write("#\n")
         fh.write("# Committed to git: regenerate only when the datasets change.\n")
         fh.write("# Comment a line out to skip that sample.\n")
@@ -75,7 +75,7 @@ def write_all_lists(listdir=None, stream="prompt"):
 # ===========================================================================
 def _main():
     ap = argparse.ArgumentParser(
-        prog="python tools/make_datasets.py",
+        prog="python make_datasets.py",
         description="Generate the committed sample lists in datasets/ from "
                     "config/samples.yaml. Run this only when the datasets change; "
                     "the .txt files are in git so normal running needs no regeneration.")
