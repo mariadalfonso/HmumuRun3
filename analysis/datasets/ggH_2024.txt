@@ -1,0 +1,71 @@
+# ggH 2024 -- sample list for isGGH
+# generated 2026-09-08 01:26 from config/samples.yaml by tools/make_datasets.py (prompt data stream)
+#
+# Committed to git: regenerate only when the datasets change.
+# Comment a line out to skip that sample.
+
+# --- MC (48) ---
+10     # VBF*Hto2Mu_*M-125
+11     # GluGlu*Hto2Mu_*M-125
+12     # WminusH*Hto2Mu_*M-125
+13     # WplusH*Hto2Mu_*M-125
+14     # ZH*Hto2Mu_*M-125
+15     # TTH*Hto2Mu_*M-125
+17     # BBH-Hto2Mu_*M-125
+20     # VBF*HtoZG*to2L*M-125
+21     # GluGlu*HtoZG*to2L*M-125
+22     # WminusH*HtoZG*to2L*M-125
+23     # WplusH*HtoZG*to2L*M-125
+24     # ZH*HtoZGto2LG_*M-125
+26     # TTH-HtoZGto2LG_Par-M-125
+103    # DYto2Mu-2Jets_Bin-MLL-50
+104    # DYto2Tau-2Jets_Bin-MLL-50
+101    # EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7
+140    # TTto2L2Nu
+201    # WZto2L2Q
+202    # ZZto2L2Nu
+203    # ZZto2L2Q
+204    # WZto3LNu
+205    # ZZto4L
+206    # WWto2L2Nu
+213    # WZZ*
+214    # ZZZ*
+215    # WWW*
+216    # WWZ*
+221    # TTLNu-1Jets
+222    # TTLNu-EWK
+223    # TTLL_*MLL-4to50
+224    # TTLL_*MLL-50
+226    # TZQB-Zto2L-4FS_*MLL-30
+227    # TWZ*Tto2Q*WtoLNu*Zto2L*DR1
+228    # TWZ*TtoLNu*Wto2Q*Zto2L*DR1
+229    # TWZ*TtoLNu*WtoLNu*Zto2L*DR1
+230    # TTTT
+231    # TTWZ
+232    # TTWW
+233    # TTZZ
+234    # TTW-WtoQQ-1Jets
+235    # TTTWminus-DR1
+236    # TTTWplus-DR1
+237    # TTNuNu
+225    # TTZ-ZtoQQ-1Jets
+249    # TTG-1Jets
+107    # TTtoLNu2Q
+105    # TWminusto2L2Nu
+106    # TbarWplusto2L2Nu
+
+# --- data (14) ---
+-41    # Run2024C/Muon0
+-42    # Run2024C/Muon1
+-43    # Run2024D/Muon0
+-44    # Run2024D/Muon1
+-45    # Run2024E/Muon0
+-46    # Run2024E/Muon1
+-47    # Run2024F/Muon0
+-48    # Run2024F/Muon1
+-49    # Run2024G/Muon0
+-50    # Run2024G/Muon1
+-51    # Run2024H/Muon0
+-52    # Run2024H/Muon1
+-53    # Run2024I/Muon0
+-54    # Run2024I/Muon1

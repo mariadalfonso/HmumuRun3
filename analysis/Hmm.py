@@ -5,23 +5,22 @@ import os
 import argparse
 import getpass
 
-from utilsAna import loadUserCode
-from utilsAna import BuildDict, SwitchSample
-from utilsAna import readDataQuality
-from utilsAna import computeWeigths
-from utilsAna import lumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
-from utilsAna import loadCorrectionSet
+from tools.utilsAna import loadUserCode
+from tools.utilsAna import SwitchSample
+from tools.datasets import (BuildDict, resolve_ids, read_list,
+                            list_path, MODE_MAP, VALID_YEARS, VALID_MODES)
+from tools.utilsAna import readDataQuality
+from tools.utilsAna import computeWeigths
+from tools.utilsAna import lumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
+from tools.utilsAna import loadCorrectionSet
 from datetime import datetime
-from utilsAna import loadtmvahelper
+from tools.utilsAna import loadtmvahelper
 
 loadUserCode()
 loadtmvahelper()
-import helper_tmva # need various definitions
+import tools.helper_tmva as helper_tmva # need various definitions
 
 ROOT.gROOT.SetBatch()
-ncores = ROOT.GetThreadPoolSize()
-#ncores = 32
-ROOT.ROOT.EnableImplicitMT(ncores)
 
 # --- setup run commands ---
 
@@ -31,16 +30,31 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="H->mumu Run3 analysis: produce per-category snapshot ROOT files."
     )
-    parser.add_argument("year",
-                        help="data-taking year, e.g. 12022, 22022, 12023, 22023, 2024, 2025, 2026")
-    parser.add_argument("mode",
-                        choices=["isVBF", "isGGH", "isZinv", "isVlep", "isVhad", "isTTlep", "isTThad"],
+    parser.add_argument("year", choices=VALID_YEARS,
+                        help="data-taking year")
+    parser.add_argument("mode", choices=VALID_MODES,
                         help="analysis channel")
+    parser.add_argument("samplelist", nargs="?", default=None,
+                        help="sample list to process (default: the committed "
+                             "datasets/<category>_<year>.txt for this mode)")
     parser.add_argument("-o", "--outdir", default=DEFAULT_OUTDIR,
                         help="output directory for snapshot files (default: %(default)s)")
+    parser.add_argument("-s", "--samples", default=None,
+                        help="override the sample list with an explicit selection: ids "
+                             "(11, -41), group names (signal_hmm, vv), 'mc', 'data', globs "
+                             "('DYto2Mu*'), or @file. Comma-separated.")
+    parser.add_argument("--maxfiles", type=int, default=0, metavar="N",
+                        help="process only the first N files of each sample. The "
+                             "normalisation is computed from the same subset, so the "
+                             "output is correct but with reduced statistics.")
+    parser.add_argument("-j", "--ncores", type=int, default=0,
+                        help="ROOT implicit-MT threads; 0 means all available cores. "
+                             "Set this when running several processes at once.")
     return parser.parse_args()
 
 args = parse_args()
+ROOT.ROOT.EnableImplicitMT(args.ncores)
+print(f"implicit MT threads: {ROOT.GetThreadPoolSize()}")
 year  = args.year
 mode  = args.mode
 myDir = args.outdir
@@ -59,16 +73,8 @@ selections = {key: jsonObject[key] for key in ["GOODMUON", "GOODMUONTTH24","GOOD
 
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
-# --- Histogram output suffixes per mode ---
-mode_map = {
-    "isVBF":   "VBFcat",
-    "isGGH":   "ggHcat",
-    "isZinv":  "Zinvcat",
-    "isVlep":  "VLcat",
-    "isVhad":  "VHcat",
-    "isTTlep": "TTLcat",
-    "isTThad": "TTHcat",
-}
+# --- Histogram output suffixes per mode (from tools/datasets.py) ---
+mode_map = MODE_MAP
 
 MVA_map = {
     "isGGH":   "MVA/output/classification_model_ggHcat_july10.root",
@@ -1104,6 +1110,18 @@ def analysis(files,year,mc,sumW):
         print('==> ends: ',now)
 
 
+def limit_files(files):
+    """Truncate a file list for --maxfiles benchmarking runs."""
+    if not args.maxfiles or len(files) <= args.maxfiles:
+        return files
+    sel = ROOT.vector("string")()
+    for k in range(args.maxfiles):
+        sel.push_back(files[k])
+    print(f"  --maxfiles: using {len(sel)} of {len(files)} files "
+          f"(normalisation computed from this subset)")
+    return sel
+
+
 def loopOnDataset(year):
 
     thisdict = BuildDict(year)
@@ -1111,92 +1129,43 @@ def loopOnDataset(year):
     ## both data and MC
     loadCorrectionSet(int(year))
 
-    mc = []
-    mc.extend([10,11,12,13,14,15,17])
-    if year in ["12022", "22022", "12023", "22023"]: mc.extend([20,21,22,23,24,25]) #Zgamma
-    if year=="2024": mc.extend([20,21,22,23,24,26]) #Zgamma
-    #if year=="2024": mc.extend([30,31,32,33,34,35,36,37])
-
-    if mode == "isVhad":
-        if year in ["2024"]: mc.extend([122,123,124,125]) # extra DY pt binned for ML training (new)
-        if year in ["12022", "22022", "12023", "22023"]: mc.extend([114,115,116,117]) # extra DY pt binned for ML training (check Zeynep xsection ..)
+    if args.samples:
+        # explicit selection wins, even for samples outside this mode's list
+        ids = resolve_ids(year, mode, args.samples)
+        source = f"-s {args.samples}"
     else:
-        if year=="2024": mc.extend([103,104])   #DY
-        else: mc.extend([100])    #DY madgpragh
+        path = args.samplelist or list_path(year, mode)
+        ids = read_list(path, year, mode)
+        source = path
 
-    mc.extend([101])    #DY EWK
-    if mode == "isVBF": mc.extend([99,98])    #DY EWK
-
-    mc.extend([140])    #TT2l (was 102)
-
-    mc.extend([201,202,203,204,205,206]) #VV powheg
-    mc.extend([213,214,215,216])     #VVV
-    mc.extend([221,222,223,224,226,227,228,229,230,231,232,233,234,235,236,237])    #ttV
-
-    if year=="2024": mc.extend([225]) #ttZqq (for 22-23 use the TT lep binned)
-    else: mc.extend([238,239])
-    if year=="2024": mc.extend([249]) #ttGamma
-    else: mc.extend([246,247,248])
-
-    mc.extend([107,105,106]) # tt1l, tW
-
-    '''
-    # below for training
-    if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([141,142]) # extra TTbar (2024 not there yet)
-    if mode == "isVlep": mc.extend([207,208,209,210,211,212]) #VV amcNLO
-
-#    if year in ["2024"]:
-#        if mode == "isVhad": mc.extend([119,120,121])  # extra DY jet binned for ML training
-#    if year in ["12022", "22022", "12023", "22023"]:
-#        if mode == "isVhad": mc.extend([111,112,113])  # extra DY jet binned for ML training
-
-    if mode == "isTTlep" or mode == "isVlep" or mode == "isZinv" or mode == "isTThad":
-        if year in ["12022", "22022", "12023", "22023"]: mc.extend([242,243,244,245])  # extra TTW syst var
-        mc.extend([143,144,145,146,147,148,149])  # extra TT2l syst var
-
-    if mode == "isVBF" or mode == "isGGH" or mode == "isVhad" or mode == "isTThad": mc.extend([109]) # extra DY jet mass binned
-#    if mode == "isVBF" or mode == "isGGH": mc.extend([108,110]) # extra DY jet mass binned (no point those will break MVA)
-
-    if mode == "isGGH" or mode == "isTThad":
-        mc.extend([126,127]) # MINNLO
-        if year in ["12022", "2024"]: mc.extend([128])
-    '''
+    mc   = [i for i in ids if i > 0]
+    data = [i for i in ids if i < 0]
+    print(f"sample list: {source}  ->  {len(mc)} MC + {len(data)} data")
 
     for sampleNOW in mc:
         files, xsec = SwitchSample(thisdict, sampleNOW)
-        print(f"mc={mc}, outside the function: {len(files)}")
-        rdf = ROOT.RDataFrame("Runs", files) # make sure this is not the distributed
+        if len(files) == 0:
+            print(f"WARNING: no files found for MC sample {sampleNOW}, skipping")
+            continue
+        files = limit_files(files)
+        print(f"mc={sampleNOW}, outside the function: {len(files)}")
 
+        # sumW over exactly the files being processed, so a --maxfiles subset
+        # is normalised for itself rather than for the whole sample
+        rdf = ROOT.RDataFrame("Runs", files) # make sure this is not the distributed
         sumW = computeWeigths(rdf,xsec)
         analysis(files,year,sampleNOW,sumW)
 
-    data_map = {
-        "12022": [-11, -12, -13, -14],
-        "22022": [-15, -16, -17],
-        "12023": [-23, -24],
-        "22023": [-31, -32],
-        "2024":  list(range(-41, -55, -1)),  # generates -41 to -54
-        "2025":  list(range(-61, -73, -1)),  # generates -61 to -70
-        "2026":  list(range(-81, -89, -1)),  # generates -81 to -88
-    }
-
-    data_map_jpsi = {
-#        "12022": [-11, -12, -13, -14],
-        "22022": [-116,-117], # missing (E -115)
-        "12023": [-123],
-        "22023": [-131],
-        "2024":  list(range(-141, -148, -1)),
-        "2025":  list(range(-161, -167, -1)),  # generates -61 to -70
-    }
-
-    data = data_map.get(year, [])
-#    data = []
-
-    readDataQuality(year)
+    if data:
+        readDataQuality(year)
 
     for sampleNOW in data:
         files = SwitchSample(thisdict,sampleNOW)[0]
-        print('outside the function: ', len(files))
+        if len(files) == 0:
+            print(f"WARNING: no files found for data sample {sampleNOW}, skipping")
+            continue
+        files = limit_files(files)
+        print(f"data={sampleNOW}, outside the function: {len(files)}")
         analysis(files,year,sampleNOW,1.)
 
 if __name__ == "__main__":
