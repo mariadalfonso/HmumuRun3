@@ -99,6 +99,18 @@ submitted in parallel by swapping `Hmm.py` for `run_all.py` and adding
 Writes snapshots to `<outdir>/<category>/snapshot_mc_<mc>_<year>_<category>.root`.
 One file per sample, so parallel jobs never collide.
 
+### Selection syntax
+
+Anywhere a selection is accepted (`-s`, or a line in a list file):
+
+| token | meaning |
+|---|---|
+| `11`, `-41` | a sample id |
+| `signal_hmm`, `vv` | a group from `groups:` in `samples.yaml` |
+| `mc`, `data` | everything of that kind for this year and mode |
+| `'DYto2Mu*'` | glob on the dataset name |
+| `@path/to/list.txt` | another list file |
+
 ## Sample lists: `datasets/*.txt`
 
 One file per category and year, generated from `config/samples.yaml` and
@@ -130,47 +142,60 @@ python make_datasets.py --show 2024 isVBF        # print, write nothing
 Do this after adding a sample to `samples.yaml` or changing a group, then
 commit the updated `datasets/` files.
 
-### Selection syntax
 
-Anywhere a selection is accepted (`-s`, or a line in a list file):
-
-| token | meaning |
-|---|---|
-| `11`, `-41` | a sample id |
-| `signal_hmm`, `vv` | a group from `groups:` in `samples.yaml` |
-| `mc`, `data` | everything of that kind for this year and mode |
-| `'DYto2Mu*'` | glob on the dataset name |
-| `@path/to/list.txt` | another list file |
-
-An unrecognised token raises, so typos fail loudly.
-
-## Parallel running: `run_all.py`
+## Running in parallel: `run_all.py`
 
 Samples are independent and each writes its own snapshot, so one process per
-sample parallelises both the event loop and the per-RDataFrame JIT
-compilation (which a single process cannot — Cling compiles serially).
+sample parallelises both the event loop and the per-RDataFrame JIT compilation.
 
-`run_all.py` does not run the analysis itself. It works out the list of work
-units and then either runs them locally or writes a Slurm job array for you
-to submit.
+`run_all.py` is a warpper for sending multiple `Hmm.py` jobs. 
+It creates the lists to pass to `Hmm.py` and runs them locally or writes a Slurm job array for you to submit.
 
 ```
 python run_all.py <year> <mode> [samplelist] [options]
 ```
 
-### Step by step on SubMIT
+### How to run it
 
-**1. Look at the plan before submitting anything.**
-```
-cd ~/HmumuRun3/analysis
-conda activate pyenv
-python run_all.py 2024 isVBF --dry-run
-```
-Prints one line per work unit with its file count, largest first. Check the
-sample count matches what you expect and that nothing says `no files`.
+From `analysis/`, with `pyenv` active:
 
-**2. Test one sample interactively.** This is where you find out whether the
-environment and paths are right, and how much memory a job actually needs.
+```
+python run_all.py 2024 isVBF --dry-run            # what would run, largest first
+
+python run_all.py 2024 isVBF --slurm slurm/VBF_2024.sh \
+    --ncores 2 --mem-per-cpu 1500 --time 04:00:00 --max-concurrent 20
+sbatch slurm/VBF_2024.sh
+
+squeue -u $USER                                   # pending / running
+seff <jobid>                                      # efficiency, once finished
+```
+
+Then rerun whatever is missing — `--skip-existing` queues only the gaps:
+
+```
+python run_all.py 2024 isVBF --slurm slurm/VBF_2024_retry.sh \
+    --skip-existing --ncores 2 --mem-per-cpu 1500
+sbatch slurm/VBF_2024_retry.sh
+```
+
+Those flag values are a reasonable starting point for `isVBF` 2024
+(~1.1 GB per job measured, longest sample ~1 h). Read on to size them for
+other categories, and see the notes below on what the generated script does.
+
+### More detail
+
+`--slurm FILE` writes two files and submits nothing:
+
+- `slurm/VBF_2024.sh` — the `sbatch` script, one array task per work unit
+- `slurm/VBF_2024.jobs` — the exact `Hmm.py` arguments for each task, which
+  doubles as the record of what ran
+
+Worth reading the `.sh` once: it is short, and shows the resource request,
+the conda activation and the working directory.
+
+**Before the first submission of a category**, measure one sample rather
+than guessing at memory and walltime:
+
 ```
 srun --partition=submit --cpus-per-task=2 --mem-per-cpu=4000 \
      --time=01:00:00 --pty bash
@@ -179,51 +204,23 @@ cd ~/HmumuRun3/analysis
 /usr/bin/time -v python Hmm.py 2024 isVBF -s 11 --ncores 2
 exit
 ```
-Note "Maximum resident set size" from the output — that, plus a cushion, is
-your `--mem-per-cpu` for step 3.
 
-**3. Generate the job array.**
-```
-python run_all.py 2024 isVBF \
-    --slurm slurm/VBF_2024.sh \
-    --ncores 2 \
-    --mem-per-cpu 4000 \
-    --time 04:00:00 \
-    --max-concurrent 20
-```
-Writes two files:
-- `slurm/VBF_2024.sh` — the `sbatch` script, one array task per work unit
-- `slurm/VBF_2024.jobs` — the exact `Hmm.py` arguments for each task
+"Maximum resident set size" plus a cushion is your `--mem-per-cpu`; scale the
+wall time by the largest sample's file count from `--dry-run`.
 
-Read the `.sh` once before submitting; it is short and shows the resource
-request, the conda activation and the working directory.
+**Monitoring and cleanup:**
 
-**4. Submit and watch.**
 ```
-sbatch slurm/VBF_2024.sh
-squeue -u $USER                       # what is pending / running
-squeue -u $USER -t running            # just the running ones
+squeue -u $USER -t running            # just the running tasks
 scancel <jobid>                       # kill the whole array
 scancel <jobid>_5                     # kill one task
-```
-
-**5. Check the results.**
-```
-seff <jobid>                          # CPU and memory efficiency
-grep -l "Maximum resident" logs/2024_isVBF_*.out | head
 tail -20 logs/2024_isVBF_<jobid>_1.out
 ls -l /work/submit/$USER/HmumuRun3/ROOTFILES/VBFcat/
 ```
-Per-task stdout and stderr land in `logs/<year>_<mode>_<arrayid>_<task>.out`
-and `.err`.
 
-**6. Rerun anything that failed.** `--skip-existing` drops samples whose
-snapshot is already on disk, so this queues only the gaps:
-```
-python run_all.py 2024 isVBF --slurm slurm/VBF_2024_retry.sh \
-    --skip-existing --ncores 2 --mem-per-cpu 4000
-sbatch slurm/VBF_2024_retry.sh
-```
+Per-task stdout and stderr land in `logs/<year>_<mode>_<arrayid>_<task>.out`
+and `.err`. Every task is wrapped in `/usr/bin/time -v`, so peak memory is
+at the end of each log whether the task succeeded or not.
 
 ### Sizing the request
 
@@ -235,7 +232,7 @@ parallelise the JIT compilation, which threads within one job cannot.
 | option | meaning | note |
 |---|---|---|
 | `--ncores N` | IMT threads per job | maps to `--cpus-per-task`; 2 is a good start |
-| `--mem-per-cpu MB` | memory per core | measure it in step 2; default 4000 is a guess |
+| `--mem-per-cpu MB` | memory per core | measure it first (see above); default 4000 is a guess |
 | `--time HH:MM:SS` | walltime per task | max 6 days on `submit`; task is killed at the limit |
 | `--partition` | Slurm partition | `submit` (default), `submit-gpu` for GPUs |
 | `--max-concurrent N` | cap running tasks | becomes `--array=1-M%N` |
@@ -245,7 +242,7 @@ parallelise the JIT compilation, which threads within one job cannot.
 samples, `-n 8` gives 8 jobs of roughly equal total file count instead of 64
 tasks. Without it, each sample is its own task.
 
-### Running locally instead
+### Running locally
 
 Omitting `--slurm` runs the jobs here, as subprocesses:
 ```
@@ -260,30 +257,3 @@ srun --partition=submit --cpus-per-task=16 --mem-per-cpu=4000 \
 conda activate pyenv && cd ~/HmumuRun3/analysis
 python run_all.py 2024 isVBF -j 8 --ncores 2
 ```
-
-### Why Slurm and not HTCondor
-
-HTCondor worker nodes cannot see `/home`, `/work`, `/ceph` or `/scratch`, so
-every input file, the conda environment and `config/` would have to be
-shipped in via CVMFS or file transfer. Slurm workers mount all of them, so
-the paths in `samples.yaml` work unchanged. There is deliberately no Condor
-backend.
-
-Two SubMIT specifics the generated script handles for you:
-
-- **The conda environment is not inherited.** A job that skipped activation
-  fails with `ModuleNotFoundError: No module named 'ROOT'`. The script
-  sources `conda.sh` from your conda prefix (auto-detected from `$CONDA_EXE`)
-  and activates the env by name — override with `--conda-env` /
-  `--conda-root`.
-- **Every task is wrapped in `/usr/bin/time -v`**, so peak memory is in each
-  log whether the job succeeded or not.
-
-## Validating a `samples.yaml` change
-
-```
-python tools/validate_datasets.py --legacy /path/to/old/analysis
-```
-
-Compares resolved paths, cross-sections and per-mode selections against the
-old hard-coded `datasets.py`. Needs neither ROOT nor the filesystem.
