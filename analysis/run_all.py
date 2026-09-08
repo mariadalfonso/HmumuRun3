@@ -16,6 +16,9 @@ parallelises both the event loop and the per-RDataFrame JIT compilation
     python run_all.py 2024 isVBF --slurm slurm/vbf_2024.sh --ncores 2
     sbatch slurm/vbf_2024.sh
 
+    # ...or generate and submit in one go
+    python run_all.py 2024 isVBF --slurm slurm/vbf_2024.sh --ncores 2 --submit
+
     # smoke test on the login node (NOT for real work)
     python run_all.py 2024 isVBF -s 10,11 -j 2 --ncores 2
 
@@ -87,6 +90,8 @@ def parse_args():
     g = p.add_argument_group("Slurm mode")
     g.add_argument("--slurm", metavar="FILE",
                    help="write a job-array script instead of running")
+    g.add_argument("--submit", action="store_true",
+                   help="run sbatch on the generated script straight away")
     g.add_argument("--partition", default="submit")
     g.add_argument("--time", default="04:00:00",
                    help="walltime per task, max 6 days (default: %(default)s)")
@@ -225,11 +230,17 @@ def write_slurm(args, units, path):
 #SBATCH --output={logdir}/{tag}_%A_%a.out
 #SBATCH --error={logdir}/{tag}_%A_%a.err
 
-set -euo pipefail
+set -eo pipefail
 
 # Slurm does not inherit the submitting conda environment, so activate it here.
+# -u must be off for this: conda's ROOT deactivate hook reads
+# CONDA_BACKUP_ROOTSYS, which is unset, and that is fatal under set -u.
+set +u
 source {conda_root(args)}/etc/profile.d/conda.sh
 conda activate {args.conda_env}
+set -u
+
+python -c "import ROOT, yaml" || {{ echo "environment {args.conda_env} is not usable" >&2; exit 1; }}
 
 cd {HERE}
 
@@ -252,8 +263,20 @@ echo "finished: $(date)"
     print(f"wrote {path} and {joblist} ({len(units)} tasks)")
     print(f"  cpus-per-task {args.ncores}, mem-per-cpu {args.mem_per_cpu} MB, "
           f"time {args.time}, env {args.conda_env}")
-    print(f"submit with:  sbatch {path}")
-    print(f"monitor with: squeue -u $USER     then     seff <jobid>")
+    if not args.submit:
+        print(f"submit with:  sbatch {path}")
+        print(f"monitor with: squeue -u $USER     then     seff <jobid>")
+        return
+
+    try:
+        out = subprocess.run(["sbatch", str(path)], capture_output=True, text=True)
+    except FileNotFoundError:
+        sys.exit(f"sbatch not found; submit by hand:  sbatch {path}")
+    if out.returncode != 0:
+        sys.exit(f"sbatch failed ({out.returncode}):\n{out.stderr.strip()}\n"
+                 f"the script is still there: {path}")
+    print(out.stdout.strip())          # "Submitted batch job 12345"
+    print("monitor with: squeue -u $USER     then     seff <jobid>")
 
 
 def main():

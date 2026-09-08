@@ -138,6 +138,7 @@ python run_all.py <year> <mode> [samplelist] [options]
 | `--logdir` | per-job logs (default `logs/`) |
 | `-j, --jobs` | local mode: how many processes at once |
 | `--slurm FILE` | write a Slurm array script instead of running |
+| `--submit` | run `sbatch` on the generated script straight away |
 | `--partition` | Slurm partition (default `submit`) |
 | `--time HH:MM:SS` | walltime per task (max 6 days) |
 | `--mem-per-cpu MB` | memory per core |
@@ -164,10 +165,11 @@ scancel <jobid>_5                     # one task
 seff <jobid>                          # efficiency, once finished
 ```
 
-`--slurm` writes two files and submits nothing: the `sbatch` script, and a
-`.jobs` file with the exact `Hmm.py` arguments per task, which doubles as the
-record of what ran. Logs go to `logs/<year>_<mode>_<arrayid>_<task>.out`;
-each task is wrapped in `/usr/bin/time -v` so peak memory is in every log.
+If using `--slurm`, it writes two files and does not submit, unless also using `--submit`.
+
+The two files are the `sbatch` script, and a `.jobs` file with the exact `Hmm.py` arguments per task, which doubles as the record of what ran. 
+Logs go to `logs/<year>_<mode>_<arrayid>_<task>.out`.
+Each task is wrapped in `/usr/bin/time -v` so peak memory is in every log.
 
 Rerun the gaps:
 
