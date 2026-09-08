@@ -5,24 +5,22 @@ import os
 import argparse
 import getpass
 
-from utilsAna import loadUserCode
-from utilsAna import SwitchSample
-from datasets import BuildDict, getMCList, getDataList
-from utilsAna import readDataQuality
-from utilsAna import computeWeigths
-from utilsAna import lumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
-from utilsAna import loadCorrectionSet
+from tools.utilsAna import loadUserCode
+from tools.utilsAna import SwitchSample
+from tools.datasets import (BuildDict, resolve_ids, read_list,
+                            list_path, MODE_MAP, VALID_YEARS, VALID_MODES)
+from tools.utilsAna import readDataQuality
+from tools.utilsAna import computeWeigths
+from tools.utilsAna import lumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
+from tools.utilsAna import loadCorrectionSet
 from datetime import datetime
-from utilsAna import loadtmvahelper
+from tools.utilsAna import loadtmvahelper
 
 loadUserCode()
 loadtmvahelper()
-import helper_tmva # need various definitions
+import tools.helper_tmva as helper_tmva # need various definitions
 
 ROOT.gROOT.SetBatch()
-ncores = ROOT.GetThreadPoolSize()
-#ncores = 32
-ROOT.ROOT.EnableImplicitMT(ncores)
 
 # --- setup run commands ---
 
@@ -32,16 +30,27 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="H->mumu Run3 analysis: produce per-category snapshot ROOT files."
     )
-    parser.add_argument("year",
-                        help="data-taking year, e.g. 12022, 22022, 12023, 22023, 2024, 2025, 2026")
-    parser.add_argument("mode",
-                        choices=["isVBF", "isGGH", "isZinv", "isVlep", "isVhad", "isTTlep", "isTThad"],
+    parser.add_argument("year", choices=VALID_YEARS,
+                        help="data-taking year")
+    parser.add_argument("mode", choices=VALID_MODES,
                         help="analysis channel")
+    parser.add_argument("samplelist", nargs="?", default=None,
+                        help="sample list to process (default: the committed "
+                             "datasets/<category>_<year>.txt for this mode)")
     parser.add_argument("-o", "--outdir", default=DEFAULT_OUTDIR,
                         help="output directory for snapshot files (default: %(default)s)")
+    parser.add_argument("-s", "--samples", default=None,
+                        help="override the sample list with an explicit selection: ids "
+                             "(11, -41), group names (signal_hmm, vv), 'mc', 'data', globs "
+                             "('DYto2Mu*'), or @file. Comma-separated.")
+    parser.add_argument("-j", "--ncores", type=int, default=0,
+                        help="ROOT implicit-MT threads; 0 means all available cores. "
+                             "Set this when running several processes at once.")
     return parser.parse_args()
 
 args = parse_args()
+ROOT.ROOT.EnableImplicitMT(args.ncores)
+print(f"implicit MT threads: {ROOT.GetThreadPoolSize()}")
 year  = args.year
 mode  = args.mode
 myDir = args.outdir
@@ -60,16 +69,8 @@ selections = {key: jsonObject[key] for key in ["GOODMUON", "GOODMUONTTH24","GOOD
 
 JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 
-# --- Histogram output suffixes per mode ---
-mode_map = {
-    "isVBF":   "VBFcat",
-    "isGGH":   "ggHcat",
-    "isZinv":  "Zinvcat",
-    "isVlep":  "VLcat",
-    "isVhad":  "VHcat",
-    "isTTlep": "TTLcat",
-    "isTThad": "TTHcat",
-}
+# --- Histogram output suffixes per mode (from tools/datasets.py) ---
+mode_map = MODE_MAP
 
 MVA_map = {
     "isGGH":   "MVA/output/classification_model_ggHcat_july10.root",
@@ -1112,7 +1113,18 @@ def loopOnDataset(year):
     ## both data and MC
     loadCorrectionSet(int(year))
 
-    mc = getMCList(year, mode)
+    if args.samples:
+        # explicit selection wins, even for samples outside this mode's list
+        ids = resolve_ids(year, mode, args.samples)
+        source = f"-s {args.samples}"
+    else:
+        path = args.samplelist or list_path(year, mode)
+        ids = read_list(path, year, mode)
+        source = path
+
+    mc   = [i for i in ids if i > 0]
+    data = [i for i in ids if i < 0]
+    print(f"sample list: {source}  ->  {len(mc)} MC + {len(data)} data")
 
     for sampleNOW in mc:
         files, xsec = SwitchSample(thisdict, sampleNOW)
@@ -1125,9 +1137,8 @@ def loopOnDataset(year):
         sumW = computeWeigths(rdf,xsec)
         analysis(files,year,sampleNOW,sumW)
 
-    data = getDataList(year, mode)
-
-    readDataQuality(year)
+    if data:
+        readDataQuality(year)
 
     for sampleNOW in data:
         files = SwitchSample(thisdict,sampleNOW)[0]

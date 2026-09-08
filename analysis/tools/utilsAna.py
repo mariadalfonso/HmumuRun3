@@ -97,7 +97,7 @@ def SwitchSample(thisdict,argument):
 
     files, xsec = thisdict[argument]
     if isinstance(files, str):     # a path pattern from samples.yaml: glob it now
-        from datasets import findDIR
+        from tools.datasets import findDIR
         files = findDIR(files)
 
     return files, xsec

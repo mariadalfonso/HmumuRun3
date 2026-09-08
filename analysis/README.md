@@ -2,64 +2,285 @@
 ## create the evironment
 First activate your conda environment
 ```
-conda activate myenv
+conda activate pyenv
 ```
 
 If is it the first time creating the environment, run
 ```
-conda env create --name myenv --file=environment.yml
+conda env create --name pyenv --file=environment.yml
 ```
+
+## Layout
+
+```
+analysis/
+  Hmm.py                  event loop, one category at a time
+  run_all.py              parallel submission (Slurm on SubMIT)
+  config/
+    samples.yaml          dataset definitions: paths, xsecs, BRs, groups
+    selection.json        object selections
+    ...                   functions.h, POG JSONs, cert JSONs
+  datasets/
+    VBF_2024.txt          committed sample lists, one per category+year
+    ggH_2024.txt
+    ...
+  tools/
+    datasets.py           reads samples.yaml: paths, xsecs, selections
+    make_datasets.py      generates the datasets/*.txt lists
+    utilsAna.py           corrections, weights, data quality
+    helper_tmva.py        MVA inference helpers
+    validate_datasets.py  checks samples.yaml against the legacy datasets.py
+```
+
+Run everything from the `analysis/` directory.
 
 ## Running `Hmm.py`
 
-Run from the `analysis/` directory:
 ```
-    python Hmm.py <year> <mode> [-o OUTDIR]
+    python Hmm.py <year> <mode> [samplelist] [-o OUTDIR] [-s SELECTION] [-j NCORES]
 ```
 - **year**: `12022`, `22022`, `12023`, `22023`, `2024`, `2025`, `2026`
 - **mode**: `isVBF`, `isGGH`, `isZinv`, `isVlep`, `isVhad`, `isTTlep`, `isTThad`
+- **samplelist**: which samples to process. Defaults to the committed
+  `datasets/<category>_<year>.txt` for this mode, so you normally omit it.
 - **-o/--outdir**: output dir (default `/work/submit/$USER/HmumuRun3/ROOTFILES/`)
+- **-s/--samples**: override the list with an explicit selection (see below)
+- **-j/--ncores**: implicit-MT threads; 0 = all cores
 
-Example: `python Hmm.py 12022 isVBF`
+### Choosing what to run
+
+There are three ways to say which samples to process. They take precedence
+in this order: **`-s` beats a positional list file, which beats the
+default.** `Hmm.py` prints which one it used at startup, e.g.
+`sample list: datasets/VBF_2024.txt  ->  50 MC + 14 data`.
+
+**1. Nothing — use the committed list (the normal case)**
+```
+python Hmm.py 2024 isVBF          # reads datasets/VBF_2024.txt
+python Hmm.py 12022 isGGH         # reads datasets/ggH_12022.txt
+```
+The filename comes from the mode and year, so there is nothing to remember.
+Missing file raises and tells you how to generate it.
+
+**2. A different list file, as a positional argument**
+```
+python Hmm.py 2024 isVBF datasets/VBF_2024_test.txt
+python Hmm.py 2024 isVBF /tmp/rerun_these.txt
+```
+Use this for a whole alternative list: a cut-down test set, or a rerun list
+of the samples that failed. Note the list is *not* checked against the mode
+— running `isVBF` with `datasets/ggH_2024.txt` will happily push those
+samples through the VBF selection, so watch the startup line.
+
+**3. `-s` for an explicit selection**
+```
+python Hmm.py 2024 isVBF -s 11                 # one sample id
+python Hmm.py 2024 isVBF -s 10,11,-41          # several ids (negative = data)
+python Hmm.py 2024 isVBF -s signal_hmm         # a group from samples.yaml
+python Hmm.py 2024 isVBF -s vv,vvv             # several groups
+python Hmm.py 2024 isVBF -s 'DYto2Mu*'         # glob on the dataset name
+python Hmm.py 2024 isVBF -s mc                 # all MC for this mode
+python Hmm.py 2024 isVBF -s data               # all data for this mode
+python Hmm.py 2024 isVBF -s @datasets/VBF_2024.txt,141   # a list plus extras
+```
+Quote globs so the shell does not expand them first. `-s` **replaces** the
+list rather than filtering it, so `-s 141` runs sample 141 even though it is
+not in `datasets/VBF_2024.txt` — handy for the training samples that are not
+in any category list. An unrecognised token raises rather than silently
+matching nothing.
+
+`run_all.py` accepts the same three forms, so anything above can be
+submitted in parallel by swapping `Hmm.py` for `run_all.py` and adding
+`--slurm FILE`.
 
 Writes snapshots to `<outdir>/<category>/snapshot_mc_<mc>_<year>_<category>.root`.
+One file per sample, so parallel jobs never collide.
 
-## Sample definitions: `config/samples.yaml`
+## Sample lists: `datasets/*.txt`
 
-Datasets, cross-sections and branching ratios live in `config/samples.yaml`.
-`datasets.py` reads it; nothing is globbed until a sample is actually
-selected, so only the samples a run needs touch the filesystem.
+One file per category and year, generated from `config/samples.yaml` and
+**committed to git**. Nobody needs to regenerate them unless the datasets
+change.
 
-Blocks in the file:
-- **`periods`** — campaign glob and base directories per era (v12 vs v15)
-- **`branching_ratios`** — BRs and decay fractions, in one place
-- **`xsecs`** — named cross-sections **in fb**, split into `run3` (13.6 TeV)
-  and `run2` (13 TeV reference values)
-- **`groups`** — sample id lists used by `getMCList`
-- **`samples`** / **`data`** — id -> path pattern + cross-section
-- **`data_selection`** — which data ids to run per period
+```
+# VBF 2024 -- sample list for isVBF
+# generated 2026-09-08 03:41 from config/samples.yaml by tools/datasets.py
 
-### Adding a sample
-
-```yaml
-  151:
-    path: "{ceph}/{year}/MyNewSample_TuneCP5_13p6TeV_powheg-pythia8/NANOAODSIM/{campaign}"
-    xsec: {ref: TTH, br: H_to_mumu}
+# --- MC (50) ---
+10     # VBF*Hto2Mu_*M-125
+11     # GluGlu*Hto2Mu_*M-125
+...
+# --- data (14) ---
+-41    # Run2024C/Muon0
 ```
 
-Path placeholders `{ceph}` `{scratch}` `{year}` `{campaign}` are filled from
-`periods`. An `xsec` is written one of these ways:
+Comment a line out to skip that sample without touching `samples.yaml`.
 
-```yaml
-    xsec: 2219000                             # a plain value in fb
-    xsec: {ref: W}                            # named process from xsecs.run3
-    xsec: {ref: VBFH, br: H_to_mumu}          # times a branching ratio
-    xsec: {ref: Wm, br: [H_to_WW, W_to_qq]}   # times several
-    xsec: {value: 21650, factor: 0.6}         # times an empirical scaling
+### Regenerating
+
+```
+python tools/make_datasets.py --write-all              # every category and year
+python tools/make_datasets.py --write 2024 isVBF       # just one
+python tools/make_datasets.py --show 2024 isVBF        # print, write nothing
 ```
 
-`br` takes physics constants from `branching_ratios`; `factor` is for everything else, so empirical rescalings stay visible as such.
+Do this after adding a sample to `samples.yaml` or changing a group, then
+commit the updated `datasets/` files.
 
-To include the sample in a mode's selection, add its id to a list under `groups`. The per-period and per-mode branching lives in `datasets.getMCList`.
+### Selection syntax
 
-Helpers: `getXsec(name, run)`, `getBR(name)`, `resolve_xsec(spec)`.
+Anywhere a selection is accepted (`-s`, or a line in a list file):
+
+| token | meaning |
+|---|---|
+| `11`, `-41` | a sample id |
+| `signal_hmm`, `vv` | a group from `groups:` in `samples.yaml` |
+| `mc`, `data` | everything of that kind for this year and mode |
+| `'DYto2Mu*'` | glob on the dataset name |
+| `@path/to/list.txt` | another list file |
+
+An unrecognised token raises, so typos fail loudly.
+
+## Parallel running: `run_all.py`
+
+Samples are independent and each writes its own snapshot, so one process per
+sample parallelises both the event loop and the per-RDataFrame JIT
+compilation (which a single process cannot — Cling compiles serially).
+
+`run_all.py` does not run the analysis itself. It works out the list of work
+units and then either runs them locally or writes a Slurm job array for you
+to submit.
+
+```
+python run_all.py <year> <mode> [samplelist] [options]
+```
+
+### Step by step on SubMIT
+
+**1. Look at the plan before submitting anything.**
+```
+cd ~/HmumuRun3/analysis
+conda activate pyenv
+python run_all.py 2024 isVBF --dry-run
+```
+Prints one line per work unit with its file count, largest first. Check the
+sample count matches what you expect and that nothing says `no files`.
+
+**2. Test one sample interactively.** This is where you find out whether the
+environment and paths are right, and how much memory a job actually needs.
+```
+srun --partition=submit --cpus-per-task=2 --mem-per-cpu=4000 \
+     --time=01:00:00 --pty bash
+conda activate pyenv                  # Slurm does not inherit your env
+cd ~/HmumuRun3/analysis
+/usr/bin/time -v python Hmm.py 2024 isVBF -s 11 --ncores 2
+exit
+```
+Note "Maximum resident set size" from the output — that, plus a cushion, is
+your `--mem-per-cpu` for step 3.
+
+**3. Generate the job array.**
+```
+python run_all.py 2024 isVBF \
+    --slurm slurm/VBF_2024.sh \
+    --ncores 2 \
+    --mem-per-cpu 4000 \
+    --time 04:00:00 \
+    --max-concurrent 20
+```
+Writes two files:
+- `slurm/VBF_2024.sh` — the `sbatch` script, one array task per work unit
+- `slurm/VBF_2024.jobs` — the exact `Hmm.py` arguments for each task
+
+Read the `.sh` once before submitting; it is short and shows the resource
+request, the conda activation and the working directory.
+
+**4. Submit and watch.**
+```
+sbatch slurm/VBF_2024.sh
+squeue -u $USER                       # what is pending / running
+squeue -u $USER -t running            # just the running ones
+scancel <jobid>                       # kill the whole array
+scancel <jobid>_5                     # kill one task
+```
+
+**5. Check the results.**
+```
+seff <jobid>                          # CPU and memory efficiency
+grep -l "Maximum resident" logs/2024_isVBF_*.out | head
+tail -20 logs/2024_isVBF_<jobid>_1.out
+ls -l /work/submit/$USER/HmumuRun3/ROOTFILES/VBFcat/
+```
+Per-task stdout and stderr land in `logs/<year>_<mode>_<arrayid>_<task>.out`
+and `.err`.
+
+**6. Rerun anything that failed.** `--skip-existing` drops samples whose
+snapshot is already on disk, so this queues only the gaps:
+```
+python run_all.py 2024 isVBF --slurm slurm/VBF_2024_retry.sh \
+    --skip-existing --ncores 2 --mem-per-cpu 4000
+sbatch slurm/VBF_2024_retry.sh
+```
+
+### Sizing the request
+
+Keep `--ncores` small. Slurm on SubMIT hands out cores, not whole nodes, and
+the fair-share system gives lower priority to users requesting more, so 50
+jobs at 2 cores schedule sooner than 8 jobs at 16 cores. Small jobs also
+parallelise the JIT compilation, which threads within one job cannot.
+
+| option | meaning | note |
+|---|---|---|
+| `--ncores N` | IMT threads per job | maps to `--cpus-per-task`; 2 is a good start |
+| `--mem-per-cpu MB` | memory per core | measure it in step 2; default 4000 is a guess |
+| `--time HH:MM:SS` | walltime per task | max 6 days on `submit`; task is killed at the limit |
+| `--partition` | Slurm partition | `submit` (default), `submit-gpu` for GPUs |
+| `--max-concurrent N` | cap running tasks | becomes `--array=1-M%N` |
+| `-n/--split K` | pack the list into K jobs | balanced by file count, longest first |
+
+`-n/--split K` is for when one job per sample is too many tasks. With 64
+samples, `-n 8` gives 8 jobs of roughly equal total file count instead of 64
+tasks. Without it, each sample is its own task.
+
+### Running locally instead
+
+Omitting `--slurm` runs the jobs here, as subprocesses:
+```
+python run_all.py 2024 isVBF -s signal_hmm -j 4 --ncores 2
+```
+`-j` sets how many run at once. This is fine for a smoke test, but the
+login nodes are shared — for real work either submit an array, or take an
+interactive allocation and use local mode inside it:
+```
+srun --partition=submit --cpus-per-task=16 --mem-per-cpu=4000 \
+     --time=04:00:00 --pty bash
+conda activate pyenv && cd ~/HmumuRun3/analysis
+python run_all.py 2024 isVBF -j 8 --ncores 2
+```
+
+### Why Slurm and not HTCondor
+
+HTCondor worker nodes cannot see `/home`, `/work`, `/ceph` or `/scratch`, so
+every input file, the conda environment and `config/` would have to be
+shipped in via CVMFS or file transfer. Slurm workers mount all of them, so
+the paths in `samples.yaml` work unchanged. There is deliberately no Condor
+backend.
+
+Two SubMIT specifics the generated script handles for you:
+
+- **The conda environment is not inherited.** A job that skipped activation
+  fails with `ModuleNotFoundError: No module named 'ROOT'`. The script
+  sources `conda.sh` from your conda prefix (auto-detected from `$CONDA_EXE`)
+  and activates the env by name — override with `--conda-env` /
+  `--conda-root`.
+- **Every task is wrapped in `/usr/bin/time -v`**, so peak memory is in each
+  log whether the job succeeded or not.
+
+## Validating a `samples.yaml` change
+
+```
+python tools/validate_datasets.py --legacy /path/to/old/analysis
+```
+
+Compares resolved paths, cross-sections and per-mode selections against the
+old hard-coded `datasets.py`. Needs neither ROOT nor the filesystem.
