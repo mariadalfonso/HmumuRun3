@@ -150,11 +150,12 @@ Note `-j` differs between the scripts: `--ncores` in `Hmm.py`, `--jobs` in
 ### Slurm
 
 ```
-python run_all.py 2024 isVBF --dry-run
+python run_all.py 2024 isGGH --dry-run
 
-python run_all.py 2024 isVBF --slurm slurm/VBF_2024.sh \
-    --ncores 4 --mem-per-cpu 1000 --time 08:00:00 --max-concurrent 20
-sbatch slurm/VBF_2024.sh
+python run_all.py 2024 isGGH --slurm slurm/ggH_2024.sh \
+    --ncores 8 --mem-per-cpu 400 --time 04:00:00 --max-concurrent 12
+
+sbatch slurm/ggH_2024.sh
 
 squeue -u $USER                       # pending / running
 squeue -u $USER -t running
@@ -171,50 +172,21 @@ each task is wrapped in `/usr/bin/time -v` so peak memory is in every log.
 Rerun the gaps:
 
 ```
-python run_all.py 2024 isVBF --slurm slurm/retry.sh --skip-existing --ncores 4
+python run_all.py 2024 isGGH --slurm slurm/retry.sh --skip-existing --ncores 4
 sbatch slurm/retry.sh
 ```
 
 ### Local
 
 ```
-python run_all.py 2024 isVBF -s signal_hmm -j 4 --ncores 2
+python run_all.py 2024 isGGH -s signal_hmm -j 4 --ncores 2
 ```
 
-Fine for smoke tests. For real work either submit an array or use local mode
-inside an interactive allocation:
-
+Or use local mode inside an interactive allocation:
 ```
 srun --partition=submit --cpus-per-task=16 --mem-per-cpu=4000 \
      --time=04:00:00 --pty bash
 conda activate pyenv && cd ~/HmumuRun3/analysis
-python run_all.py 2024 isVBF -j 8 --ncores 2
+python run_all.py 2024 isGGH -j 8 --ncores 2
 ```
 
-### Sizing
-
-Measured on 2024 isGGH: ~50 s of every job is single-threaded (ROOT import,
-`functions.h` compile, correction sets, JIT of the `Define`s). Small samples
-are therefore thread-limited (2.8M-event ggH: 55% efficiency at 4 cores);
-large ones are not (202M-event DY: 93% at 4 cores). So use `--ncores 2` for
-small samples, 4+ for large. Cost is ~39 core-microseconds per event, ~80
-core-hours per category for 2024.
-
-Slurm hands out cores, not nodes, and fair-share penalises large requests,
-so many small jobs schedule sooner than a few large ones. Measure memory
-with `--maxfiles` before setting `--mem-per-cpu`.
-
-**Slurm, not HTCondor:** Condor workers cannot see `/home`, `/work`, `/ceph`
-or `/scratch`. Slurm workers mount all four, and the generated script
-activates conda explicitly since Slurm does not inherit your environment.
-
----
-
-## Validating a `samples.yaml` change
-
-```
-python tools/validate_datasets.py --legacy /path/to/old/analysis
-```
-
-Compares resolved paths, cross-sections and per-mode selections against the
-old hard-coded `datasets.py`. Needs neither ROOT nor the filesystem.
