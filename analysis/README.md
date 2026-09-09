@@ -153,11 +153,17 @@ Note `-j` differs between the scripts: `--ncores` in `Hmm.py`, `--jobs` in
 ```
 python run_all.py 2024 isGGH --dry-run
 
-python run_all.py 2024 isGGH --slurm slurm/ggH_2024.sh \
-    --ncores 8 --mem-per-cpu 400 --time 04:00:00 --max-concurrent 12
+python run_all.py 2024 isGGH --slurm --ncores 8 --mem-per-cpu 400 --time 04:00:00 --max-concurrent 12 --submit
+```
+With `--slurm` and `--submit`, the script creates a `slurm/ggH_2024.sh` script for submission, and submit the job for you. It also creates a `.jobs` file with the exact `Hmm.py` arguments per task, which doubles as the record of what ran.
 
+One can specify  `--slurm slurm/ggH_2024.sh`, without `--submit`, and submit the job manually:
+```
 sbatch slurm/ggH_2024.sh
+```
 
+To monitor:
+```
 squeue -u $USER                       # pending / running
 squeue -u $USER -t running
 scancel <jobid>                       # whole array
@@ -165,9 +171,6 @@ scancel <jobid>_5                     # one task
 seff <jobid>                          # efficiency, once finished
 ```
 
-If using `--slurm`, it writes two files and does not submit, unless also using `--submit`.
-
-The two files are the `sbatch` script, and a `.jobs` file with the exact `Hmm.py` arguments per task, which doubles as the record of what ran. 
 Logs go to `logs/<year>_<mode>_<arrayid>_<task>.out`.
 Each task is wrapped in `/usr/bin/time -v` so peak memory is in every log.
 

@@ -12,9 +12,10 @@ parallelises both the event loop and the per-RDataFrame JIT compilation
     # split the list into 8 balanced jobs instead of one job per sample
     python run_all.py 2024 isVBF -n 8 --slurm slurm/vbf_2024.sh
 
-    # Slurm job array: the right backend on SubMIT
-    python run_all.py 2024 isVBF --slurm slurm/vbf_2024.sh --ncores 2
-    sbatch slurm/vbf_2024.sh
+    # Slurm job array: the right backend on SubMIT.
+    # Bare --slurm writes slurm/<category>_<year>.sh
+    python run_all.py 2024 isVBF --slurm --ncores 2
+    sbatch slurm/VBF_2024.sh
 
     # ...or generate and submit in one go
     python run_all.py 2024 isVBF --slurm slurm/vbf_2024.sh --ncores 2 --submit
@@ -48,7 +49,7 @@ from pathlib import Path
 
 import tools.datasets as datasets
 from tools.datasets import (resolve_ids, sample_label, read_list, list_path,
-                            MODE_MAP, VALID_YEARS, VALID_MODES)
+                            CATEGORY, MODE_MAP, VALID_YEARS, VALID_MODES)
 from tools.utilsAna import SwitchSample
 
 HERE = Path(__file__).resolve().parent
@@ -88,8 +89,9 @@ def parse_args():
                         "Keep jobs x ncores well below the core count.")
 
     g = p.add_argument_group("Slurm mode")
-    g.add_argument("--slurm", metavar="FILE",
-                   help="write a job-array script instead of running")
+    g.add_argument("--slurm", nargs="?", const="AUTO", metavar="FILE",
+                   help="write a job-array script instead of running. With no value, "
+                        "defaults to slurm/<category>_<year>.sh")
     g.add_argument("--submit", action="store_true",
                    help="run sbatch on the generated script straight away")
     g.add_argument("--partition", default="submit")
@@ -294,7 +296,9 @@ def main():
     print(f"{len(units)} job(s) covering {total} samples")
 
     if args.slurm:
-        return write_slurm(args, units, args.slurm)
+        path = (f"slurm/{CATEGORY[args.mode]}_{args.year}.sh"
+                if args.slurm == "AUTO" else args.slurm)
+        return write_slurm(args, units, path)
 
     if args.dry_run:
         for k, (ids, n) in enumerate(units, 1):
