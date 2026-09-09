@@ -33,10 +33,10 @@ import sys
 import argparse
 import getpass
 
-import plot_style
-from plot_style import lumis
-import plot_vars
-import histo_config as cfg
+from utils import plot_style
+from utils.plot_style import lumis
+from utils import plot_vars
+from utils import histo_config as cfg
 from SummaryPlots import HistoFile
 
 plot_style.setup_style()
@@ -66,7 +66,7 @@ Y_TITLE_OFFSET_SHAPES = 2.0
 
 # Legend position local to this script (not touching plot_style.LEGEND_POS,
 # shared with the stacked plots). One row per process, so it can be compact.
-MAIN_LEGEND_POS = (0.60, 0.68, 0.93, 0.90)
+MAIN_LEGEND_POS = (0.58, 0.7, 0.93, 0.93)
 
 
 def _bkg_color(rank):
@@ -242,9 +242,9 @@ def plot_shape(hfile, category, year, varname, outdir, args):
         f"{cfg.CATEGORY_LABELS.get(category, category)} ({year.lstrip('_')})",
         cfg.REGIONS[SHAPE_REGION]["label"],
     ]
-    y0, dy = 0.85, 0.045
+    y0, dy = 0.87, 0.045
     for i, line in enumerate(lines):
-        latex.DrawLatex(plot_style.PAD_LEFT_MARGIN + 0.05, y0 - i * dy, line)
+        latex.DrawLatex(plot_style.PAD_LEFT_MARGIN + 0.03, y0 - i * dy, line)
 
     os.makedirs(outdir, exist_ok=True)
     outpath = f"{outdir}{varname}_{category}{year}_Shape.png"

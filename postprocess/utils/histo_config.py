@@ -67,12 +67,12 @@ ALL_PROCESSES = list(MC_PROCESSES.keys()) + [DATA_PROCESS]
 # Human-readable labels, used by both plotting scripts' legends.
 PROCESS_LABELS = {
     "hData": "Data",
-    "hDY":   "DY+jets (QCD)",
-    "hEWK":  "DY+jets (EWK)",
-    "hVV":   "VV + VVV",
+    "hDY":   "DY+jets(QCD)",
+    "hEWK":  "DY+jets(EWK)",
+    "hVV":   "VV+VVV",
     "hTT2L": "t#bar{t} 2l",
-    "hTop":  "Top (1l, tW/tZq, ttV/4t)",
-    "hZg":   "H#rightarrowZ#gamma + jets",
+    "hTop":  "Top(1l,tW/tZq,ttV/4t)",
+    "hZg":   "H#rightarrowZ#gamma+jets",
     "hTTH":  "ttH",
     "hWH":   "WH",
     "hZH":   "ZH",
@@ -138,17 +138,17 @@ REGIONS = {
     "Inclusive": {
         "filter": None,
         "blindable": True,
-        "label": "m_{#mu#mu}#in[70, 200] GeV",
+        "label": "m_{#mu#mu}#in[70,200]GeV",
     },
     "SR_sideband": {
         "filter": SR_SIDEBAND_FILTER,
         "blindable": False,
-        "label": "m_{#mu#mu}#in[110, 120]#cup[130, 150] GeV",
+        "label": "m_{#mu#mu}#in[110,120]#cup[130,150]GeV",
     },
     "Unrestricted": {
         "filter": None,
         "blindable": False,
-        "label": "m_{#mu#mu}#in[70, 200] GeV",
+        "label": "m_{#mu#mu}#in[70,200]GeV",
     },
 }
 
