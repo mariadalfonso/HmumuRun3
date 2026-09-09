@@ -1,4 +1,4 @@
-1;95;0c binX in ["bdt0", "bdt1", "bdt2","bdt3"]:        import ROOT
+import ROOT
 
 from prepareFits import getHisto
 from pdfDefinitions import *
