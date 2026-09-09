@@ -167,7 +167,7 @@ def _draw_mass_range_label(category, year, region_label):
     ]
     y0, dy = 0.85, 0.045
     for i, line in enumerate(lines):
-        latex.DrawLatex(plot_style.PAD_LEFT_MARGIN + 0.05, y0 - i * dy, line)
+        latex.DrawLatex(plot_style.PAD_LEFT_MARGIN + 0.03, y0 - i * dy, line)
     return latex        # returned so the caller keeps it alive
 
 
