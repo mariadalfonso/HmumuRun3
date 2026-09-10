@@ -40,9 +40,10 @@ import ROOT
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
-# Empty tail bins have zero error, so their pull is undefined; RooFit
-# already sets those points to zero, and says so once per bin. Noise.
-ROOT.RooMsgService.instance().getStream(1).removeTopic(ROOT.RooFit.Plotting)
+# Empty tail bins have zero error, so their pull is undefined
+# Supress these erros for EVERY stream
+for _i in range(ROOT.RooMsgService.instance().numStreams()):
+    ROOT.RooMsgService.instance().getStream(_i).removeTopic(ROOT.RooFit.Plotting)
 ROOT.TH1.SetDefaultSumw2(True)
 
 # ---------------------------------------------------------------------------
@@ -57,9 +58,8 @@ BINS_PER_GEV = 10         # 0.1 GeV bins, matching SIGfits.py and fitBkg.
                           # by +2%. Override with --bins-per-gev.
 MH_REF = 125.0            # reference mass the shape was fitted at
 
-# Fractional uncertainties folded into the shape formulas.
-# PLACEHOLDERS -- replace with Run 3 muon POG numbers or your own
-# scale/smearing variations from objScaleSmear().
+# TODO: Fractional uncertainties folded into the shape formulas.
+# Replace with Run 3 muon POG numbers or from objScaleSmear().
 SCALE_UNC = 0.002         # 0.2% muon momentum scale
 RES_UNC   = 0.05          # 5% muon momentum resolution
 
@@ -251,11 +251,10 @@ def make_signal_pdf(x, tag, scale_unc=SCALE_UNC, res_unc=RES_UNC,
     return pdf, bundle
 
 
-# Combined Run 3, derived from RUN3_ERAS so it cannot drift from the era
-# values above. Re: the TODO -- this sums to 308.03, while
-# prepareFits.lumis['_Run3'] hardcodes 312 and limitPlot.py passes
-# 286500 pb^-1 (= 286.5). All three disagree; the sum is at least
-# self-consistent with the per-era numbers you are actually using.
+# Combined Run 3 Lumis, derived from RUN3_ERAS
+# TODO: this sums to 308.03, but
+#       prepareFits.lumis['_Run3'] hardcodes 312, and
+#       limitPlot.py passes 286500 pb^-1 (= 286.5).
 LUMIS['_Run3'] = sum(LUMIS[e] for e in RUN3_ERAS)
 
 # ---------------------------------------------------------------------------
@@ -360,12 +359,7 @@ def _style_ratio_axis(axis, offset):
 
 
 def _style_lower_marker(obj):
-    """Black points for a lower-pad plottable (the ratio TH1 or the pull hist).
-
-    Marker and line colour are set explicitly: a TH1 inherits the two from
-    gStyle independently, so leaving the line unset gives black markers with
-    error bars in whatever the global histogram line colour happens to be.
-    """
+    """Black points for a lower-pad plottable."""
     obj.SetMarkerStyle(DATA_MARKER_STYLE)
     obj.SetMarkerSize(DATA_MARKER_SIZE)
     obj.SetMarkerColor(ROOT.kBlack)
@@ -516,6 +510,13 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
 
     pull_frame = x.frame(ROOT.RooFit.Title(""))
     pull_hist = frame.pullHist("dat", "fit")
+
+    # An empty data bin has zero error, so its pull is undefined
+    # RooFit sets these points to 0, removed from ther plot.
+    for _i in range(pull_hist.GetN() - 1, -1, -1):
+        if (pull_hist.GetErrorYhigh(_i) <= 0.0
+                and pull_hist.GetErrorYlow(_i) <= 0.0):
+            pull_hist.RemovePoint(_i)
     _style_lower_marker(pull_hist)
     pull_frame.addPlotable(pull_hist, "P")
     pull_frame.SetMinimum(-6.0)
