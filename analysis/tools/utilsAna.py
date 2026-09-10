@@ -186,7 +186,7 @@ def loadCorrectionSet(year):
     if year == 22023: subDirName = "2023_Summer23BPix"
     if year == 2024: subDirName = "2024"
     if year == 2025: subDirName = "2025"
-    if year == 2026: subDirName = "2025"
+    if year == 2026: subDirName = "2025" # CHECK: why is this not 2026?
 
     if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year==2025 or year==2026):
         print('loadMuonScale()')
