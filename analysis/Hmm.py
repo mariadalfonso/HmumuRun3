@@ -642,7 +642,7 @@ def objScaleSmear(df, year, mc):
             df = df.Redefine("Electron_jetNDauCharged","ROOT::VecOps::RVec<float>(Electron_jetNDauCharged.begin(), Electron_jetNDauCharged.end())")
 
             df = callMVAlep(df,"Electron",
-                            "config/Electron-mvaTTH.2022EE.weights_mvaISO.xml",
+                            "config/mva/Electron-mvaTTH.2022EE.weights_mvaISO.xml",
                             "Electron_promptMVA"
                             )
 
@@ -661,7 +661,7 @@ def objScaleSmear(df, year, mc):
                 df = df.Define("Muon_jetDF","Muon_jetBTagDeepFlavB")
 
             df = callMVAlep(df,"Muon",
-                            "config/Muon-mvaTTH.2022EE.weights.xml",
+                            "config/mva/Muon-mvaTTH.2022EE.weights.xml",
                             "Muon_promptMVA"
                             )
 
