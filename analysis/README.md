@@ -16,19 +16,33 @@ analysis/
   make_datasets.py        regenerates the datasets/*.txt sample lists
   config/
     samples.yaml          dataset definitions: paths, xsecs, BRs, groups
+    branches.yaml         snapshot output branches, per category
     selection.json        object selections
-    ...                   functions.h, POG JSONs, cert JSONs
+    POG/  THeory/  cert/  correction sets and certified-lumi JSONs
+    mva/                  TMVA weight files
   datasets/
     VBF_2024.txt          committed sample lists, one per category+year
     ggH_2024.txt
     ...
+  src/                    C++ compiled by Cling at startup
+    functions.h           analysis helpers used in Define strings
+    functionsObjCor.h     jet/electron correction wrappers
+    functionsMuCorr.h     muon correction wrapper
+    MuonScaRe.cc          muon scale and smearing
+    sfCorrLib.h           MyCorrections: the correctionlib wrapper
+    tmva_helper_xml.h     TMVA / XGBoost inference helpers
+    tmva_helper_xgb.h
   tools/
-    datasets.py           reads samples.yaml: paths, xsecs, selections
+    datasets.py           reads samples.yaml: paths, xsecs, sample selection
+    branches.py           reads branches.yaml: snapshot output branches
     utilsAna.py           corrections, weights, data quality
     helper_tmva.py        MVA inference helpers
-    validate_datasets.py  checks samples.yaml against the legacy datasets.py
 ```
-Run from the `analysis/` directory.
+Run from the `analysis/` directory. The three top-level scripts are the entry
+points; everything in `tools/` is imported by them.
+
+Paths in `tools/utilsAna.py` are relative to the working directory, so
+`config/` and `src/` are found only when you run from `analysis/`.
 
 ---
 
@@ -44,7 +58,7 @@ python Hmm.py <year> <mode> [samplelist] [options]
 | `mode` | `isVBF`, `isGGH`, `isZinv`, `isVlep`, `isVhad`, `isTTlep`, `isTThad` |
 | `samplelist` | optional list file; defaults to `datasets/<category>_<year>.txt` |
 | `-o, --outdir` | output dir (default `/work/submit/$USER/HmumuRun3/ROOTFILES/`) |
-| `-s, --samples` | explicit selection, overrides the list file |
+| `-s, --samples` | explicit sample selection, overrides the list file |
 | `-j, --ncores` | implicit-MT threads; 0 = all cores |
 | `--maxfiles N` | process only the first N files of each sample |
 
@@ -59,12 +73,12 @@ Precedence: `-s` > positional list file > default list.
 ```
 python Hmm.py 2024 isGGH                                 # datasets/ggH_2024.txt
 python Hmm.py 2024 isGGH datasets/ggH_2024_test.txt      # another list
-python Hmm.py 2024 isGGH -s 11                           # explicit selection
+python Hmm.py 2024 isGGH -s 11                           # explicit sample selection
 ```
 
-Selection tokens, comma-separated, usable in `-s` or as a line in a list file:
+Sample selection arguments, comma-separated, usable in `-s` or as a line in a list file:
 
-| token | meaning |
+| argument input | meaning |
 |---|---|
 | `11`, `-41` | a sample id (negative = data) |
 | `signal_hmm`, `vv` | a group from `groups:` in `samples.yaml` |
@@ -92,26 +106,44 @@ Pass `-o` somewhere temporary: the filename does not record the truncation, so i
 ## `datasets/*.txt` — the sample lists
 
 One file per category and year, generated from `config/samples.yaml` and
-committed to git. Comment a line out to skip that sample.
+committed to git.
 
-```
-# VBF 2024 -- sample list for isVBF
-# generated 2026-09-08 05:26 from config/samples.yaml by make_datasets.py
-
-# --- MC (50) ---
-10     # VBF*Hto2Mu_*M-125
-...
-# --- data (14) ---
--41    # Run2024C/Muon0
-```
-
-Regenerate after editing `samples.yaml`, then commit `datasets/`:
+Need to regenerate after editing `samples.yaml`, then commit `datasets/`:
 
 ```
 python make_datasets.py --write-all              # every category and year
 python make_datasets.py --write 2024 isVBF       # just one
 python make_datasets.py --show 2024 isVBF        # print, write nothing
 ```
+
+---
+
+## `config/branches.yaml` — the output branches
+
+Which columns get written to the snapshot, in three blocks:
+
+```yaml
+base:                 # every category, MC and data
+per_mode:             # per category, MC and data
+per_mode_mc_only:     # per category, MC only (generator-level info)
+```
+
+`tools.branches.branch_list(mode, is_mc)` assembles
+`base + per_mode[mode] (+ per_mode_mc_only[mode])`, dropping duplicates.
+Disabled branches are kept as commented lines, so re-enabling one is a
+two-character edit.
+
+Every name must be a column defined in `Hmm.py` by the time `Snapshot` runs.
+`check_branches` verifies that at startup and reports typos with suggestions,
+rather than failing after the event loop:
+
+```
+ERROR: 1 branch(es) in config/branches.yaml are not defined for mode isGGH:
+   HiggsCandCorMass   did you mean: HiggsCandCorrMass, HiggsCandMass
+```
+
+Note a name valid for one category may not exist in another — `jetVBF1_Pt` is
+defined for `isVBF` only — so it matters which block it goes in.
 
 ---
 
@@ -177,11 +209,11 @@ Each task is wrapped in `/usr/bin/time -v` so peak memory is in every log.
 Rerun the gaps:
 
 ```
-python run_all.py 2024 isGGH --slurm slurm/retry.sh --skip-existing --ncores 4
-sbatch slurm/retry.sh
+python run_all.py 2024 isGGH --slurm slurm/retry.sh --skip-existing \
+    --ncores 8 --mem-per-cpu 400 --time 04:00:00 --submit
 ```
 
-### Local
+### Run locally
 
 ```
 python run_all.py 2024 isGGH -s signal_hmm -j 4 --ncores 2
