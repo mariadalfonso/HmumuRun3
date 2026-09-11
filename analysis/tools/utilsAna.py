@@ -10,12 +10,12 @@ def loadUserCode():
     ROOT.gSystem.AddDynamicPath("./.")
     ROOT.gROOT.ProcessLine(".include ./.")
     ROOT.gInterpreter.AddIncludePath("./.")
-    ROOT.gInterpreter.ProcessLine('#include "./config/functions.h"')
+    ROOT.gInterpreter.ProcessLine('#include "./src/functions.h"')
 
 def loadtmvahelper():
     print('loadtmvahelper()')
-    ROOT.gInterpreter.ProcessLine('#include "./config/tmva_helper_xml.h"')
-    ROOT.gInterpreter.ProcessLine('#include "./config/tmva_helper_xgb.h"')
+    ROOT.gInterpreter.ProcessLine('#include "./src/tmva_helper_xml.h"')
+    ROOT.gInterpreter.ProcessLine('#include "./src/tmva_helper_xgb.h"')
 
 # lumis with golden json
 #https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis#ReReco_ERAS_A_B_C_D_E
@@ -167,7 +167,7 @@ def loadCorrectionSet(year):
     print('loadCorrectionSet()')
     import correctionlib
     correctionlib.register_pyroot_binding()
-    ROOT.gInterpreter.Declare('#include "./config/sfCorrLib.h"')
+    ROOT.gInterpreter.Declare('#include "./src/sfCorrLib.h"')
 
     ROOT.gInterpreter.ProcessLine('auto corr_sf = MyCorrections(%d);' % (year))
 
@@ -197,8 +197,8 @@ def loadCorrectionSet(year):
 #            f'auto cset = correction::CorrectionSet::from_file("/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/'+subDirName+'/latest/muon_scalesmearing.json.gz");'
 #        )
 
-        ROOT.gInterpreter.ProcessLine('#include "./config/MuonScaRe.cc"')
-        ROOT.gInterpreter.Declare('#include "./config/functionsMuCorr.h"')
+        ROOT.gInterpreter.ProcessLine('#include "./src/MuonScaRe.cc"')
+        ROOT.gInterpreter.Declare('#include "./src/functionsMuCorr.h"')
 
     print('loadHiggsNNLOPS()')
     ROOT.gROOT.ProcessLine(
@@ -213,7 +213,7 @@ def loadCorrectionSet(year):
         f'auto csetZ2 = correction::CorrectionSet::from_file("./config/THeory/qt_norm_reweight_SB.json");'
     )
 
-    ROOT.gInterpreter.Declare('#include "./config/functionsObjCor.h"')
+    ROOT.gInterpreter.Declare('#include "./src/functionsObjCor.h"')
 
 def loadJSON(fIn):
 

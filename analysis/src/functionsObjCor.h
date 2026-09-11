@@ -101,7 +101,7 @@ Vec_f reshapeBTVdiscr(MyCorrections corrSFs, Vec_f Jet_btagRobustParTAK4B, Vec_f
 }
 */
 
-Vec_f computeEleSSCorrection(MyCorrections corrSFs, const Vec_f& ele_pt, const Vec_f& ele_eta, const Vec_f& ele_r9, const Vec_f& ele_gain, const float event, const float run, bool isData, string year){
+Vec_f computeEleSSCorrection(MyCorrections& corrSFs, const Vec_f& ele_pt, const Vec_f& ele_eta, const Vec_f& ele_r9, const Vec_f& ele_gain, const float event, const float run, bool isData, string year){
 
   std::vector<double> random_numbers(ele_pt.size(), 0.0);
 
@@ -123,7 +123,7 @@ Vec_f computeEleSSCorrection(MyCorrections corrSFs, const Vec_f& ele_pt, const V
 
 }
 
-Vec_f computeJECcorrection(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc){
+Vec_f computeJECcorrection(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc){
 
   Vec_f new_jet; new_jet.resize(jet_pt.size());
   Vec_f raw_jet; raw_jet.resize(jet_pt.size());
@@ -134,7 +134,7 @@ Vec_f computeJECcorrection(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec
   return new_jet;                                                                                                                                                                     
 }                                                                                                                                                                                   
 
-Vec_f computeJECuncertainties(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec_f& jet_eta){
+Vec_f computeJECuncertainties(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_eta){
   Vec_f new_jet_delta; new_jet_delta.resize(jet_pt.size());
   int type = 0;                                                                                                                                                                       
   for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) new_jet_delta[idx] = corrSFs.eval_jesUnc(jet_eta[idx], jet_pt[idx], type );                                                  

@@ -1,0 +1,206 @@
+# =====================================================================
+#  Output branches written to the snapshot, per analysis category.
+#
+#  Read by tools.datasets.branch_list(mode, is_mc), which returns
+#      base + per_mode[mode] + (per_mode_mc_only[mode] if MC)
+#
+#  Every name here must be a column defined in Hmm.py by the time
+#  Snapshot runs. A name that is not defined is reported at startup
+#  rather than failing mid-job.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+#  Written for every category, MC and data alike.
+# ---------------------------------------------------------------------
+base:
+  - mc
+  - w
+  - w_allSF
+  - lumiIntegrated
+  - PV_npvsGood
+  - run
+  - event
+  - luminosityBlock
+  - boson_ptWeight
+  - HiggsCandCorrMass
+  - HiggsCandCorrPt
+  - HiggsCandCorrRapidity
+  - HiggsCandMassErr
+  - cosThetaCS
+  - phiStarCS
+  - classify
+  - isZ
+  - isH
+  - isHSB
+  - isZandHSB
+  - Muon1_pt
+  - Muon2_pt
+  - Muon1_eta
+  - Muon2_eta
+  - PuppiMET_pt
+  - PuppiMET_phi
+
+# ---------------------------------------------------------------------
+#  Category-specific, MC and data alike.
+# ---------------------------------------------------------------------
+per_mode:
+
+  isVBF:
+    - jetVBF2_Pt
+    - jetVBF1_Pt
+    - jetVBF2_Eta
+    - jetVBF1_Eta
+    - jetVBF2_Phi
+    - jetVBF1_Phi
+    - minDR_jetVBF1_Mu
+    - minDR_jetVBF2_Mu
+    - Mjj
+    - dEtaJJ
+    - dPhiJJ
+    - ZepVar
+    - CenEta
+    - minDetaDiMuVBF
+    - minDphiDiMuVBF
+    - RPt
+    - CenPt
+    - jetVBF2_hfcentralEtaStripSize
+    - jetVBF1_hfcentralEtaStripSize
+    - jetVBF2_hfadjacentEtaStripsSize
+    - jetVBF1_hfadjacentEtaStripsSize
+
+  isGGH:
+    - nGoodJetsAll
+    - Jet1_Pt
+    - Jet1_Eta
+
+  isZinv:
+    - Muon1_phi
+    - Muon2_phi
+    - Muon1_sip3d
+    - Muon2_sip3d
+    - dPhiMETH
+    - RPt
+
+  isVlep:
+    - Muon1_promptMVA
+    - Muon2_promptMVA
+    - category
+    - Muon1_sip3d
+    - Muon2_sip3d
+    - Lepton_promptMVA
+    - Lepton2_promptMVA
+    - Lepton_Eta
+    - Lepton2_Eta
+    - Lepton_Pt
+    - Lepton2_Pt
+    - Lepton_charge
+    - Lepton2_charge
+    - dEtaVH
+    - dPhiVH
+    - VMass
+    - RPt
+
+  isVhad:
+    - goodWjj_mass
+    - goodWjj_discr
+    - goodWjj_pt
+    - goodWjj_eta
+    - goodWjj_phi
+    - dEtaWjjH
+    - dPhiWjjH
+    - RPt
+
+  isTTlep:
+    - Muon1_promptMVA
+    - Muon2_promptMVA
+    - Lepton_promptMVA
+    - Lepton2_promptMVA
+    - Lepton_Pt
+    - Lepton2_Pt
+    - Lepton_Eta
+    - Lepton2_Eta
+    - Lepton_charge
+    - Lepton2_charge
+    - dEtaLepH
+    - dPhiLepH
+    - dPhiMETH
+    - MetBisectorProj
+    - mbb
+    - category
+    - Jet1_Pt
+    - Jet1_Eta
+    - HT
+    - ST
+    - dEta_j1j2
+    - Centrality
+    - mt
+
+  isTThad:
+    - category
+    - Muon1_sip3d
+    - Muon2_sip3d
+    - Jet1_Pt
+    - Jet1_Eta
+    - JetAll_Eta
+    - HT
+    - WTopJetMass
+    - WTopJetDiscr
+    - nGoodJetsAll
+    - Centrality
+    - TopMassReco
+    - TopPairChi2
+    - dEta_j1j2
+    - MetBisectorProj
+    - dPhiMETH
+    - mindR_H_BJet
+    - nBMJets
+
+# ---------------------------------------------------------------------
+#  Category-specific, MC only (generator-level and matching info).
+# ---------------------------------------------------------------------
+per_mode_mc_only:
+
+  isVBF:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
+    - jetVBF1_partonFlavour
+    - jetVBF2_partonFlavour
+    - jetVBF1_LHE
+    - jetVBF2_LHE
+    - jetAll_LHE
+    - boson_genMassZ
+    - boson_genPtZ
+
+  isGGH:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
+    - boson_genMassZ
+    - boson_genPtZ
+
+  isZinv:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
+    - boson_genMassZ
+    - boson_genPtZ
+
+  isVlep:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
+    - Lepton_genPartFlav
+    - boson_genMassZ
+    - boson_genPtZ
+
+  isVhad:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
+    - boson_genMassZ
+    - boson_genPtZ
+
+  isTTlep:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
+    - Lepton_genPartFlav
+
+  isTThad:
+    - Muon1_genPartFlav
+    - Muon2_genPartFlav
