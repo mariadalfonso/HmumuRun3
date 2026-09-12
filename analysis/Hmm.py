@@ -112,19 +112,19 @@ def dfwithSYST(df,year):
     strWPID="M"
     strWPISO="T"
 
-    df = (df.Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon1_eta, Muon1_pt, "{1}")'.format(year,strWPID))
-          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon1_eta, Muon1_pt, "{1}")'.format(year,strWPID))
-          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon1_eta, Muon1_pt, "{1}")'.format(year,strWPID))
-          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon2_eta, Muon2_pt, "{1}")'.format(year,strWPID))
-          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_pt, "{1}")'.format(year,strWPID))
-          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_pt, "{1}")'.format(year,strWPID))
+    df = (df.Define("SFmuon1_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPID))
+          .Define("SFmuon1_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPID))
+          .Define("SFmuon1_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPID))
+          .Define("SFmuon2_ID_Nom",'corr_sf.eval_muonIDSF("{0}", "nominal", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
+          .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
+          .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
           #
-          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_pt, "{1}")'.format(year,strWPISO))
-          .Define("SFmuon1_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon1_eta, Muon1_pt, "{1}")'.format(year,strWPISO))
-          .Define("SFmuon1_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon1_eta, Muon1_pt, "{1}")'.format(year,strWPISO))
-          .Define("SFmuon2_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon2_eta, Muon2_pt, "{1}")'.format(year,strWPISO))
-          .Define("SFmuon2_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon2_eta, Muon2_pt, "{1}")'.format(year,strWPISO))
-          .Define("SFmuon2_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon2_eta, Muon2_pt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_rawptt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon1_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon1_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon2_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon2_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon2_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPISO))
         )
 
     if year=='12022' or year=='22022' or year=='12023' or year=='22023' or year=='2024':
@@ -523,8 +523,8 @@ def doCategories(df,mc,year):
              .Define("goodJetsAll","{}".format(JETStrk))
              .Define("nGoodJetsAll","Sum(goodJetsAll)*1.0f")
              .Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
-             .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
-             .Define("Jet1_Eta","Jet_eta[goodJetsAll][hardestGoodJet_idx]")
+             .Define("Jet1_Pt","hardestGoodJet_idx>=0 ? Jet_pt[goodJetsAll][hardestGoodJet_idx] : -999.f")
+             .Define("Jet1_Eta","hardestGoodJet_idx>=0 ? Jet_eta[goodJetsAll][hardestGoodJet_idx] : -999.f")
              .Define("JetAll_Eta","Jet_eta[goodJetsAll]")
              .Define("HT", "ROOT::VecOps::Sum(Jet_pt[goodJetsAll])")
              .Define("Centrality","(HT>0) ? HT / Sum(sqrt(Jet_pt[goodJetsAll]*Jet_pt[goodJetsAll]*cosh(Jet_eta[goodJetsAll])*cosh(Jet_eta[goodJetsAll]))) : -1")
@@ -576,9 +576,9 @@ def doCategories(df,mc,year):
              )
         if mode == "isGGH":
             df= (df.Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
-                 .Define("Jet1_Pt","Jet_pt[goodJetsAll][hardestGoodJet_idx]")
-                 .Define("Jet1_Eta","Jet_eta[goodJetsAll][hardestGoodJet_idx]")
-                 .Define("deltaRJet1H","deltaR(Jet_eta[goodJetsAll][hardestGoodJet_idx],Jet_phi[goodJetsAll][hardestGoodJet_idx],(Muon1Vec+Muon2Vec).Eta(),(Muon1Vec+Muon2Vec).Phi())")
+                 .Define("Jet1_Pt","hardestGoodJet_idx>=0 ? Jet_pt[goodJetsAll][hardestGoodJet_idx] : -999.f")
+                 .Define("Jet1_Eta","hardestGoodJet_idx>=0 ? Jet_eta[goodJetsAll][hardestGoodJet_idx] : -999.f")
+                 .Define("deltaRJet1H","hardestGoodJet_idx>=0 ? deltaR(Jet_eta[goodJetsAll][hardestGoodJet_idx],Jet_phi[goodJetsAll][hardestGoodJet_idx],(Muon1Vec+Muon2Vec).Eta(),(Muon1Vec+Muon2Vec).Phi()): -1.f")
                  .Define("goodJetsAllTrk","{}".format(JETStrk))
                  .Define("nGoodJetsTrk","Sum(goodJetsAllTrk)*1.0f")
                  )
@@ -661,8 +661,8 @@ def objScaleSmear(df, year, mc):
 
     if year in ["12022", "22022", "12023", "22023", "2024", "2025", "2026"]:
         # apply JEC AK4 and AK8
-        df = df.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
-        df = df.Redefine("FatJet_pt",'computeJECcorrection(corr_sf, FatJet_pt, FatJet_rawFactor, FatJet_eta, FatJet_phi, FatJet_area, rho, run, isData, "{0}","{1}" )'.format(year,mc))
+        df = df.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}",1)'.format(year,mc))
+        df = df.Redefine("FatJet_pt",'computeJECcorrection(corr_sf, FatJet_pt, FatJet_rawFactor, FatJet_eta, FatJet_phi, FatJet_area, rho, run, isData, "{0}","{1}",0)'.format(year,mc))
 
         # get the EGM scale
         df = df.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, event, run, isData, "{0}")'.format(year))
@@ -753,6 +753,9 @@ def analysis(files,year,mc,sumW):
     else:
         df = df.Define("Muon1_norm_pt", "HiggsCandCorrMass>0 ? Muon1_pt/HiggsCandCorrMass: 0.f")
         df = df.Define("Muon2_norm_pt", "HiggsCandCorrMass>0 ? Muon2_pt/HiggsCandCorrMass: 0.f")
+
+    if mode == "isVBF":
+        df = df.Define("log_Mjj", "log(1.+Mjj)")
 
     ## call MVA classification
 #    df = callMVAclassification(df)

@@ -123,13 +123,14 @@ Vec_f computeEleSSCorrection(MyCorrections corrSFs, const Vec_f& ele_pt, const V
 
 }
 
-Vec_f computeJECcorrection(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc){
+Vec_f computeJECcorrection(MyCorrections corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc, int doAk4){
 
   Vec_f new_jet; new_jet.resize(jet_pt.size());
   Vec_f raw_jet; raw_jet.resize(jet_pt.size());
   for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) {                                                                                                                            
     raw_jet[idx] = jet_pt[idx] * (1.0 - jet_rawFactor[idx]);                                                                                                                       
-    new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year, mc );                                      
+    if (doAk4) new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year, mc );
+    else new_jet[idx] = raw_jet[idx] * corrSFs.eval_fatJetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year, mc );
   }                                                                                                                                                                                   
   return new_jet;                                                                                                                                                                     
 }                                                                                                                                                                                   
