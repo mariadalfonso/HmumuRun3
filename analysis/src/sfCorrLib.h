@@ -118,10 +118,11 @@ MyCorrections::MyCorrections(int year) {
     if(year == 22023) corrNameLUM = "Collisions2023_369803_370790_eraD_GoldenJson";
     if(year == 2024) corrNameLUM = "Collisions24_BCDEFGHI_goldenJSON";
     if(year == 2025) corrNameLUM = "Collisions25_goldenJSON";
-  }
 
-  auto csetPU = correction::CorrectionSet::from_file(fileNameLUM);
-  puSF_ = csetPU->at(corrNameLUM);
+    auto csetPU = correction::CorrectionSet::from_file(fileNameLUM);
+    puSF_ = csetPU->at(corrNameLUM);
+
+  }
 
   std::string fileNameMU = dirName+"MUO/"+subDirName+"muon_Z.json.gz";
 
@@ -142,10 +143,11 @@ MyCorrections::MyCorrections(int year) {
 
     muonIDMSF_ = csetMu->at("NUM_MediumID_DEN_TrackerMuons");
     muonIDLSF_ = csetMu->at("NUM_LooseID_DEN_TrackerMuons");
-    muonTIsoM_ = csetMu->at("NUM_TightPFIso_DEN_MediumID"); //NUM_TightPFIso_DEN_MediumID
-    muonLIsoM_ = csetMu->at("NUM_LoosePFIso_DEN_MediumID"); //NUM_LoosePFIso_DEN_MediumID
-    muonLIsoL_ = csetMu->at("NUM_LoosePFIso_DEN_LooseID"); //NUM_LoosePFIso_DEN_MediumID
+    muonTIsoM_ = csetMu->at("NUM_TightPFIso_DEN_MediumID");
+    muonLIsoM_ = csetMu->at("NUM_LoosePFIso_DEN_MediumID");
+    muonLIsoL_ = csetMu->at("NUM_LoosePFIso_DEN_LooseID");
     muonTrgSF_ = csetMu->at("NUM_IsoMu24_DEN_CutBasedIdMedium_and_PFIsoMedium");
+    //https://muon-wiki.docs.cern.ch/guidelines/recommendations/#particle-flow-isolation 0.25 is loose Iso and 0.15 is Tight Iso
   }
 
   //////////////
@@ -397,10 +399,13 @@ double MyCorrections::eval_muonISOSF(std::string year, std::string valType, doub
   pt = std::max(pt,15.001);
 
   if (workingPoint=="T") {
-    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024") return muonTIsoM_->evaluate({ eta, pt, valType});
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025") return muonTIsoM_->evaluate({ eta, pt, valType});
     return muonISOTSF_->evaluate({year, eta, pt, valType});
+  } else if (workingPoint=="M") {
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025") return muonLIsoM_->evaluate({eta, pt, valType});
+    return muonISOLSF_->evaluate({year, eta, pt, valType});
   } else if (workingPoint=="L") {
-    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024") return muonLIsoL_->evaluate({eta, pt, valType});
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025") return muonLIsoL_->evaluate({eta, pt, valType});
     return muonISOLSF_->evaluate({year, eta, pt, valType});
   }
   return 1.;

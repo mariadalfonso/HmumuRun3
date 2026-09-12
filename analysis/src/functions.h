@@ -259,6 +259,12 @@ float minDRmusJ(const TLorentzVector& VBFCand, const TLorentzVector& mu1, const 
   return std::min(sqrt(dr1),sqrt(dr2));
 }
 
+// B-tagging strength
+float getB_TaggingStrength(float bjet_discr1, float bjet_discr2) {
+    // Combined b-jet discriminator strength
+    return std::max(bjet_discr1, bjet_discr2);
+}
+
 // $$$$$$$$$$
 // here the angles i.e. Collin Sopper will move these to another file
 
