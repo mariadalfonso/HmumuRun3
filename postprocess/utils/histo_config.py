@@ -188,31 +188,33 @@ def get_active_vars(category):
         "dimuon_pt", "dimuon_eta", "dimuon_rapidity",
         "muon1_norm_pt", "muon2_norm_pt", "costhetacs", "phistarcs",
     ]
-    if category in ("VLcat", "TTLcat", "TTHcat"):
+    if category in ("Zinvcat", "VLcat", "TTHcat"):
         names += ["muon1_sip3d", "muon2_sip3d"]
     if category in ("ggHcat", "TTHcat"):
-        # nGoodJetsAll is only written to the snapshot for isGGH/isTThad
-        # (see Hmm.py's mode_branches).
         names.append("njets")
     names.append("deta_muons")
+
+    # jets and MET.
+    names.append("met_pt")
+    if category in ("ggHcat", "TTHcat", "TTLcat"):
+        names += ["jet1_pt", "jet1_eta"]
 
     return names
 
 
-# Output-directory grouping for SummaryPlots.py. A variable not listed here
-# falls into "muons".
+# Output-directory grouping for SummaryPlots.py.
+#
+# A variable not listed here falls into "objects".
 VAR_GROUPS = {
     "dimu_mass":       "mass",
     "mva":             "mva",
-    "category_vlcat":  "category",
-    "category_ttlcat": "category",
-    "category_tthcat": "category",
+    "category_vlcat":  "mva",
+    "category_ttlcat": "mva",
+    "category_tthcat": "mva",
 }
-DEFAULT_VAR_GROUP = "muons"
+DEFAULT_VAR_GROUP = "objects"
 
-# The "mass" group deliberately skips the region split: the SR-sideband window
-# is just a truncated/gapped view of the same dimu_mass spectrum, so a second
-# copy adds nothing the way it does for other variables.
+# The "mass" group skips the region split
 GROUPS_WITHOUT_REGION_SPLIT = ["mass"]
 
 
@@ -226,7 +228,7 @@ def vars_in_group(category, group):
 
 def groups_for(category):
     """Groups present for this category, in a stable display order."""
-    order = ["mass", "mva", "category", "muons"]
+    order = ["mass", "mva", "objects"]
     present = {group_of(v) for v in get_active_vars(category)}
     return [g for g in order if g in present]
 
