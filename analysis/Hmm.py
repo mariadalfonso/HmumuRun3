@@ -126,7 +126,7 @@ def dfwithSYST(df,year):
           .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
           .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
           #
-          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_rawptt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
           .Define("SFmuon1_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
           .Define("SFmuon1_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
           .Define("SFmuon2_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPISO))
