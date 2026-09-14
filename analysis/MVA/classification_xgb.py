@@ -143,14 +143,13 @@ dir_map = {
 }
 
 variables_map = {
-    "VBFcat": ["HiggsCandCorrPt", "RPt", "Mjj", "dEtaJJ", "ZepVar", "minDetaDiMuVBF", "dPhiJJ", "Muon1_norm_pt", "Muon2_norm_pt","jetVBF2_Pt","jetVBF1_Pt","jetVBF1_Eta", "jetVBF2_Eta","CenEta","CenPt"],#,"ptAsy","log_Mjj"],#"minDphiDiMuVBF"],
-    "ggHcat": ["HiggsCandCorrPt", "Muon1_norm_pt", "Muon2_norm_pt", "nGoodJetsAll","Jet1_Pt","Jet1_Eta","deltaRJet1H"],
-    "Zinvcat": ["HiggsCandCorrPt", "Muon1_norm_pt","Muon2_norm_pt","PuppiMET_pt","dPhiMETH","RPt"],
-    "VLcat": ["HiggsCandCorrPt", "category","Muon1_norm_pt","Muon2_norm_pt","Lepton_Pt","Lepton2_Pt","RPt","PuppiMET_pt","dPhiVH","dEtaVH","VMass"],  ##,"dPhiWH","dEtaWH","dPhiZH","dEtaZH","ZMassPull","WMassPull"]
-    #    ,"dPhiWH","dEtaWH","dPhiZH","dEtaZH","ZMassPull","WMassPull"
+    "VBFcat": ["HiggsCandCorrPt", "RPt", "dEtaJJ", "ZepVar", "minDetaDiMuVBF", "dPhiJJ", "Muon1_norm_pt", "Muon2_norm_pt","jetVBF2_Pt","jetVBF1_Pt","jetVBF1_Eta", "jetVBF2_Eta","CenEta","CenPt","ptAsyJet","log_Mjj","minDphiDiMuVBF"],
+    "ggHcat": ["HiggsCandCorrPt", "Muon1_norm_pt", "Muon2_norm_pt", "nGoodJetsAll","Jet1_Pt","Jet1_Eta","deltaRJet1H","ptAsyMu","log_MET"],
+    "Zinvcat": ["HiggsCandCorrPt", "Muon1_norm_pt","Muon2_norm_pt","PuppiMET_pt","dPhiMETH","RPt"], #, "DeepMETResolutionTune_pt"],
+    "VLcat": ["HiggsCandCorrPt", "category","Muon1_norm_pt","Muon2_norm_pt","Lepton_Pt","Lepton2_Pt","RPt","PuppiMET_pt","dPhiVH","dEtaVH","VMass"],#    ,"dPhiWH","dEtaWH","dPhiZH","dEtaZH","ZMassPull","WMassPull"
     "TTLcat": ["HiggsCandCorrPt", "category","Muon1_norm_pt","Muon2_norm_pt"]+["Lepton_Pt","Lepton2_Pt","PuppiMET_pt","dEtaLepH","mt","dPhiMETH","MetBisectorProj"] + ["HT","dEta_j1j2","mbb","Centrality"] + ["Jet1_Pt","Lepton_Eta","Lepton2_Eta"],
     "VHcat": ["HiggsCandCorrPt", "goodWjj_discr", "goodWjj_mass", "dEtaWjjH","dPhiWjjH","Muon1_norm_pt","Muon2_norm_pt","RPt"],
-    "TTHcat": ["HiggsCandCorrPt", "HT", "nGoodJetsAll","category","Centrality","Jet1_Eta"] + ["PuppiMET_pt", "MetBisectorProj","dPhiMETH"] + [ "WTopJetDiscr","TopMassReco","TopPairChi2","dEta_j1j2","mindR_H_BJet"],
+    "TTHcat": ["HiggsCandCorrPt", "HT", "nGoodJetsAll","category","Centrality","Jet1_Eta"] + ["PuppiMET_pt", "MetBisectorProj", "dPhiMETH"] + [ "WTopJetDiscr","TopMassReco","TopPairChi2","dEta_j1j2","mindR_H_BJet"], #, "DeepMETResolutionTune_pt"
 }
 
 # here the variable that can help with the resolution
@@ -314,12 +313,14 @@ def load_process_class(class_id, variables, drawPlot=False):
         df = df.Define("Muon1_norm_pt", "HiggsCandCorrMass>0 ? Muon1_pt/HiggsCandCorrMass: 0.f")
         df = df.Define("Muon2_norm_pt", "HiggsCandCorrMass>0 ? Muon2_pt/HiggsCandCorrMass: 0.f")
 
-#    df = df.Define("log_Mjj", "log(1.+Mjj)")
-    df = df.Define("ptAsy", "(Muon1_pt-Muon2_pt)/(Muon1_pt+Muon2_pt)")
-#    df = df.Define("log_HT", "log(1.+HT)")
-#    df = df.Define("log_MET", "log(1.+PuppiMET_pt)")
-#    df = df.Define("log_HiggsPt", "log(1.+HiggsCandCorrPt)")
-
+    if category == "VBFcat":
+        df = df.Define("log_Mjj", "log(1.+Mjj)")
+        df = df.Define("ptAsyJet", "(jetVBF1_Pt-jetVBF2_Pt)/(jetVBF1_Pt+jetVBF2_Pt)")
+    if category == "ggHcat":
+        df = df.Define("ptAsyMu", "(Muon1_pt-Muon2_pt)/(Muon1_pt+Muon2_pt)")
+#        df = df.Define("log_HT", "log(1.+HT)")
+        df = df.Define("log_MET", "log(1.+PuppiMET_pt)")
+#        df = df.Define("log_HiggsPt", "log(1.+HiggsCandCorrPt)")
 
     conditionSig="true"
     if category == "VLcat" or category == "TTLcat":
@@ -1027,6 +1028,22 @@ def train_one_fold(data, train_mask, variables, verbose ): #, labelForPNG):
         y_true_binary = (test_labels == 1).astype(int)
 
     diagnostic(bdt,proba,y_true_binary,variables)
+
+    if doMultiClass:
+        # Multi-class AUC (one-vs-rest)
+        auc_ovr = roc_auc_score(test_labels, proba, multi_class='ovr', labels=list(range(len(labels_map[category]))))
+        print(f"✅ Multiclass AUC (OvR, what XGBoost trained on): {auc_ovr:.4f}")
+
+        # Also try one-vs-one
+        auc_ovo = roc_auc_score(test_labels, proba, multi_class='ovo', labels=list(range(len(labels_map[category]))))
+        print(f"   Multiclass AUC (OvO): {auc_ovo:.4f}")
+
+        #XGBoost multiclass is NOT training on "signal vs background" (which gives 0.8031)
+        #It's training on: Each class vs all others, averaged together.
+
+        #This is why:
+        #0.8912 = how well class 0 vs others, class 1 vs others, ... are separated on average
+        #0.8031 = how well your custom binary grouping (0+1 vs 2+3) is separated
 
     # -------------------------------------------------
     # FINAL SCORE
