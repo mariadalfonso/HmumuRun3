@@ -71,15 +71,15 @@ mode_map = {
 }
 
 MVA_map = {
-    "isGGH":   "MVA/output/classification_model_ggHcat_july10.root",
-    "isVBF":   "MVA/output/classification_model_VBFcat_july11.root",
+    "isGGH":   "MVA/output/classification_model_ggHcat_sept.root",
+    "isVBF":   "MVA/output/classification_model_VBFcat_sept.root",
     #
-    "isVlep":  "MVA/output/classification_model_VLcat_july11.root",
-    "isTTlep":  "MVA/output/classification_model_TTLcat_july11.root",
+    "isVlep":  "MVA/output/classification_model_VLcat_sept.root",
+    "isTTlep":  "MVA/output/classification_model_TTLcat_sept.root",
     #
-    "isVhad":  "MVA/output/classification_model_VHcat_july5.root",
-    "isZinv":  "MVA/output/classification_model_Zinvcat_july5.root",
-    "isTThad":  "MVA/output/classification_model_TTHcat_july5.root",
+    "isVhad":  "MVA/output/classification_model_VHcat_sept.root",
+    "isZinv":  "MVA/output/classification_model_Zinvcat_sept.root",
+    "isTThad":  "MVA/output/classification_model_TTHcat_sept.root",
 }
 
 def callMVAclassification(df):
@@ -88,7 +88,7 @@ def callMVAclassification(df):
     fileName = MVA_map[mode]
     tmva_helper = helper_tmva.TMVAHelperXGB(fileName, modelname)
     print(tmva_helper.variables)
-    dfWithMVA = tmva_helper.run_inference(df,"discrMVA0")
+    dfWithMVA = tmva_helper.run_inference(df,"discrMVA")
 
     return dfWithMVA
 
@@ -119,7 +119,7 @@ def dfwithSYST(df,year):
           .Define("SFmuon2_ID_Up",'corr_sf.eval_muonIDSF("{0}", "systup", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
           .Define("SFmuon2_ID_Dn",'corr_sf.eval_muonIDSF("{0}", "systdown", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPID))
           #
-          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_rawptt, "{1}")'.format(year,strWPISO))
+          .Define("SFmuon1_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
           .Define("SFmuon1_ISO_Up",'corr_sf.eval_muonISOSF("{0}", "systup", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
           .Define("SFmuon1_ISO_Dn",'corr_sf.eval_muonISOSF("{0}", "systdown", Muon1_eta, Muon1_rawpt, "{1}")'.format(year,strWPISO))
           .Define("SFmuon2_ISO_Nom",'corr_sf.eval_muonISOSF("{0}", "nominal", Muon2_eta, Muon2_rawpt, "{1}")'.format(year,strWPISO))
@@ -756,9 +756,14 @@ def analysis(files,year,mc,sumW):
 
     if mode == "isVBF":
         df = df.Define("log_Mjj", "log(1.+Mjj)")
+        df = df.Define("ptAsyJet", "(jetVBF1_Pt-jetVBF2_Pt)/(jetVBF1_Pt+jetVBF2_Pt)")
+
+    if mode == "isGGH":
+        df = df.Define("log_MET", "log(1.+PuppiMET_pt)")
+        df = df.Define("ptAsyMu", "(Muon1_pt-Muon2_pt)/(Muon1_pt+Muon2_pt)")
 
     ## call MVA classification
-#    df = callMVAclassification(df)
+    df = callMVAclassification(df)
 
     ## FSR and muonBeamSpot also for Z ?
     ## check the FSR for electrons
