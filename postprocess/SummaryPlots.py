@@ -9,8 +9,9 @@ Run makeHistos.py first:
 
 Output layout:
     <outdir>/<category>_<year>/<group>/<region>/<var>_<cat>_<year>_Stack.png
-except the "mass" group, which skips the region split (the SR-sideband window
-is just a gapped view of the same spectrum).
+
+Which regions each group is drawn in comes from histo_config.PLOT_REGIONS; a
+group with only one region ("mass") writes straight into the group directory.
 """
 
 import ROOT
@@ -43,9 +44,9 @@ def parse_args():
                    help="output directory for PNGs (default: %(default)s)")
     p.add_argument("--groups", nargs="+", default=None,
                    help="which variable groups to draw (default: all present)")
-    p.add_argument("--no-SR-sideband", dest="sr_sideband",
-                   action="store_false", default=True,
-                   help="only produce the Inclusive region")
+    p.add_argument("--regions", nargs="+", default=None,
+                   help="only draw these regions (default: per group, see "
+                        "histo_config.PLOT_REGIONS)")
     p.add_argument("--linear", action="store_true",
                    help="linear y-axis (default: log)")
     return p.parse_args()
@@ -57,17 +58,9 @@ def parse_args():
 class HistoFile:
     """Thin reader over makeHistos.py's output.
 
-    Histograms are Clone()d on read so the caller never depends on the TFile
-    staying open -- otherwise ROOT deletes them out from under the drawing
-    code, which is the classic gotcha when moving from RDataFrame results to
-    file-resident histograms.
-
-    Every get() returns a FRESH clone, deliberately uncached. Callers mutate
-    what they receive (SetLineColor, SetFillStyle, SetBinLabel, Scale), so a
-    cached object handed to a second caller would arrive already styled as
-    something else -- e.g. a signal histogram read once for the Inclusive
-    region and again as the Unrestricted source for SR_sideband. Reads are
-    cheap; the aliasing bug would not be.
+    Every get() returns a fresh detached clone: callers mutate what they
+    receive (SetLineColor, SetFillStyle, Scale), and a histogram still owned
+    by the TFile is deleted when the file closes.
     """
 
     def __init__(self, path):
@@ -86,8 +79,7 @@ class HistoFile:
         h = self.f.Get(cfg.histo_path(region, varname, process))
         if not h:
             return None
-        # Unique name per clone: ROOT keys objects by name, and two live
-        # histograms sharing one would collide.
+        # unique name per clone: ROOT keys objects by name
         self._n += 1
         clone = h.Clone(f"{region}_{varname}_{process}_c{self._n}")
         clone.SetDirectory(0)
@@ -101,10 +93,8 @@ class HistoFile:
 def load_processes(hfile, region, varname):
     """Assemble {process: TH1} for one region+variable.
 
-    Signals come from SIGNAL_REGION_FOR[region] -- the full, unrestricted
-    prediction -- because a narrow resonance concentrates in [120,130], the
-    exact core the SR-sideband window excludes. Backgrounds and data come from
-    the region itself.
+    Backgrounds and data come from the region itself; signals from
+    SIGNAL_REGION_FOR[region], or not at all if that is None.
     """
     hists = {}
     for proc in cfg.BKG_PROCS + [cfg.DATA_PROCESS]:
@@ -113,10 +103,11 @@ def load_processes(hfile, region, varname):
             hists[proc] = h
 
     sig_region = cfg.SIGNAL_REGION_FOR[region]
-    for proc in cfg.SIG_PROCS:
-        h = hfile.get(sig_region, varname, proc)
-        if h is not None:
-            hists[proc] = h
+    if sig_region is not None:
+        for proc in cfg.SIG_PROCS:
+            h = hfile.get(sig_region, varname, proc)
+            if h is not None:
+                hists[proc] = h
 
     return hists
 
@@ -190,8 +181,7 @@ def plot(hfile, category, year, varname, region_name, outdir, doLog=True):
 
     c, pad1, pad2 = plot_style.make_canvas_pads(doLog)
 
-    # Backgrounds stacked + filled; signal drawn unstacked as solid outlines
-    # at true scale, not summed into the background.
+    # backgrounds stacked and filled; signal unstacked outlines at true scale
     BKGstack = ROOT.THStack()
     SIGstack = ROOT.THStack()
 
@@ -211,7 +201,7 @@ def plot(hfile, category, year, varname, region_name, outdir, doLog=True):
         print(f"   Integral {proc} = {h.Integral()}")
         _style_mc(h, proc)
         _apply_bin_labels(h, varname)
-        h.SetFillStyle(0)               # outline only, not filled/stacked
+        h.SetFillStyle(0)               # outline only
         SIGstack.Add(h)
 
     if BKGstack.GetNhists() == 0:
@@ -227,12 +217,9 @@ def plot(hfile, category, year, varname, region_name, outdir, doLog=True):
         BKGstack.SetMinimum(hDY.GetMaximum() / floor)
 
     # --- upper pad ---
-    # Draw order matters and matches the original exactly: data first, then
-    # the stack WITHOUT "SAME". The stack then draws its own axes and owns the
-    # visible frame, which is what makes the GetYaxis()/SetMaximum/SetMinimum
-    # calls below take effect. Drawing the stack with "SAME" leaves the frame
-    # belonging to hData, and the stack's y-axis title and range are silently
-    # ignored.
+    # Draw order matters: data first, then the stack WITHOUT "SAME", so the
+    # stack owns the visible frame and the GetYaxis()/SetMaximum/SetMinimum
+    # calls below take effect.
     pad1.cd()
     if hData is not None:
         _style_data(hData)
@@ -300,13 +287,9 @@ def plot(hfile, category, year, varname, region_name, outdir, doLog=True):
     # --- CMS label + region / blinding annotation ---
     _cmslabel = plot_style.cms_label(pad1, year)
 
-    # Matches the original branching:
-    #   region-restricted  -> mass-range label, unconditionally for EVERY
-    #                         variable (mva included), since the restriction
-    #                         itself is what makes unblinded data safe
-    #   Inclusive + blind window -> vertical lines marking it
-    #   Inclusive, no blind window, not mva -> mass-range label
-    #     (mva is excluded because it uses its own score-based cut instead)
+    # region-restricted -> mass-range label; unrestricted with a blind window
+    # -> vertical lines marking it; otherwise the label, except mva, which is
+    # cut on its own score instead.
     _keepalive = []
     blind_range = plot_vars.get_blind_range(varname)
     if region["filter"] is not None:
@@ -350,7 +333,8 @@ def main():
     doLog = not args.linear
 
     print(f"[plots] category={category} year={args.year} groups={groups}")
-    print(f"[plots] SR-sideband: {'ON' if args.sr_sideband else 'OFF'}")
+    if args.regions:
+        print(f"[plots] regions restricted to: {args.regions}")
     print(f"[plots] base output dir: {baseOutDir}")
 
     for group in groups:
@@ -359,13 +343,19 @@ def main():
             print(f"[plots] group '{group}': nothing to draw for {category}")
             continue
 
-        if group in cfg.GROUPS_WITHOUT_REGION_SPLIT:
-            regions = ["Inclusive"]
-        else:
-            regions = ["Inclusive"] + (["SR_sideband"] if args.sr_sideband else [])
+        group_regions = cfg.plot_regions_for(group)
+        regions = group_regions
+        if args.regions:
+            regions = [r for r in group_regions if r in args.regions]
+            if not regions:
+                print(f"[plots] group '{group}': no requested region applies")
+                continue
+
+        # single-region group writes straight into the group directory
+        flat = len(group_regions) == 1
 
         for region_name in regions:
-            if group in cfg.GROUPS_WITHOUT_REGION_SPLIT:
+            if flat:
                 outdir = os.path.join(baseOutDir, f"{category}{year}", group) + "/"
             else:
                 outdir = os.path.join(baseOutDir, f"{category}{year}",

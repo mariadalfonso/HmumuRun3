@@ -103,13 +103,18 @@ def make_base_node(chain, year):
 # ===========================================================================
 #  Per-variable booking
 # ===========================================================================
-def book_variable(node, category, varname, binning, blind=True):
+def book_variable(node, category, varname, binning, blind=True,
+                  book_data=True):
     """Book one histogram per process for `varname` on `node`.
 
     Returns {process_name: RResultPtr[TH1D]}, or None if the variable's
     expression cannot be built (typically a branch absent from this
     category's snapshot -- e.g. discrMVA0 when the MVA classifier was not
     run, or nGoodJetsAll outside isGGH/isTThad).
+
+    book_data=False omits the data histogram entirely. Used for the signal
+    region: blinding a mass window is not enough there, because the window
+    only applies to dimu_mass, so every other variable would still show data.
 
     Does NOT trigger the event loop.
     """
@@ -140,6 +145,9 @@ def book_variable(node, category, varname, binning, blind=True):
                       .Filter(f"procGroup=={idx}")
                       .Histo1D((f"{varname}_{proc}", "", nbin, low, high),
                                col, "weight"))
+
+    if not book_data:
+        return ptrs
 
     # --- data, with optional blinding ---
     # Blinding only ever affects data; MC is never blinded. Three cases,

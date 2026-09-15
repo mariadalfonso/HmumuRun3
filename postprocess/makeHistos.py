@@ -93,8 +93,7 @@ def main():
     base = prepareHisto.make_base_node(chain, year)
 
     # ---- BOOK: region -> variable -> process --------------------------
-    # Mirrors FastFrames' nesting (region outside variable, variable outside
-    # process). NOTHING here is dereferenced.
+    # Nothing here is dereferenced -- that would trigger an event loop.
     regions = args.regions or list(cfg.REGIONS)
     active_vars = args.vars or cfg.get_active_vars(category)
 
@@ -108,9 +107,11 @@ def main():
         if region["filter"] is not None:
             node = node.Filter(region["filter"], f"region:{region_name}")
 
-        # Blinding applies only where the region doesn't already exclude the
-        # signal core (see histo_config.REGIONS).
         blind = args.blind and region["blindable"]
+        if not region["data"]:
+            print(f"[makeHistos] region '{region_name}': MC only, no data booked")
+        if not region["signal"]:
+            print(f"[makeHistos] region '{region_name}': no signal booked")
 
         for varname in active_vars:
             binning = plot_vars.get_binning(varname)
@@ -119,7 +120,8 @@ def main():
                 continue
 
             ptrs = prepareHisto.book_variable(
-                node, category, varname, binning, blind=blind
+                node, category, varname, binning, blind=blind,
+                book_data=region["data"], book_signal=region["signal"]
             )
             if ptrs is None:
                 skipped.append((region_name, varname, "branch not available"))
@@ -133,7 +135,7 @@ def main():
 
     print(f"[makeHistos] booked {len(booked)} histograms "
           f"({len(regions)} regions x {len(active_vars)} vars "
-          f"x {len(cfg.ALL_PROCESSES)} processes)")
+          f"x up to {len(cfg.ALL_PROCESSES)} processes)")
     for region_name, varname, why in skipped:
         print(f"   -> skipped {region_name}/{varname}: {why}")
 
@@ -144,14 +146,10 @@ def main():
     print(f"[makeHistos] event loop done in {t1 - t0}")
 
     # ---- finalize + write ---------------------------------------------
-    # Overflow folding and negative-bin removal happen HERE, after the loop.
-    # In the old code these lived inside getHisto() and were part of what
-    # forced a separate loop per plot.
     os.makedirs(outdir, exist_ok=True)
     outpath = outdir + cfg.histo_filename(category, year)
     fout = ROOT.TFile(outpath, "RECREATE")
 
-    # Provenance, so a plot can always be traced back to how it was made.
     meta = ROOT.TNamed(
         "provenance",
         f"category={category} year={year} blind={args.blind} "

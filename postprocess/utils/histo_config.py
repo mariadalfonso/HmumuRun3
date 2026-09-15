@@ -33,10 +33,8 @@ LEP_CATEGORIES = ["VLcat", "TTLcat", "TTHcat", "VHcat", "Zinvcat"]
 # ===========================================================================
 #  Processes
 # ===========================================================================
-# Each MC process is a list of mc IDs. Data is handled separately (mc<0), since
-# it is the only process with blinding logic attached.
-#
-# NOTE the grouping is exactly the one prepareHisto.getHisto() used before:
+# mc IDs per process. Data (mc<0) is separate: it is the only process with
+# blinding logic attached.
 #   hDY  = all DY QCD flavours/binnings
 #   hTop = single-top + tt+V + 4-top (everything top-like except tt->2l)
 #   hZg  = H->Zgamma and H->WW
@@ -89,13 +87,10 @@ LEGEND_SIG_HAD_ORDER = ["hVBFH", "hggH"]
 # ---------------------------------------------------------------------------
 # mc -> process-group index
 # ---------------------------------------------------------------------------
-# Booking one histogram per process used to mean one jitted filter per process,
-# each a long "mc==x || mc==y || ..." chain (make_filter). Instead we Define a
-# single integer column once and every histogram filters on "procGroup==k".
-# Far less for Cling to compile, and one integer compare per event.
-#
-# Index 0 is reserved for "unassigned MC" so an ID that is in the chain but in
-# no group is silently excluded rather than silently landing in a real process.
+# Integer process index, defined once on the base node so each histogram
+# filters on "procGroup==k" instead of a jitted "mc==x || mc==y ..." chain.
+# Index 0 is unassigned MC: an ID in the chain but in no group is excluded
+# rather than landing in a real process.
 PROC_INDEX = {name: i for i, name in enumerate(MC_PROCESSES, start=1)}
 DATA_INDEX = -1
 
@@ -115,49 +110,66 @@ def proc_group_expr():
 # ===========================================================================
 #  Regions
 # ===========================================================================
-# SR-sideband mass restriction: m_mumu in [110,120] or [130,150] GeV,
-# deliberately excluding the innermost [120,130] core. Independent of
-# plot_vars.get_blind_range("dimu_mass") == (110,150), which is the FULL blind
-# window used for the Inclusive region's mass-window blinding logic; this is a
-# narrower, two-piece window.
-SR_SIDEBAND_FILTER = ("((HiggsCandCorrMass>=110 && HiggsCandCorrMass<=120) || "
-                      "(HiggsCandCorrMass>=130 && HiggsCandCorrMass<=150))")
-
-# "filter"      : extra mass restriction, or None to use the full snapshot window
-# "blindable"   : whether the --blind flag applies here. False means data is
-#                 shown unblinded because the region restriction is ITSELF the
-#                 safety mechanism (it already excludes the signal core).
-# "label"       : on-plot mass-range line
+# Region windows are boolean columns defined in Hmm.py, written to every
+# snapshot, so "filter" is just a branch name:
 #
-# "Unrestricted" exists so SR_sideband plots can show the FULL predicted signal:
-# a narrow resonance concentrates almost entirely in [120,130], the exact core
-# SR_sideband excludes, so a region-restricted signal would be a misleading
-# sliver. It used to be a second getHisto() call per variable (doubling the
-# event loops); now it is just another branch of the same computation graph.
+#   isZ    (76, 106)     isH    (115, 135)
+#   isHSB  [110,115] U [135,150]   (disjoint from isH)
+#
+# "filter"    : region branch name, or None for the full snapshot window
+# "blindable" : whether --blind applies
+# "data"      : book a data histogram at all
+# "signal"    : book/draw the signal processes
+# "label"     : on-plot mass-range line
+#
+# "Unrestricted" supplies the full signal prediction for SR_sideband plots,
+# where the resonance sits in the window isHSB excludes.
 REGIONS = {
     "Inclusive": {
         "filter": None,
         "blindable": True,
+        "data": True,
+        "signal": True,
         "label": "m_{#mu#mu}#in[70,200]GeV",
     },
     "SR_sideband": {
-        "filter": SR_SIDEBAND_FILTER,
+        "filter": "isHSB",
         "blindable": False,
-        "label": "m_{#mu#mu}#in[110,120]#cup[130,150]GeV",
+        "data": True,
+        "signal": True,
+        "label": "m_{#mu#mu}#in[110,115]#cup[135,150]GeV",
+    },
+    "Zboson_CR": {
+        "filter": "isZ",
+        "blindable": False,
+        "data": True,
+        "signal": False,
+        "label": "m_{#mu#mu}#in[76,106]GeV",
+    },
+    "SR_plus_sideband": {
+        # full fit range (isH and isHSB are disjoint); contains the SR
+        "filter": "isH || isHSB",
+        "blindable": False,
+        "data": False,
+        "signal": True,
+        "label": "m_{#mu#mu}#in[110,150]GeV",
     },
     "Unrestricted": {
         "filter": None,
         "blindable": False,
+        "data": True,
+        "signal": True,
         "label": "m_{#mu#mu}#in[70,200]GeV",
     },
 }
 
-# Which region supplies the SIGNAL curves when drawing a given region (see the
-# "Unrestricted" note above).
+# Where a region's signal curves come from. None = no signal drawn.
 SIGNAL_REGION_FOR = {
-    "Inclusive":    "Inclusive",
-    "SR_sideband":  "Unrestricted",
-    "Unrestricted": "Unrestricted",
+    "Inclusive":         "Inclusive",
+    "SR_sideband":       "Unrestricted",
+    "Zboson_CR":         None,
+    "SR_plus_sideband":  "SR_plus_sideband",
+    "Unrestricted":      "Unrestricted",
 }
 
 
@@ -202,9 +214,9 @@ def get_active_vars(category):
     return names
 
 
-# Output-directory grouping for SummaryPlots.py.
-#
-# A variable not listed here falls into "objects".
+# Plot groups, by how data is treated: "mass" has the blind window cut out,
+# "mva" is blinded above the per-category score cut, "objects" is not blinded.
+# Anything unlisted falls into "objects".
 VAR_GROUPS = {
     "dimu_mass":       "mass",
     "mva":             "mva",
@@ -214,8 +226,19 @@ VAR_GROUPS = {
 }
 DEFAULT_VAR_GROUP = "objects"
 
-# The "mass" group skips the region split
-GROUPS_WITHOUT_REGION_SPLIT = ["mass"]
+# Which regions each group is DRAWN in; everything in REGIONS is always booked.
+# Output tree is <cat>_<year>/<group>/<region>/, or <cat>_<year>/<group>/ for a
+# single-region group.
+PLOT_REGIONS = {
+    "mass":    ["Inclusive"],
+    "mva":     ["Inclusive", "SR_sideband"],
+    "objects": ["Inclusive", "SR_sideband", "Zboson_CR"],
+}
+DEFAULT_PLOT_REGIONS = ["Inclusive"]
+
+
+def plot_regions_for(group):
+    return PLOT_REGIONS.get(group, DEFAULT_PLOT_REGIONS)
 
 
 def group_of(varname):
@@ -236,11 +259,8 @@ def groups_for(category):
 # ===========================================================================
 #  Histogram file naming / layout
 # ===========================================================================
-# Layout inside the file (one directory per region):
+# Layout inside the file, one directory per region:
 #     <region>/<varname>_<process>
-# Modelled on FastFrames' <syst>/<var>_<region> convention. A <syst> level can
-# be inserted above <region> later without touching the readers, provided they
-# go through histo_path().
 def histo_filename(category, year):
     """year is the internal '_<year>' convention (leading underscore)."""
     return f"histos_{category}{year}.root"

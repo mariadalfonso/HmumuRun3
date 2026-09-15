@@ -1,11 +1,6 @@
 """
-SummaryPlotsShapes.py -- shape-comparison plots, restricted to the SR sideband
-(m_mumu in [110,120] or [130,150] GeV).
-
-Companion to SummaryPlots.py (which shows absolute stacked yields). This script
-answers a different question -- "what does the SHAPE of each dominant process
-look like, overlaid" -- by normalizing each selected histogram to unit integral
-and drawing them as unfilled lines (no stack, no ratio panel).
+SummaryPlotsShapes.py -- shape-comparison plots in the mass regions listed in
+SHAPE_REGIONS (see histo_config.REGIONS).
 
 Reads the histograms produced by makeHistos.py; does NO event processing. Run
 makeHistos.py first:
@@ -14,17 +9,11 @@ makeHistos.py first:
     python SummaryPlotsShapes.py ggHcat 2024
     python SummaryPlotsShapes.py VBFcat 2024 --n-bkg 3 --n-sig 1
 
-Backgrounds and data come from the SR_sideband region; SIGNAL comes from the
-Unrestricted region, because a narrow resonance concentrates almost entirely in
-[120,130] -- the exact core SR_sideband excludes -- so a region-restricted
-signal shape would be a misleading sliver. Data is always shown unblinded here:
-the SR-sideband restriction is itself the safety mechanism.
-
-There are 6 backgrounds and 5 signals plus data; overlaying all 12 is
-unreadable, so only the top --n-bkg backgrounds and top --n-sig signals BY
-INTEGRAL for that specific variable/category are drawn (default 2 + 2), rather
-than assuming DY always dominates -- dominance shifts between categories and
-variables.
+Backgrounds and data come from the region itself; signal from
+histo_config.SIGNAL_REGION_FOR, which for SR_sideband is the unrestricted
+prediction, because a narrow resonance concentrates almost entirely in the
+isH window that isHSB excludes. SR_plus_sideband contains the signal region
+and so has no data -- it is background MC and signal only.
 """
 
 import ROOT
@@ -44,28 +33,20 @@ plot_style.setup_style()
 DEFAULT_INDIR = f"/work/submit/{getpass.getuser()}/HmumuRun3/HISTOS/"
 DEFAULT_OUTDIR = f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/"
 
-# Region pairing this script works in: shapes from the sideband, signal from
-# the unrestricted prediction.
-SHAPE_REGION = "SR_sideband"
-SIGNAL_REGION = cfg.SIGNAL_REGION_FOR[SHAPE_REGION]
+# regions this script draws shapes in; signal source per region comes from
+# histo_config.SIGNAL_REGION_FOR
+SHAPE_REGIONS = ["SR_sideband", "SR_plus_sideband"]
 
-# Colour palette local to this script -- SummaryPlots.py's stacked plots keep
-# their own colours (plot_style.PROCESS_COLORS), unchanged.
-#
-# Colour is assigned by RANK (0 = most dominant by integral, for THIS
-# variable/category), not by fixed process identity. With --n-bkg/--n-sig > 2,
-# the extra entries reuse the last colour.
+# Colour by RANK (0 = most dominant by integral for this variable/category),
+# not by process identity. Beyond 2 entries the last colour repeats.
 BKG_COLORS = [ROOT.kAzure + 7, ROOT.kAzure + 2]
 SIG_COLORS = [ROOT.kRed + 2, ROOT.kRed - 4]
 
-# Axis title offsets for THIS script's standalone canvas. Deliberately separate
-# from plot_style.RATIO_X_TITLE_OFFSET (=1.0), which is tuned for
-# SummaryPlots.py's ratio pad.
+# axis title offsets for this script's standalone canvas
 X_TITLE_OFFSET_SHAPES = 1.4
 Y_TITLE_OFFSET_SHAPES = 2.0
 
-# Legend position local to this script (not touching plot_style.LEGEND_POS,
-# shared with the stacked plots). One row per process, so it can be compact.
+# legend position local to this script; one row per process
 MAIN_LEGEND_POS = (0.58, 0.7, 0.93, 0.93)
 
 
@@ -80,7 +61,7 @@ def _sig_color(rank):
 def parse_args():
     p = argparse.ArgumentParser(
         description="Shape-comparison plots (unit-normalized), restricted to "
-                    "the SR sideband (m_mumu in [110,120] or [130,150] GeV)."
+                    "the SR sideband (the isHSB region)."
     )
     p.add_argument("category", choices=cfg.CATEGORIES)
     p.add_argument("year", help="data-taking year, e.g. 2024, 2025, 12022 ...")
@@ -102,6 +83,9 @@ def parse_args():
     p.add_argument("--vars", nargs="+", default=None,
                    help="only plot these variables (default: the category's "
                         "active set)")
+    p.add_argument("--regions", nargs="+", default=None,
+                   choices=SHAPE_REGIONS,
+                   help=f"only these regions (default: {' '.join(SHAPE_REGIONS)})")
     return p.parse_args()
 
 
@@ -120,18 +104,20 @@ def _pick_dominant(hists, proc_list, n):
     return scored[:n]
 
 
-def plot_shape(hfile, category, year, varname, outdir, args):
+def plot_shape(hfile, category, year, varname, region, outdir, args):
 
-    if not hfile.has_variable(SHAPE_REGION, varname):
+    if not hfile.has_variable(region, varname):
         print(f"   -> skipped '{varname}': not in histogram file")
         return
 
     titleX = plot_vars.get_xlabel(varname)
 
-    bkg_hists = {p: hfile.get(SHAPE_REGION, varname, p) for p in cfg.BKG_PROCS}
-    bkg_hists[cfg.DATA_PROCESS] = hfile.get(SHAPE_REGION, varname,
-                                            cfg.DATA_PROCESS)
-    sig_hists = {p: hfile.get(SIGNAL_REGION, varname, p) for p in cfg.SIG_PROCS}
+    bkg_hists = {p: hfile.get(region, varname, p) for p in cfg.BKG_PROCS}
+    bkg_hists[cfg.DATA_PROCESS] = hfile.get(region, varname, cfg.DATA_PROCESS)
+
+    sig_region = cfg.SIGNAL_REGION_FOR[region]
+    sig_hists = ({p: hfile.get(sig_region, varname, p) for p in cfg.SIG_PROCS}
+                 if sig_region is not None else {})
 
     chosen_bkg = _pick_dominant(bkg_hists, cfg.BKG_PROCS, args.n_bkg)
     chosen_sig = _pick_dominant(sig_hists, cfg.SIG_PROCS, args.n_sig)
@@ -143,10 +129,8 @@ def plot_shape(hfile, category, year, varname, outdir, args):
 
     # --- canvas ---
     c = ROOT.TCanvas("c", "", plot_style.CANVAS_W, plot_style.CANVAS_H)
-    # cms_label() sizes its text as a fraction of THIS pad's height.
-    # SummaryPlots.py draws it on pad1, only (1-RATIO_SPLIT) of the canvas
-    # height; here we draw on the full canvas, so scale the top margin to keep
-    # the label the same ABSOLUTE size in both scripts.
+    # cms_label() sizes its text as a fraction of the pad's top margin, so
+    # scale it by the pad fraction SummaryPlots.py uses to match its size.
     c.SetTopMargin(plot_style.PAD_TOP_MARGIN * (1 - plot_style.RATIO_SPLIT))
     c.SetBottomMargin(plot_style.PAD_BOTTOM_MARGIN)
     c.SetLeftMargin(plot_style.PAD_LEFT_MARGIN)
@@ -208,11 +192,8 @@ def plot_shape(hfile, category, year, varname, outdir, args):
                 hc.GetXaxis().SetBinLabel(b, lab)
 
         hc.GetXaxis().SetTitle(titleX)
-        # The inherited relative-mode axis title sizes (a fraction of pad
-        # HEIGHT) were tuned for pad1 in the stacked plot, whose own x-axis is
-        # suppressed. On this full-height standalone canvas they render
-        # oversized and can push the title past the canvas edge. Reuse the
-        # proven pixel-mode fix from the ratio pad instead.
+        # pixel-mode axis text: the inherited pad-relative sizes render
+        # oversized on this full-height canvas.
         hc.GetXaxis().SetTitleFont(plot_style.RATIO_FONT_ABS)
         hc.GetXaxis().SetTitleSize(plot_style.RATIO_TITLE_SIZE_PX)
         hc.GetXaxis().SetTitleOffset(X_TITLE_OFFSET_SHAPES)
@@ -232,7 +213,6 @@ def plot_shape(hfile, category, year, varname, outdir, args):
 
     plot_style.cms_label(c, year)
 
-    # Mass-range label, matching SummaryPlots.py's SR_sideband label.
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
@@ -240,7 +220,7 @@ def plot_shape(hfile, category, year, varname, outdir, args):
     lines = [
         "H #rightarrow #mu#mu",
         f"{cfg.CATEGORY_LABELS.get(category, category)} ({year.lstrip('_')})",
-        cfg.REGIONS[SHAPE_REGION]["label"],
+        cfg.REGIONS[region]["label"],
     ]
     y0, dy = 0.87, 0.045
     for i, line in enumerate(lines):
@@ -266,23 +246,23 @@ def main():
 
     hfile = HistoFile(indir + cfg.histo_filename(category, year))
 
-    # Nested as a sibling of SummaryPlots.py's per-group trees under the same
-    # category+year folder.
-    outdir = os.path.join(baseOutDir, f"{category}{year}",
-                          "shapes", SHAPE_REGION) + "/"
-
     active_vars = args.vars or cfg.get_active_vars(category)
+    regions = args.regions or SHAPE_REGIONS
 
     print(f"[shapes] category={category} year={args.year} "
           f"n_bkg={args.n_bkg} n_sig={args.n_sig} "
           f"scale={'log' if args.log else 'linear'} "
           f"data={'off' if args.no_data else 'on'}")
-    print(f"[shapes] shapes from '{SHAPE_REGION}', signal from '{SIGNAL_REGION}'")
-    print(f"[shapes] output dir: {outdir}")
     print(f"[shapes] plotting {len(active_vars)} variables")
 
-    for varname in active_vars:
-        plot_shape(hfile, category, year, varname, outdir, args)
+    for region in regions:
+        outdir = os.path.join(baseOutDir, f"{category}{year}",
+                              "shapes", region) + "/"
+        sig_region = cfg.SIGNAL_REGION_FOR[region]
+        print(f"[shapes] region '{region}' (signal from '{sig_region}') "
+              f"-> {outdir}")
+        for varname in active_vars:
+            plot_shape(hfile, category, year, varname, region, outdir, args)
 
 
 if __name__ == "__main__":

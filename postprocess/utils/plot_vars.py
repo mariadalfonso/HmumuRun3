@@ -1,8 +1,13 @@
 """
 plot_vars.py -- lookup functions for plotting variables.
 
-Contains only the variables histo_config.get_active_vars() actually plots.
-See config/branches.yaml for what the snapshots make available.
+Many small, single-purpose functions, each keyed by a short variable name,
+each with its own dict and a sensible default via .get(). Add a variable by
+adding one line to whichever function(s) it actually needs -- you never have
+to fill in every property for every variable.
+
+Contains only the variables histo_config.get_active_vars() plots. See
+config/branches.yaml for what else the snapshots make available.
 """
 
 
@@ -110,8 +115,9 @@ def get_xlabel(varname):
 
 
 def get_logy_vars():
-    """Variables plotted with a log y-axis. Opt-in list; anything not here
-    is drawn linear."""
+    """Variables plotted with a log y-axis; anything not here is linear.
+
+    Not currently consulted: SummaryPlots.py uses log unless --linear."""
     return [
         'dimu_mass',
         'mva',
