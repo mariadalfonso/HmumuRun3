@@ -390,3 +390,14 @@ def read_list(path, year, mode, stream="prompt"):
             f"sample list not found: {path}\n"
             f"  generate it with:  python make_datasets.py --write {year} {mode}")
     return resolve_ids(year, mode, f"@{path}", stream)
+
+def limit_files(files):
+    """Truncate a file list for --maxfiles benchmarking runs."""
+    if not args.maxfiles or len(files) <= args.maxfiles:
+        return files
+    sel = ROOT.vector("string")()
+    for k in range(args.maxfiles):
+        sel.push_back(files[k])
+    print(f"  --maxfiles: using {len(sel)} of {len(files)} files "
+          f"(normalisation computed from this subset)")
+    return sel

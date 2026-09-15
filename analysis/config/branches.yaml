@@ -39,6 +39,7 @@ base:
   - Muon2_eta
   - PuppiMET_pt
   - PuppiMET_phi
+  - discrMVA
 
 # ---------------------------------------------------------------------
 #  Category-specific, MC and data alike.

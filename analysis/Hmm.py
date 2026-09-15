@@ -7,7 +7,7 @@ import getpass
 
 from tools.utilsAna import loadUserCode
 from tools.utilsAna import SwitchSample
-from tools.datasets import (BuildDict, resolve_ids, read_list,
+from tools.datasets import (BuildDict, resolve_ids, read_list, limit_files,
                             list_path, MODE_MAP, VALID_YEARS, VALID_MODES)
 from tools.branches import branch_list, check_branches
 from tools.utilsAna import readDataQuality
@@ -878,18 +878,6 @@ def analysis(files,year,mc,sumW):
 
         now = datetime.now()
         print('==> ends: ',now)
-
-
-def limit_files(files):
-    """Truncate a file list for --maxfiles benchmarking runs."""
-    if not args.maxfiles or len(files) <= args.maxfiles:
-        return files
-    sel = ROOT.vector("string")()
-    for k in range(args.maxfiles):
-        sel.push_back(files[k])
-    print(f"  --maxfiles: using {len(sel)} of {len(files)} files "
-          f"(normalisation computed from this subset)")
-    return sel
 
 
 def loopOnDataset(year):
