@@ -75,36 +75,8 @@ CMS_TEXT_SIZE_FRAC = 0.75
 EXTRA_OVER_CMS_TEXT_SIZE = 0.76
 LUMI_TEXT_SIZE_FRAC = 0.6
 
-# Integrated luminosity.
-#
-# TODO: check the correct Run 3 lumi
-RUN3_ERAS = ["_12022", "_22022", "_12023", "_22023", "_2024", "_2025", "_2026"]
-
-LUMIS = {
-    '_12016': 19.52,  # APV (B-F for 2016 pre)
-    '_22016': 16.80,  # postVFP
-    '_2016': 35.9,
-    '_2017': 41.5,
-    '_12017': 7.7,    # (F for 2017) for VBF
-    '_2018': 59.70,
-    '_12018': 39.54,
-    '_all': 86.92,    # 19.52 + 7.7 + 59.70
-    '_Run2': 138.,
-    #
-    '_12022': 7.99,   # C-D
-    '_22022': 26.68,  # E, F, G
-    '_12023': 17.96,  # C
-    '_22023': 9.68,   # D
-    '_2024': 109.82,  # C-I
-    '_2025': 110.59,  # C-G
-    '_2026': 25.31,   # C, B
-    #
-    '_2025C': 21.63,
-    '_2025D': 25.52,
-    '_2025E': 14.15,
-    '_2025F': 26.89,
-    '_2025G': 22.40,
-}
+# Integrated luminosity: LUMIS and the era groups live in prepareFits.py,
+# so the label is always computed from the same eras the files come from.
 
 # canvas / pad geometry (plot_style values)
 CANVAS_W, CANVAS_H = 600, 600
@@ -251,22 +223,20 @@ def make_signal_pdf(x, tag, scale_unc=SCALE_UNC, res_unc=RES_UNC,
     return pdf, bundle
 
 
-# Combined Run 3 Lumis, derived from RUN3_ERAS
-# TODO: this sums to 308.03, but
-#       prepareFits.lumis['_Run3'] hardcodes 312, and
-#       limitPlot.py passes 286500 pb^-1 (= 286.5).
-LUMIS['_Run3'] = sum(LUMIS[e] for e in RUN3_ERAS)
-
 # ---------------------------------------------------------------------------
 # diagnostics
 # ---------------------------------------------------------------------------
 
 def get_lumi(year):
-    """Integrated luminosity in fb^-1 for a '_<year>' tag."""
-    key = year if str(year).startswith("_") else f"_{year}"
+    """Integrated luminosity (fb^-1) of the signal MC for a year.
 
-    return LUMIS.get(key, 0.0)
-    
+    Uses the signal era groups, so Run3 -> 2022 + 2023 + 2024 only.
+    Imported lazily so --selftest does not pull in prepareFits.
+    """
+    from prepareFits import get_lumi as _get_lumi, SIGNAL_YEAR_GROUPS
+    return _get_lumi(year, SIGNAL_YEAR_GROUPS)
+
+
 def fit_color():
     """ROOT colour index for the fit curve."""
     return ROOT.TColor.GetColor(*FIT_COLOR_RGB)
@@ -714,7 +684,10 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
 
 def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
                  save_pdf=False):
-    from prepareFits import getHisto   # imported late: needs snapshot files
+    # imported late so --selftest runs without prepareFits
+    from prepareFits import getHisto, normalize_year
+
+    year = normalize_year(year)        # '_Run3' -> 'Run3'
 
     tag_cat = f"{category}_{binMVA}_{year}"
     x = ROOT.RooRealVar(f"mh{category}", "m_{#mu#mu}", XLOW, XHIGH)
@@ -890,7 +863,9 @@ def main():
                     help="BDT bin label(s): bdt0 bdt1 bdt2 incl")
     ap.add_argument("-s", "--sig", nargs="+", default=None,
                     help="production mode(s); default = all for the category")
-    ap.add_argument("-y", "--year", default="Run3")
+    ap.add_argument("-y", "--year", default="Run3",
+                    help="concrete era (12022, 2024, ...) or group "
+                         "(2022, 2023, Run3)")
     ap.add_argument("--wsdir", default="WS_LOCAL")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(

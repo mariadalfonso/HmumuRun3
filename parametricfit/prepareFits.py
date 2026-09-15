@@ -10,25 +10,29 @@ RDataFrame = ROOT.RDataFrame
 ROOT.gStyle.SetOptStat(0)
 ROOT.gROOT.SetBatch()
 
-lumis={
-    '_12016': 19.52, #APV #(B-F for 2016 pre)
-    '_22016': 16.80, #postVFP
-    '_2016': 35.9,
-    '_2017': 41.5,
-    '_12017': 7.7, #(F for 2017) for VBF
-    '_2018': 59.70,
-    '_12018': 39.54,
-    '_all': 86.92,      #19.52 + 7.7 + 59.70
-    '_Run2': 138.,      #19.52 + 7.7 + 59.70
-      #RUN3
-    '_12022':7.98, # C-D
-    '_22022':26.67, # E, F, G
-    '_12023':17.794, #C
-    '_22023':9.451, #D
-    '_2024':108.95, #C-I
-    '_2025':115.65, #C-G
-    '_2026':25.8, #from Gluillelmo
-    '_Run3':312, #C-G
+# Integrated luminosity in fb^-1, keyed by concrete era (bare, no underscore).
+# Composite years (2022, 2023, Run3) are NOT listed: get_lumi() sums their
+# eras via the same year groups used for the file lookup.
+# TODO: check the correct Run 3 lumi
+LUMIS = {
+    # Run 2
+    '12016': 19.52,  # APV (B-F for 2016 pre)
+    '22016': 16.80,  # postVFP
+    '2016': 35.9,
+    '2017': 41.5,
+    '12017': 7.7,    # (F for 2017) for VBF
+    '2018': 59.70,
+    '12018': 39.54,
+    'all': 86.92,    # 19.52 + 7.7 + 59.70
+    'Run2': 138.,
+    # Run 3
+    '12022': 7.99,   # C-D
+    '22022': 26.68,  # E, F, G
+    '12023': 17.96,  # C
+    '22023': 9.68,   # D
+    '2024': 109.82,  # C-I
+    '2025': 110.59,  # C-G
+    '2026': 25.31,   # C, B
 }
 
 # ---------------------------------------------------------------------------
@@ -65,18 +69,55 @@ SIGNAL_TAGS = {
 
 # data file tags, keyed by year
 DATA_TAGS = {
-    "_12022": ["-11", "-13", "-14"],
-    "_22022": ["-15", "-16", "-17"],
-    "_12023": ["-23", "-24"],
-    "_22023": ["-31", "-32"],
-    "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 ... -54
-    "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 ... -72
-    "_2026" : [str(i) for i in range(-81, -89, -1)],  # -81 ... -88
-    "_Run3" : ["-11", "-13", "-14", "-15", "-16", "-17", "-23", "-24", "-31", "-32"]
-              + [str(i) for i in range(-41, -55, -1)]
-              + [str(i) for i in range(-61, -73, -1)]
-              + [str(i) for i in range(-81, -89, -1)],
+    "12022": ["-11", "-13", "-14"],
+    "22022": ["-15", "-16", "-17"],
+    "12023": ["-23", "-24"],
+    "22023": ["-31", "-32"],
+    "2024" : [str(i) for i in range(-41, -55, -1)],  # -41 ... -54
+    "2025" : [str(i) for i in range(-61, -73, -1)],  # -61 ... -72
+    "2026" : [str(i) for i in range(-81, -89, -1)],  # -81 ... -88
 }
+
+# Composite years expand into the concrete eras whose snapshots exist on disk.
+# Any year not listed here is used as-is (e.g. '2024' -> ['2024']).
+RUN3_SIGNAL_ERAS = ["12022", "22022", "12023", "22023", "2024"]
+RUN3_DATA_ERAS   = RUN3_SIGNAL_ERAS + ["2025", "2026"]
+
+_COMMON_YEAR_GROUPS = {
+    "2022": ["12022", "22022"],
+    "2023": ["12023", "22023"],
+}
+SIGNAL_YEAR_GROUPS = {**_COMMON_YEAR_GROUPS, "Run3": RUN3_SIGNAL_ERAS}
+DATA_YEAR_GROUPS   = {**_COMMON_YEAR_GROUPS, "Run3": RUN3_DATA_ERAS}
+
+
+def normalize_year(year):
+    """'Run3', 2022, '_2022' -> 'Run3', '2022', '2022' (bare, idempotent)."""
+    return str(year).lstrip('_')
+
+
+def expand_year(year, groups):
+    """Return the list of concrete eras for a requested year."""
+    year = normalize_year(year)
+    return list(groups.get(year, [year]))
+
+
+def get_lumi(year, groups=SIGNAL_YEAR_GROUPS):
+    """Integrated luminosity (fb^-1) for a requested year.
+
+    Summed over the same eras the file lookup uses, so the label always
+    matches the files that were read. Pass DATA_YEAR_GROUPS for data.
+    Returns 0.0 if any era is missing from LUMIS.
+    """
+    year = normalize_year(year)
+    if year in LUMIS and year not in groups:
+        return LUMIS[year]
+    eras = expand_year(year, groups)
+    missing = [e for e in eras if e not in LUMIS]
+    if missing:
+        print(f"⚠️ no luminosity for era(s) {missing} (requested {year})")
+        return 0.0
+    return sum(LUMIS[e] for e in eras)
 
 
 def get_selection(category, binMVA):
@@ -90,29 +131,59 @@ def get_selection(category, binMVA):
     return cuts[binMVA]
 
 
-def _snapshot_path(dirLOCAL_, tag, year, category):
-    """Build one snapshot glob/path for a given file tag."""
-    if year != '_Run3':
-        return f"{dirLOCAL_}snapshot_mc_{tag}{year}_{category}.root"
-    return f"{dirLOCAL_}snapshot_mc_{tag}_*_{category}.root"
+def _snapshot_path(dirLOCAL_, tag, era, category):
+    """Build the snapshot path for one file tag in one concrete era."""
+    return f"{dirLOCAL_}snapshot_mc_{tag}_{era}_{category}.root"
+
+
+def _collect_files(tags_per_era, category, rootfiles_dir):
+    """tags_per_era: iterable of (era, [tags]).
+
+    Strict: every (era, tag) must yield at least one readable file with the
+    tree. Otherwise raise, so a partially loaded year can never be fit and
+    labelled with the full luminosity.
+    """
+    dirLOCAL_ = f'{rootfiles_dir}/{category}/'
+    files, missing = [], []
+    for era, tags in tags_per_era:
+        for tag in tags:
+            path = _snapshot_path(dirLOCAL_, tag, era, category)
+            n_before = len(files)
+            safe_add_tree(files, path)
+            if len(files) == n_before:
+                missing.append(path)
+    if missing:
+        raise FileNotFoundError(
+            f"{len(missing)} required snapshot(s) missing or without tree:\n  "
+            + "\n  ".join(missing))
+    return files
 
 
 def get_signal_files(sig, category, year, rootfiles_dir=ROOTFILES_DIR):
-    """Return the list of signal snapshot files for one production mode."""
-    dirLOCAL_ = f'{rootfiles_dir}/{category}/'
-    files = []
-    for tag in SIGNAL_TAGS.get(sig, []):
-        safe_add_tree(files, _snapshot_path(dirLOCAL_, tag, year, category))
-    return files
+    """Return the signal snapshot files for one production mode.
+
+    year may be a concrete era ('12022', '2024') or a group
+    ('2022', '2023', 'Run3'); see SIGNAL_YEAR_GROUPS.
+    """
+    if sig not in SIGNAL_TAGS:
+        raise ValueError(f"Unknown signal '{sig}' (have: {sorted(SIGNAL_TAGS)})")
+    eras = expand_year(year, SIGNAL_YEAR_GROUPS)
+    return _collect_files([(era, SIGNAL_TAGS[sig]) for era in eras],
+                          category, rootfiles_dir)
 
 
 def get_data_files(year, category, rootfiles_dir=ROOTFILES_DIR):
-    """Return the list of data snapshot files for a year."""
-    dirLOCAL_ = f'{rootfiles_dir}/{category}/'
-    files = []
-    for tag in DATA_TAGS.get(year, []):
-        safe_add_tree(files, _snapshot_path(dirLOCAL_, tag, year, category))
-    return files
+    """Return the data snapshot files for a year.
+
+    year may be a concrete era or a group; see DATA_YEAR_GROUPS.
+    """
+    eras = expand_year(year, DATA_YEAR_GROUPS)
+    missing = [era for era in eras if era not in DATA_TAGS]
+    if missing:
+        raise ValueError(f"No DATA_TAGS for era(s) {missing} "
+                         f"(requested {normalize_year(year)})")
+    return _collect_files([(era, DATA_TAGS[era]) for era in eras],
+                          category, rootfiles_dir)
 
 
 def fill_mass_histo(df, name, title, nbin, low, high):
@@ -200,7 +271,7 @@ def getHistoSignal(nbin, low, high, category, year, binMVA, sig,
     """
     print("getHistoSignal getting called for year: ", year)
 
-    year = '_' + str(year)
+    year = normalize_year(year)
     files = get_signal_files(sig, category, year, rootfiles_dir)
     if not files:
         print(f"⚠️ no signal files for {sig} {category} {year}")
@@ -213,7 +284,7 @@ def getHistoSignal(nbin, low, high, category, year, binMVA, sig,
     df = df.Filter("!isnan(HiggsCandCorrMass)", "Valid mass")
     df = df.Filter("mc >= 10 && mc <= 15", "Signal (ggH, VBF, VH, ttH)")
 
-    return fill_mass_histo(df, f"h_{category}{year}", f"{category} {year}",
+    return fill_mass_histo(df, f"h_{category}_{year}", f"{category} {year}",
                            nbin, low, high)
 
 
@@ -227,7 +298,7 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig='',
 
     print("getHisto getting called for year: ", year)
 
-    year = '_'+str(year)
+    year = normalize_year(year)
 
     # Build only the file group we will actually keep.
     files = []
@@ -236,6 +307,11 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig='',
             files += get_signal_files(sig, category, year, rootfiles_dir)
     else:
         files += get_data_files(year, category, rootfiles_dir)
+
+    if not files:
+        kind = f"signal {sig}" if doSignal else "data"
+        print(f"⚠️ no {kind} files for {category} {year}")
+        return None
 
     selection_cut = get_selection(category, binMVA)
 
