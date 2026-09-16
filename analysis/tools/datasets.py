@@ -391,12 +391,12 @@ def read_list(path, year, mode, stream="prompt"):
             f"  generate it with:  python make_datasets.py --write {year} {mode}")
     return resolve_ids(year, mode, f"@{path}", stream)
 
-def limit_files(files):
+def limit_files(files, maxfiles=0):
     """Truncate a file list for --maxfiles benchmarking runs."""
-    if not args.maxfiles or len(files) <= args.maxfiles:
+    if not maxfiles or len(files) <= maxfiles:
         return files
     sel = ROOT.vector("string")()
-    for k in range(args.maxfiles):
+    for k in range(maxfiles):
         sel.push_back(files[k])
     print(f"  --maxfiles: using {len(sel)} of {len(files)} files "
           f"(normalisation computed from this subset)")
