@@ -905,7 +905,7 @@ def loopOnDataset(year):
         if len(files) == 0:
             print(f"WARNING: no files found for MC sample {sampleNOW}, skipping")
             continue
-        files = limit_files(files)
+        files = limit_files(files, args.maxfiles)
         print(f"mc={sampleNOW}, outside the function: {len(files)}")
 
         # sumW over exactly the files being processed, so a --maxfiles subset
