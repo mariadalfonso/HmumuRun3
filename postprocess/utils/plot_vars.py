@@ -12,7 +12,7 @@ def get_expr(varname):
         # --- mass ---
         'dimu_mass': 'HiggsCandCorrMass',
         # --- discriminants ---
-        'mva': 'discrMVA0',
+        'mva': 'discrMVA',
         'category_vlcat': 'category',
         'category_ttlcat': 'category',
         'category_tthcat': 'category',
