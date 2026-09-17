@@ -1,8 +1,9 @@
 # =====================================================================
 #  Output branches written to the snapshot, per analysis category.
 #
-#  Read by tools.datasets.branch_list(mode, is_mc), which returns
-#      base + per_mode[mode] + (per_mode_mc_only[mode] if MC)
+#  Read by tools.branches.branch_list(mode, is_mc), which returns
+#      base + per_mode[mode]
+#      + base_mc_only + per_mode_mc_only[mode]   when MC
 #
 #  Every name here must be a column defined in Hmm.py by the time
 #  Snapshot runs. A name that is not defined is reported at startup
@@ -40,6 +41,19 @@ base:
   - PuppiMET_pt
   - PuppiMET_phi
   - discrMVA
+
+# ---------------------------------------------------------------------
+#  Written for every category, MC only. These are defined in the common
+#  "if mc>0" block of doCategories, so they exist for all seven modes.
+# ---------------------------------------------------------------------
+base_mc_only:
+  - Muon1_genPartFlav
+  - Muon2_genPartFlav
+  # gen-level origin of the selected pair: 25 = H, 23 = Z, 24 = W,
+  # 15 = tau, 4/5 = heavy flavour, 0 = unmatched
+  - Muon1_genOrigin
+  - Muon2_genOrigin
+  - pairFromHiggs
 
 # ---------------------------------------------------------------------
 #  Category-specific, MC and data alike.
@@ -137,6 +151,7 @@ per_mode:
     - mt
 
   isTThad:
+    # nothing category-specific; see base_mc_only
     - category
     - Muon1_sip3d
     - Muon2_sip3d
@@ -162,8 +177,6 @@ per_mode:
 per_mode_mc_only:
 
   isVBF:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - jetVBF1_partonFlavour
     - jetVBF2_partonFlavour
     - jetVBF1_LHE
@@ -173,35 +186,24 @@ per_mode_mc_only:
     - boson_genPtZ
 
   isGGH:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isZinv:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isVlep:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - Lepton_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isVhad:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isTTlep:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - Lepton_genPartFlav
 
   isTThad:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
+    # nothing category-specific; see base_mc_only

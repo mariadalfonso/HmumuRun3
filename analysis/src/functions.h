@@ -351,6 +351,32 @@ std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLor
 // below analysis oriented functions
 
 
+// ---------------------------------------------------------------------------
+// Gen-level origin of a reconstructed muon.
+//
+// Returns the pdgId of the first non-muon ancestor of gen particle gi, walking
+// past the muon copies that FSR and bremsstrahlung insert into the chain:
+//
+//    25  H->mumu        23  Z->mumu        24  W->mu nu
+//    15  tau decay      4/5 c/b hadron      0  unmatched or no ancestor
+//
+// gi is Muon_genPartIdx[i], which is -1 when the muon has no gen match.
+// GenPart_genPartIdxMother is Short_t in NanoAOD v12+, hence Vec_s.
+// ---------------------------------------------------------------------------
+int genOriginPdg(int gi, const Vec_i& pdg, const Vec_s& mom) {
+
+  if (gi < 0 || gi >= (int)pdg.size()) return 0;
+
+  int i = gi;
+  for (int n = 0; n < 50; ++n) {          // guard against a malformed chain
+    int m = mom[i];
+    if (m < 0 || m >= (int)pdg.size()) return 0;
+    if (std::abs(pdg[m]) != 13) return pdg[m];
+    i = m;
+  }
+  return 0;
+}
+
 float getGenPart_boson(const Vec_f & GenPart_xyz, const Vec_i & GenPart_status, const Vec_i & GenPart_pdgId, const Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
 
   // this only works for Z

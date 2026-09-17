@@ -240,6 +240,11 @@ def doCategories(df,mc,year):
     if mc>0:
         df = (df.Define("Muon1_genPartFlav","Muon_genPartFlav[idx_mu1]")
               .Define("Muon2_genPartFlav","Muon_genPartFlav[idx_mu2]")
+              # gen-level origin of the two selected muons: 25 = H, 23 = Z,
+              # 24 = W, 15 = tau, 4/5 = heavy flavour, 0 = unmatched
+              .Define("Muon1_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu1], GenPart_pdgId, GenPart_genPartIdxMother)")
+              .Define("Muon2_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu2], GenPart_pdgId, GenPart_genPartIdxMother)")
+              .Define("pairFromHiggs","Muon1_genOrigin==25 && Muon2_genOrigin==25")
               .Define("boson_genMassZ","getGenPart_boson(GenPart_mass, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Define("boson_genPtZ","getGenPart_boson(GenPart_pt, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Redefine("boson_ptWeight","(float)computeDYturbo(boson_genPtZ, boson_genMassZ)")
