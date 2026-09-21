@@ -104,8 +104,11 @@ def SwitchSample(thisdict,argument):
 
 def computeWeigths(rdf,xsec):
 
-    genEventSumWeight = rdf.Sum("genEventSumw").GetValue()
-    genEventSumNoWeight = rdf.Sum("genEventCount").GetValue()
+    sumw_ = rdf.Sum("genEventSumw")
+    count_ = rdf.Sum("genEventCount")
+
+    genEventSumWeight = sumw_.GetValue()
+    genEventSumNoWeight = count_.GetValue()
 
     print('genEventSumWeight',genEventSumWeight)
     print('genEventSumNoWeight',genEventSumNoWeight)

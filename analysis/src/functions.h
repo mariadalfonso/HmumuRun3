@@ -172,6 +172,22 @@ const Vec_f isoCorrFSR(const Vec_f& mu_reliso, const Vec_f& mu_pt, const Vec_i& 
     return result;
 }
 
+const Vec_f isoCorrFSRmini(const Vec_f& mu_miniIso, const Vec_f& mu_pt, const Vec_i& fsrIdx, const Vec_f& fsr_pt)
+{
+  Vec_f out = mu_miniIso;
+
+  for (size_t i = 0; i < mu_miniIso.size(); ++i) {
+
+    if (i >= fsrIdx.size() || i >= mu_pt.size() || mu_pt[i] <= 0) continue;
+    const int idx = fsrIdx[i];
+    if (idx < 0 || idx >= (int)fsr_pt.size()) continue;
+
+    out[i] = std::max(0.f, (mu_miniIso[i] * mu_pt[i] - fsr_pt[idx]) / mu_pt[i]);
+  }
+  return out;
+}
+
+
 Vec_b fatJetMask(const Vec_i& FatJet_muonIdx3SJ, int muon1_idx, int muon2_idx) {
 
   Vec_b mask(FatJet_muonIdx3SJ.size(), true);

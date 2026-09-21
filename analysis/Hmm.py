@@ -181,6 +181,7 @@ def doCategories(df,mc,year):
     #fix the muonPT it's 25 GeV for the one triggered
     df = (df.Define("fsrIdx_mu","pickFsrForMuons(Muon_fsrPhotonIdx, Muon_pt, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03)")
           .Redefine("Muon_pfRelIso04_all","isoCorrFSR(Muon_pfRelIso04_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
+          .Redefine("Muon_miniPFRelIso_all","isoCorrFSRmini(Muon_miniPFRelIso_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
           .Define("goodMuons","{}".format(muonSel))
           .Filter("Sum(goodMuons)>=1","at least two good muons")
           .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
@@ -362,8 +363,8 @@ def doCategories(df,mc,year):
         category_map = {
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",  # W→e  (WH)
             2: f"({n_goodEle}>0 && {q_looseEle}==0 && {n_looseEle}==2 && {q_goodMu}==0 && {n_looseMu}==2)", # Z→ee (ZH)
-            3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",  # W→μ  (WH)
-            4: f"({n_looseEle}==0 && {n_goodMu}>2 && {q_looseMu}==0 && {n_looseMu}==4)",                    # Z→μμ (ZH)
+            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_goodMu})==1 && {freeOfZ})",  # W→μ  (WH)
+            4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0)",                   # Z→μμ (ZH)
         }
 
         # Build a single expression with nested ternaries
@@ -424,11 +425,11 @@ def doCategories(df,mc,year):
 
         # Define leptonic category conditions
         category_map = {
-            1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",                   # W→e  (TTH semilep)
-            2: f"({n_looseEle}==2 && {n_goodEle}==2 && {q_goodEle}==0 && {q_goodMu}==0 && {n_looseMu}==2 && {freeOfZee})",   # 2W→e (TTH dilep)
-            3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",                   # W→μ  (TTH semilep)
-            4: f"({n_looseEle}==0 && {n_goodMu}==4 && {q_goodMu}==0 && {n_looseMu}==4 && {freeOfZ})",                        # 2W→μ (TTH dilep)
-            5: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==3 && {q_goodMu}==1 && {n_looseMu}==3 && {freeOfZ})",      # W→eW→μ (TTH dilep)
+            1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",                       # W→e  (TTH semilep)
+            2: f"({n_looseEle}==2 && {n_goodEle}==2 && {q_goodEle}==0 && {q_goodMu}==0 && {n_looseMu}==2 && {freeOfZee})",       # 2W→e (TTH dilep)
+            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {n_looseMu}==3 && {freeOfZ})",    # W→μ  (TTH semilep)
+            4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0 && {n_looseMu}==4 && {freeOfZ})",         # 2W→μ (TTH dilep)
+            5: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {freeOfZ})",    # W→eW→μ (TTH dilep)
         }
 
         # Build a single expression with nested ternaries

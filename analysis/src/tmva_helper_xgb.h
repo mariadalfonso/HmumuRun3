@@ -14,10 +14,9 @@ class tmva_helper_xgb {
 
             const unsigned int nslots_actual = std::max(nslots, 1U);
 
-            interpreters_.reserve(nslots_actual);
-            for (unsigned int islot = 0; islot < nslots_actual; ++islot) {
-	      interpreters_.emplace_back(name, filename);
-            }
+	    const TMVA::Experimental::RBDT prototype(name, filename);
+	    interpreters_.assign(nslots_actual, prototype);
+
         }
 
         float operator()(unsigned int slot, const Vec_f &vars) {
