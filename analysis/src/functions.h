@@ -377,6 +377,20 @@ int genOriginPdg(int gi, const Vec_i& pdg, const Vec_s& mom) {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// genOriginPdg for a collection: one entry per element of genIdx, in the same
+// order. Called with a goodMuons-masked Muon_genPartIdx, so the result lines
+// up with the arrays getMuonIndices receives and index_Mu indexes into it.
+// ---------------------------------------------------------------------------
+Vec_i genOriginPdgVec(const Vec_s& genIdx, const Vec_i& pdg, const Vec_s& mom) {
+
+  Vec_i out;
+  out.reserve(genIdx.size());
+  for (size_t k = 0; k < genIdx.size(); ++k)
+    out.push_back(genOriginPdg((int)genIdx[k], pdg, mom));
+  return out;
+}
+
 float getGenPart_boson(const Vec_f & GenPart_xyz, const Vec_i & GenPart_status, const Vec_i & GenPart_pdgId, const Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
 
   // this only works for Z
@@ -444,6 +458,39 @@ Vec_i getLHEPart_match(const Vec_f & Jeta, const Vec_f & Jphi, const Vec_f & LHE
 
 float mt(float pt1, float phi1, float pt2, float phi2) {
   return std::sqrt(2*pt1*pt2*(1-std::cos(phi1-phi2)));
+}
+
+// ---------------------------------------------------------------------------
+// mt of each object against a single other object, typically MET. For the
+// pairing study: in WH the muon from the W is the one whose mt with MET is
+// consistent with m_W, which identifies it without referring to m_H.
+// ---------------------------------------------------------------------------
+Vec_f mtVec(const Vec_f& pt, const Vec_f& phi, float met_pt, float met_phi) {
+
+  Vec_f out;
+  out.reserve(pt.size());
+  for (size_t k = 0; k < pt.size(); ++k)
+    out.push_back(mt(pt[k], phi[k], met_pt, met_phi));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// dR from each object to the nearest member of a second collection, noneVal
+// when that collection is empty. Pass the second collection already masked,
+// e.g. Jet_eta[BJETSloose], so this stays independent of the b-tagging.
+// ---------------------------------------------------------------------------
+Vec_f dRminVec(const Vec_f& eta, const Vec_f& phi,
+               const Vec_f& eta2, const Vec_f& phi2, float noneVal = 9.9f) {
+
+  Vec_f out;
+  out.reserve(eta.size());
+  for (size_t k = 0; k < eta.size(); ++k) {
+    float best = noneVal;
+    for (size_t j = 0; j < eta2.size(); ++j)
+      best = std::min(best, deltaR(eta[k], phi[k], eta2[j], phi2[j]));
+    out.push_back(best);
+  }
+  return out;
 }
 
 int topology(float eta1, float eta2) {
