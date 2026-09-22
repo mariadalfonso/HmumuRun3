@@ -231,6 +231,33 @@ float deltaR(float eta1, float phi1, float eta2, float phi2) {
   return std::sqrt(deltaR2(eta1,phi1,eta2,phi2));
 }
 
+// FSR correction for MINI isolation.
+// The mini cone is pT-dependent, R = max(0.05, min(0.2, 10 GeV / pT_mu)).
+// Use for GOODMUONTTH24.
+const Vec_f isoCorrFSRmini(const Vec_f& mu_reliso, const Vec_f& mu_pt,
+                           const Vec_f& mu_eta, const Vec_f& mu_phi,
+                           const Vec_i& fsrIdx,
+                           const Vec_f& fsr_pt, const Vec_f& fsr_eta, const Vec_f& fsr_phi)
+{
+    Vec_f result = mu_reliso;
+
+    for (size_t i = 0; i < mu_reliso.size(); ++i) {
+
+        if (i >= mu_pt.size() || mu_pt[i] <= 0) continue;
+        if (i >= fsrIdx.size()) continue;
+
+        int idx = fsrIdx[i];
+        if (idx < 0 || idx >= (int)fsr_pt.size()) continue;
+
+        const float Rmini = std::max(0.05f, std::min(0.2f, 10.0f / mu_pt[i]));
+
+        if (deltaR2(mu_eta[i], mu_phi[i], fsr_eta[idx], fsr_phi[idx]) < Rmini*Rmini)
+            result[i] = (mu_reliso[i] * mu_pt[i] - fsr_pt[idx]) / mu_pt[i];
+    }
+
+    return result;
+}
+
 Vec_b deltaRMask(const Vec_f & eta) {
   Vec_b mask(eta.size(), true);
   return mask;

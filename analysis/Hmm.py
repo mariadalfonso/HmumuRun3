@@ -180,7 +180,10 @@ def doCategories(df,mc,year):
 
     #fix the muonPT it's 25 GeV for the one triggered
     df = (df.Define("fsrIdx_mu","pickFsrForMuons(Muon_fsrPhotonIdx, Muon_pt, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03)")
+          # Remove FSR photon for pfRelIso04
           .Redefine("Muon_pfRelIso04_all","isoCorrFSR(Muon_pfRelIso04_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
+          # Remove FSR photon for miniPFRelIso used in GOODMUONTTH24
+          .Redefine("Muon_miniPFRelIso_all","isoCorrFSRmini(Muon_miniPFRelIso_all, Muon_pt, Muon_eta, Muon_phi, fsrIdx_mu, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi)")
           .Define("goodMuons","{}".format(muonSel))
           .Filter("Sum(goodMuons)>=1","at least two good muons")
           .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
