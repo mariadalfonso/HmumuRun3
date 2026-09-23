@@ -480,7 +480,7 @@ float Minv(const TLorentzVector& p1, const TLorentzVector& p2) {
 }
 
 float MinvErr(const float pt1, const float err1, const float pt2, const float err2) {
-  return sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
+  return 0.5f * sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
 }
 
 float minDeta(const float etaDiMu, const float jetEta1, const float jetEta2) {
@@ -608,7 +608,7 @@ float wrongOSSFmass(const Vec_f& pts,
             bool nearZ   = fabs(M - Z_MASS) < 15.;
             bool lowMass = M < 12.;
 
-            if (nearZ || lowMass) {
+            ir (nearZ || lowMass) {
                 float score = nearZ ? fabs(M - Z_MASS) : (12. - M);
                 if (score < bestScore) {
                     bestScore = score;
