@@ -1,8 +1,9 @@
 # =====================================================================
 #  Output branches written to the snapshot, per analysis category.
 #
-#  Read by tools.datasets.branch_list(mode, is_mc), which returns
-#      base + per_mode[mode] + (per_mode_mc_only[mode] if MC)
+#  Read by tools.branches.branch_list(mode, is_mc), which returns
+#      base + per_mode[mode]
+#      + base_mc_only + per_mode_mc_only[mode]   when MC
 #
 #  Every name here must be a column defined in Hmm.py by the time
 #  Snapshot runs. A name that is not defined is reported at startup
@@ -18,6 +19,9 @@ base:
   - w_allSF
   - lumiIntegrated
   - PV_npvsGood
+  # number of muons passing the full per-muon selection: the multiplicity
+  # getMuonIndices branches on, since it receives goodMuons-masked arrays
+  - nGoodMuons
   - run
   - event
   - luminosityBlock
@@ -40,6 +44,24 @@ base:
   - PuppiMET_pt
   - PuppiMET_phi
   - discrMVA
+
+# ---------------------------------------------------------------------
+#  Written for every category, MC only. These are defined in the common
+#  "if mc>0" block of doCategories, so they exist for all seven modes.
+# ---------------------------------------------------------------------
+base_mc_only:
+  - Muon1_genPartFlav
+  - Muon2_genPartFlav
+  # gen-level origin of the selected pair: 25 = H, 23 = Z, 24 = W,
+  # 15 = tau, 4/5 = heavy flavour, 0 = unmatched
+  - Muon1_genOrigin
+  - Muon2_genOrigin
+  - pairFromHiggs
+  # how many of the good muons came from the Higgs. With pairFromHiggs
+  # false, nGoodMuFromH == 2 means the right pair was available and the
+  # pairing chose wrong (recoverable); < 2 means an H muon was lost
+  # by the object selection (not a pairing problem).
+  - nGoodMuFromH
 
 # ---------------------------------------------------------------------
 #  Category-specific, MC and data alike.
@@ -137,6 +159,7 @@ per_mode:
     - mt
 
   isTThad:
+    # nothing category-specific; see base_mc_only
     - category
     - Muon1_sip3d
     - Muon2_sip3d
@@ -162,8 +185,6 @@ per_mode:
 per_mode_mc_only:
 
   isVBF:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - jetVBF1_partonFlavour
     - jetVBF2_partonFlavour
     - jetVBF1_LHE
@@ -173,35 +194,64 @@ per_mode_mc_only:
     - boson_genPtZ
 
   isGGH:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isZinv:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isVlep:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - Lepton_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
+    # --- pairing study -------------------------------------------------
+    # Per-good-muon properties, masked by goodMuons, so index_Mu indexes
+    # straight into them. Variable-length arrays of nGoodMuons entries.
+    # index_Mu records what the current algorithm chose, which is what any
+    # new criterion has to be scored against.
+    - index_Mu
+    - goodMu_pt
+    - goodMu_rawpt
+    - goodMu_eta
+    - goodMu_phi
+    - goodMu_charge
+    - goodMu_genOrigin
+    - goodMu_genPartFlav
+    - goodMu_sip3d
+    - goodMu_iso04
+    - goodMu_miniIso
+    - goodMu_promptMVA
+    - goodMu_jetDF
+    - goodMu_mt
+    - goodMu_dRminB
 
   isVhad:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
 
   isTTlep:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
     - Lepton_genPartFlav
+    # --- pairing study -------------------------------------------------
+    # Per-good-muon properties, masked by goodMuons, so index_Mu indexes
+    # straight into them. Variable-length arrays of nGoodMuons entries.
+    # index_Mu records what the current algorithm chose, which is what any
+    # new criterion has to be scored against.
+    - index_Mu
+    - goodMu_pt
+    - goodMu_rawpt
+    - goodMu_eta
+    - goodMu_phi
+    - goodMu_charge
+    - goodMu_genOrigin
+    - goodMu_genPartFlav
+    - goodMu_sip3d
+    - goodMu_iso04
+    - goodMu_miniIso
+    - goodMu_promptMVA
+    - goodMu_jetDF
+    - goodMu_mt
+    - goodMu_dRminB
 
   isTThad:
-    - Muon1_genPartFlav
-    - Muon2_genPartFlav
+    # nothing category-specific; see base_mc_only

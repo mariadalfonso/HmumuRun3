@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ANALYSIS = os.path.dirname(HERE)                       # tools/ -> analysis/
 BRANCHES_YAML = os.path.join(ANALYSIS, "config", "branches.yaml")
 
-REQUIRED_BLOCKS = ["base", "per_mode", "per_mode_mc_only"]
+REQUIRED_BLOCKS = ["base", "base_mc_only", "per_mode", "per_mode_mc_only"]
 
 
 # ===========================================================================
@@ -65,9 +65,11 @@ CONFIG = _load_branches_yaml(BRANCHES_YAML)
 def branch_list(mode, is_mc):
     """Snapshot output branches for one category.
 
-    base + per_mode[mode], plus per_mode_mc_only[mode] for MC. Duplicates are
-    dropped while order is preserved, so a name may appear in more than one
-    block without upsetting Snapshot.
+        base + per_mode[mode]
+        + base_mc_only + per_mode_mc_only[mode]     when is_mc
+
+    Duplicates are dropped while order is preserved, so a name may appear in
+    more than one block without upsetting Snapshot.
     """
     if mode not in CONFIG["per_mode"]:
         raise KeyError(f"unknown mode {mode!r} in branches.yaml "
@@ -75,6 +77,7 @@ def branch_list(mode, is_mc):
 
     out = list(CONFIG["base"]) + list(CONFIG["per_mode"][mode] or [])
     if is_mc:
+        out += list(CONFIG["base_mc_only"] or [])
         out += list(CONFIG["per_mode_mc_only"].get(mode) or [])
     return list(dict.fromkeys(out))
 

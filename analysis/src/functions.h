@@ -351,6 +351,46 @@ std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLor
 // below analysis oriented functions
 
 
+// ---------------------------------------------------------------------------
+// Gen-level origin of a reconstructed muon.
+//
+// Returns the pdgId of the first non-muon ancestor of gen particle gi, walking
+// past the muon copies that FSR and bremsstrahlung insert into the chain:
+//
+//    25  H->mumu        23  Z->mumu        24  W->mu nu
+//    15  tau decay      4/5 c/b hadron      0  unmatched or no ancestor
+//
+// gi is Muon_genPartIdx[i], which is -1 when the muon has no gen match.
+// GenPart_genPartIdxMother is Short_t in NanoAOD v12+, hence Vec_s.
+// ---------------------------------------------------------------------------
+int genOriginPdg(int gi, const Vec_i& pdg, const Vec_s& mom) {
+
+  if (gi < 0 || gi >= (int)pdg.size()) return 0;
+
+  int i = gi;
+  for (int n = 0; n < 50; ++n) {          // guard against a malformed chain
+    int m = mom[i];
+    if (m < 0 || m >= (int)pdg.size()) return 0;
+    if (std::abs(pdg[m]) != 13) return pdg[m];
+    i = m;
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// genOriginPdg for a collection: one entry per element of genIdx, in the same
+// order. Called with a goodMuons-masked Muon_genPartIdx, so the result lines
+// up with the arrays getMuonIndices receives and index_Mu indexes into it.
+// ---------------------------------------------------------------------------
+Vec_i genOriginPdgVec(const Vec_s& genIdx, const Vec_i& pdg, const Vec_s& mom) {
+
+  Vec_i out;
+  out.reserve(genIdx.size());
+  for (size_t k = 0; k < genIdx.size(); ++k)
+    out.push_back(genOriginPdg((int)genIdx[k], pdg, mom));
+  return out;
+}
+
 float getGenPart_boson(const Vec_f & GenPart_xyz, const Vec_i & GenPart_status, const Vec_i & GenPart_pdgId, const Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
 
   // this only works for Z
@@ -418,6 +458,39 @@ Vec_i getLHEPart_match(const Vec_f & Jeta, const Vec_f & Jphi, const Vec_f & LHE
 
 float mt(float pt1, float phi1, float pt2, float phi2) {
   return std::sqrt(2*pt1*pt2*(1-std::cos(phi1-phi2)));
+}
+
+// ---------------------------------------------------------------------------
+// mt of each object against a single other object, typically MET. For the
+// pairing study: in WH the muon from the W is the one whose mt with MET is
+// consistent with m_W, which identifies it without referring to m_H.
+// ---------------------------------------------------------------------------
+Vec_f mtVec(const Vec_f& pt, const Vec_f& phi, float met_pt, float met_phi) {
+
+  Vec_f out;
+  out.reserve(pt.size());
+  for (size_t k = 0; k < pt.size(); ++k)
+    out.push_back(mt(pt[k], phi[k], met_pt, met_phi));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// dR from each object to the nearest member of a second collection, noneVal
+// when that collection is empty. Pass the second collection already masked,
+// e.g. Jet_eta[BJETSloose], so this stays independent of the b-tagging.
+// ---------------------------------------------------------------------------
+Vec_f dRminVec(const Vec_f& eta, const Vec_f& phi,
+               const Vec_f& eta2, const Vec_f& phi2, float noneVal = 9.9f) {
+
+  Vec_f out;
+  out.reserve(eta.size());
+  for (size_t k = 0; k < eta.size(); ++k) {
+    float best = noneVal;
+    for (size_t j = 0; j < eta2.size(); ++j)
+      best = std::min(best, deltaR(eta[k], phi[k], eta2[j], phi2[j]));
+    out.push_back(best);
+  }
+  return out;
 }
 
 int topology(float eta1, float eta2) {
@@ -557,6 +630,40 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i
   }
 
   return freeOfZ;
+
+}
+
+// Mass of the opposite-sign pair that is NOT the Higgs candidate, where
+// i1,i2 are the Higgs pair as returned by getMuonIndices (positions in the
+// goodMuons-masked arrays, i.e. index_Mu).
+//
+// With three muons the net charge is +-1, so exactly two opposite-sign pairs
+// exist and this one is unique. With more muons there are several and the
+// first found is returned, so only use this for the 3-muon case.
+//
+// Returns -1 when there is no such pair, which the caller must treat as "no
+// veto" rather than as a mass.
+float massNonHiggsOS(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i& charges, const float mass_, const int i1, const int i2){
+
+  const int n = etas.size();
+
+  for (int i = 0; i < n; i++){
+
+    for (int j = i+1; j < n; j++){
+
+      if ((i==i1 && j==i2) || (i==i2 && j==i1)) continue; // the Higgs pair
+
+      if (charges[i]*charges[j]>0) continue; // looking for OS
+
+      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], mass_);
+      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], mass_);
+
+      return (pi + pj).M();
+
+    }
+  }
+
+  return -1.f;
 
 }
 
@@ -738,9 +845,11 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
   } else {
 
-    float max = 0;
+    // Run 2 (CMS arXiv:2009.04363): the candidate is the highest-pT OS pair
+    // with 110 < m < 150; fall back to the highest-pT pair if none qualifies
+    float max = 0, maxWin = 0;
 
-    int n = etas.size(), index0 = -1, index1 = -1;
+    int n = etas.size(), index0 = -1, index1 = -1, iWin = -1, jWin = -1;
 
     for (int i = 0; i < n; i++){
 
@@ -757,11 +866,17 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 	  index0 = i;
 	  index1 = j;
 	}
+	float M = (pi+pj).M();
+	if (M > 110. && M < 150. && maxWin < PT) {
+	  maxWin = PT;
+	  iWin = i;
+	  jWin = j;
+	}
       }
     }
 
-    idx_[0] = index0;
-    idx_[1] = index1;
+    idx_[0] = (iWin >= 0) ? iWin : index0;
+    idx_[1] = (iWin >= 0) ? jWin : index1;
 
   }
 
