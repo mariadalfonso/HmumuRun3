@@ -13,43 +13,43 @@ Depends only on sigFit.py and prepareFits.py:
 
 What it fits
 ------------
-Three sets, all against the same inclusive reference fit:
+  inclusive   one reference fit over the whole sample
 
-  eta    dimuon |eta| topology: BB, BE, EE from the region edges
-         ETA_EDGES = [0, 1.4, 2.4]. Every unordered pair of regions is one
-         exclusive category, so the three partition the inclusive sample.
-         INCLUSIVE IN pT -- this is the original behaviour.
+  eta         dimuon |eta| topology: BB, BE, EE from ETA_EDGES =
+              [0, 1.4, 2.4]. Every unordered pair of regions is one
+              exclusive category, so the three partition the sample.
 
-  pt     dimuon pT bins from PT_EDGES = [0, 50, 100, 200, 400] GeV, using
-         HiggsCandCorrPt. Inclusive in eta. Resolution improves with pT for
-         a fixed eta (the muons are straighter but better measured in the
-         tracker), so this separates the two effects.
+  mu2d_BB     within each eta topology, a 2D grid in the two muon momenta:
+  mu2d_BE     leading vs subleading pT, MU2D_WIDTH = 20 GeV cells from
+  mu2d_EE     MU2D_MIN = 20 to MU2D_MAX = 120 GeV plus an open cell above.
+              Each cell is fitted and the fitted sigma is drawn as the z
+              axis of a TH2, giving a map of the mass resolution over the
+              muon kinematics at fixed eta topology. mu and N_eff maps are
+              produced alongside, on z scales shared across the three
+              topologies so they can be compared directly.
 
-  pt_BB  a pT scan WITHIN each eta category, one group per region
-  pt_BE  (pt_BB, pt_BE, pt_EE). This is the point of the script: it answers
-  pt_EE  whether the pT dependence of the resolution is the same in BB as in
-         EE, which the two inclusive scans above cannot.
+The axes are LEADING and SUBLEADING pT rather than Muon1/Muon2, because the
+pair is unordered: a Muon1-vs-Muon2 map would be symmetric about the
+diagonal and half the fits redundant. Only the lower triangle is fitted.
 
-A combined plot puts all three regions' pT scans on one set of axes, with
-the eta-inclusive scan as a black reference. The open pT bin is omitted
-there -- it has no upper edge, so no honest x position on a numeric axis --
-but it is fitted and reported like every other bin.
+Map cells are fitted WITHOUT writing per-cell canvases -- there are ~21 per
+topology -- unless --cell-plots is given. Cells below --min-entries are
+left unfilled and drawn blank, so an unfitted cell cannot be mistaken for
+one with a small resolution.
 
-Both splits fold the two hemispheres together, so neither can see a
-forward/backward asymmetry -- they are for resolution, not for scale.
-
-The binning is set by the ETA_EDGES / PT_EDGES constants at the top of this
+The binning is set by the ETA_EDGES and MU2D_* constants at the top of this
 file rather than by command-line options.
 
 Usage
 -----
     python fitEtaBins.py 2024
-    python fitEtaBins.py 2024 --cross
+    python fitEtaBins.py 2024 --cell-plots
     python fitEtaBins.py Run3 --sig VH --category VHcat
     python fitEtaBins.py 22022 --file <snapshot> [<snapshot> ...]
 """
 
 import argparse
+from array import array
 import getpass
 import json
 import os
@@ -90,25 +90,28 @@ OVERLAY_TEXT_SIZE = 0.026   # NDC; each entry is two lines of this
 OVERLAY_GAP = 0.03          # NDC between the tallest curve and the legend
 
 # ---------------------------------------------------------------------------
-# the two splits. Edit here; they are deliberately not command-line options.
+# the splits. Edit here; they are deliberately not command-line options.
 # ---------------------------------------------------------------------------
 # |eta| region edges -> regions -> every unordered pair is one category
 ETA_EDGES = [0.0, 1.4, 2.4]
 
-# dimuon pT bin edges in GeV. With PT_OVERFLOW the last edge opens into a
-# further bin holding everything above it, so the pT bins then partition the
-# whole sample the way the eta categories already do.
-PT_EDGES = [0.0, 20.0, 50.0, 100.0, 200.0, 400.0]
-PT_OVERFLOW = True
-# x position and half-width used to DRAW the open bin on the per-group pT
-# summary graphs. Nominal only -- the bin has no upper edge, and the
-# by-eta summary leaves it out entirely rather than drawing a made-up
-# width there.
-PT_OVERFLOW_PLOT_HI = 600.0
-PTCOL = "HiggsCandCorrPt"
+# 2D map of the fitted resolution over the two muon momenta, one map per
+# |eta| topology. Cells are `MU2D_WIDTH` GeV wide in each muon, from
+# MU2D_MIN up to MU2D_MAX, plus one open bin above MU2D_MAX.
+#
+# The axes are LEADING and SUBLEADING pT, not Muon1/Muon2: the pair is
+# unordered, so a Muon1-vs-Muon2 map would be symmetric about the diagonal
+# and half the fits would be redundant. Ordering by pT folds it into the
+# lower triangle, halving the work and making every cell distinct.
+MU2D_MIN = 20.0
+MU2D_MAX = 120.0
+MU2D_WIDTH = 20.0
+MU2D_LEAD = "muLeadPt"
+MU2D_SUB = "muSubPt"
+MU2D_LEAD_AXIS = "leading muon p_{T} (GeV)"
+MU2D_SUB_AXIS = "subleading muon p_{T} (GeV)"
 
 ETA_AXIS = "|#eta| topology"
-PT_AXIS = "p_{T}^{#mu#mu} (GeV)"
 
 # short region names by number of |eta| regions
 REGION_NAMES = {2: ["B", "E"], 3: ["B", "O", "E"]}
@@ -117,6 +120,8 @@ REGION_NAMES = {2: ["B", "E"], 3: ["B", "O", "E"]}
 DERIVED = {
     "absEta1": "(float)std::abs(Muon1_eta)",
     "absEta2": "(float)std::abs(Muon2_eta)",
+    MU2D_LEAD: "(float)std::max(Muon1_pt, Muon2_pt)",
+    MU2D_SUB: "(float)std::min(Muon1_pt, Muon2_pt)",
 }
 
 
@@ -136,6 +141,12 @@ def parse_args():
                    help="fit these snapshots instead of the looked-up ones. "
                         "The year is then only used for the label and "
                         "output names.")
+    p.add_argument("--min-entries", type=int, default=500,
+                   help="skip a map cell with fewer raw entries; a DCB has "
+                        "six shape parameters (default: %(default)s)")
+    p.add_argument("--cell-plots", action="store_true",
+                   help="also write the ratio/pull canvases for every map "
+                        "cell (dozens of files per topology)")
     p.add_argument("--mass", default=MASSCOL,
                    help="mass column to fit (default: %(default)s)")
     p.add_argument("--weight", default="w_allSF",
@@ -195,71 +206,70 @@ def eta_bins(edges=None):
     return bins
 
 
-def _pt_tag(lo, hi):
-    return f"{lo:g}_{hi:g}".replace(".", "p")
+def mu2d_edges():
+    """Cell edges in one muon pT, plus an open bin above the last one."""
+    n = int(round((MU2D_MAX - MU2D_MIN) / MU2D_WIDTH))
+    return [MU2D_MIN + i * MU2D_WIDTH for i in range(n + 1)]
 
 
-def pt_bins(edges=None, overflow=None):
-    """Dimuon pT bins, inclusive in eta.
+def _cell_range(edges, i):
+    """(lo, hi, label, filter-upper) for cell i. i == len(edges)-1 is open."""
+    lo = edges[i]
+    if i == len(edges) - 1:
+        return lo, lo + MU2D_WIDTH, f"#geq {lo:g}", None
+    return lo, edges[i + 1], f"{lo:g}-{edges[i + 1]:g}", edges[i + 1]
 
-    With `overflow` the final bin is open above the last edge. Without it,
-    high-pT events land in no bin and are reported as uncovered.
+
+def _cell_cut(col, edges, i):
+    lo, _, _, hi = _cell_range(edges, i)
+    return f"{col} >= {lo}" if hi is None else f"{col} >= {lo} && {col} < {hi}"
+
+
+def mu2d_cells(eta_bin):
+    """Fit cells for the (leading, subleading) pT map inside one eta bin.
+
+    Only the lower triangle is generated: the subleading muon cannot be in
+    a higher pT cell than the leading one, so cells above the diagonal are
+    empty by construction and are not fitted.
     """
-    edges = list(PT_EDGES if edges is None else edges)
-    overflow = PT_OVERFLOW if overflow is None else overflow
-    bins = []
-    for lo, hi in zip(edges, edges[1:]):
-        bins.append({"tag": f"pt_{_pt_tag(lo, hi)}",
-                     "short": f"{lo:g}-{hi:g}",
-                     "label": f"{lo:g} #leq {PT_AXIS} < {hi:g}",
-                     "lo": lo, "hi": hi,
-                     "filt": f"{PTCOL} >= {lo} && {PTCOL} < {hi}",
-                     "group": "pt"})
-    if overflow:
-        lo = edges[-1]
-        bins.append({"tag": f"pt_{_pt_tag(lo, 0)}".replace("_0", "_inf"),
-                     "short": f">{lo:g}",
-                     "label": f"{PT_AXIS} #geq {lo:g}",
-                     # no upper edge: these are for drawing only
-                     "lo": lo, "hi": PT_OVERFLOW_PLOT_HI, "open": True,
-                     "filt": f"{PTCOL} >= {lo}",
-                     "group": "pt"})
-    return bins
-
-
-def cross_bins(eta_edges=None, pt_edges=None):
-    """A pT scan WITHIN each |eta| topology.
-
-    Each eta region gets its own group ("pt_BB", "pt_BE", "pt_EE"), so every
-    region produces its own overlay and its own mu/sigma-versus-pT graphs
-    rather than all 15 bins landing on one categorical axis.
-    """
+    edges = mu2d_edges()
+    n = len(edges)
     out = []
-    for e in eta_bins(eta_edges):
-        for p in pt_bins(pt_edges):
+    for il in range(n):                       # leading
+        for isub in range(il + 1):            # subleading <= leading
+            lo_l, hi_l, lab_l, _ = _cell_range(edges, il)
+            lo_s, hi_s, lab_s, _ = _cell_range(edges, isub)
+            filt = (f"({eta_bin['filt']}) && "
+                    f"({_cell_cut(MU2D_LEAD, edges, il)}) && "
+                    f"({_cell_cut(MU2D_SUB, edges, isub)})")
             out.append({
-                "tag": f"{e['tag']}_{p['tag']}",
-                "short": p["short"],          # the pT bin, within this region
-                "label": f"{e['short']}, {p['label']}",
-                "lo": p["lo"], "hi": p["hi"], "open": p.get("open", False),
-                "filt": f"({e['filt']}) && ({p['filt']})",
-                "group": f"pt_{e['short']}", "eta_short": e["short"]})
+                "tag": (f"{eta_bin['tag']}_lead{lo_l:g}_sub{lo_s:g}"
+                        .replace(".", "p")),
+                "short": f"{lab_l} / {lab_s}",
+                "label": (f"{eta_bin['short']}, lead {lab_l}, "
+                          f"sub {lab_s} GeV"),
+                "filt": filt,
+                "group": f"mu2d_{eta_bin['short']}",
+                "eta_short": eta_bin["short"],
+                "ix": il + 1, "iy": isub + 1,   # TH2 bin indices
+                "open_x": il == n - 1, "open_y": isub == n - 1,
+            })
     return out
 
 
 def coverage_filters():
-    """Events some bin of each split can accept, for the overflow report.
+    """Events some bin can accept, for the overflow report.
 
-    The pT entry is dropped when PT_OVERFLOW is on, because the open bin
-    then leaves nothing uncovered above the last edge.
+    The muon pT map has an open top cell, so the only way to fall outside
+    is a muon below MU2D_MIN -- reported separately since the map, unlike
+    the eta categories, then does not add up to the inclusive fit.
     """
     e0, e1 = ETA_EDGES[0], ETA_EDGES[-1]
-    out = {"eta": (f"absEta1 >= {e0} && absEta1 < {e1} && "
-                   f"absEta2 >= {e0} && absEta2 < {e1}")}
-    if not PT_OVERFLOW:
-        out["pt"] = (f"{PTCOL} >= {PT_EDGES[0]} && "
-                     f"{PTCOL} < {PT_EDGES[-1]}")
-    return out
+    return {
+        "eta": (f"absEta1 >= {e0} && absEta1 < {e1} && "
+                f"absEta2 >= {e0} && absEta2 < {e1}"),
+        "muon pT map": f"{MU2D_SUB} >= {MU2D_MIN}",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -455,92 +465,135 @@ def summary_graph(fits, plotdir, year, group, axis, save_pdf=False):
 
 # ---------------------------------------------------------------------------
 
-def summary_by_eta(fits, plotdir, year, save_pdf=False):
-    """mu and sigma versus pT, one series per |eta| category.
+def resolution_map(cells, plotdir, year, eta_short, label, key, ytit,
+                   zrange, save_pdf=False, fmt="4.2f"):
+    """One 2D map: leading vs subleading muon pT, z = the fitted quantity.
 
-    The single most useful output: three curves on one set of axes show
-    directly whether the pT dependence of the resolution is the same in the
-    barrel as in the endcap. The eta-inclusive scan is drawn in black as a
-    reference.
+    Empty and skipped cells are left unfilled and drawn blank (the "0"
+    suffix on the COLZ option), so a cell with no fit cannot be mistaken
+    for one with a small value.
+
+    `zrange` is passed in and shared across the eta regions, otherwise each
+    map auto-scales to its own range and the three cannot be compared.
     """
-    # The open bin has no upper edge, so it has no honest x position or
-    # width on a numeric axis: left out here. It is still fitted, and still
-    # appears in the tables, the JSON and its own ratio/pull canvases.
-    def closed(rows):
-        return [f for f in rows if not f.get("open")]
+    edges = mu2d_edges()
+    n = len(edges)
+    # the open top cell is drawn one width wide; its upper edge is nominal
+    axis_edges = array("d", edges + [edges[-1] + MU2D_WIDTH])
 
-    shorts = [b["short"] for b in eta_bins()]
-    series = [(sh, closed([f for f in fits
-                           if f.get("group") == f"pt_{sh}"]))
-              for sh in shorts]
-    series = [(sh, rows) for sh, rows in series if len(rows) >= 2]
-    if not series:
+    h = ROOT.TH2D(f"map_{key}_{eta_short}_{year}", "",
+                  n, axis_edges, n, axis_edges)
+    h.SetDirectory(0)
+    h.SetStats(0)
+
+    filled = 0
+    for c in cells:
+        if c.get(key) is None:
+            continue
+        h.SetBinContent(c["ix"], c["iy"], c[key])
+        filled += 1
+    if not filled:
         return
-    ref_rows = closed([f for f in fits if f.get("group") == "pt"])
 
-    for ytit, key in [("fitted #mu (GeV)", "mu"),
-                      ("fitted #sigma (GeV)", "sigma")]:
-        graphs, keep = [], []
+    h.SetTitle(f";{MU2D_LEAD_AXIS};{MU2D_SUB_AXIS};{ytit}")
+    h.GetZaxis().SetTitleOffset(1.25)
+    for ax in (h.GetXaxis(), h.GetYaxis(), h.GetZaxis()):
+        ax.SetTitleFont(43)
+        ax.SetLabelFont(43)
+        ax.SetTitleSize(24)
+        ax.SetLabelSize(20)
+    h.GetXaxis().SetTitleOffset(1.15)
+    h.GetYaxis().SetTitleOffset(1.45)
+    h.SetMinimum(zrange[0])
+    h.SetMaximum(zrange[1])
+    h.SetMarkerSize(1.3)
 
-        def build(rows, col, style):
-            g = ROOT.TGraphErrors(len(rows))
-            for i, f in enumerate(rows):
-                g.SetPoint(i, 0.5 * (f["lo"] + f["hi"]), f[key])
-                g.SetPointError(i, 0.5 * (f["hi"] - f["lo"]),
-                                f[key + "Err"])
-            g.SetMarkerStyle(style)
-            g.SetMarkerSize(SF.DATA_MARKER_SIZE)
-            g.SetMarkerColor(col)
-            g.SetLineColor(col)
-            g.SetLineWidth(SF.DATA_LINE_WIDTH)
-            return g
+    c1 = make_canvas(f"c_map_{key}_{eta_short}")
+    c1.SetRightMargin(0.17)
+    ROOT.gStyle.SetPaintTextFormat(fmt)
+    h.Draw("COLZ0 TEXT")
 
-        if ref_rows:
-            graphs.append(("inclusive in #eta",
-                           build(ref_rows, ROOT.kBlack, 24)))
-        for i, (sh, rows) in enumerate(series):
-            graphs.append((sh, build(rows, color(i),
-                                     SF.DATA_MARKER_STYLE)))
+    latex = ROOT.TLatex()
+    latex.SetNDC()
+    latex.SetTextFont(42)
+    latex.SetTextSize(0.030)
+    latex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.03, 0.945,
+                    f"{label}   {eta_short}")
+    note = (f"open cells: #geq {MU2D_MAX:g} GeV"
+            if any(c.get("open_x") or c.get("open_y") for c in cells) else "")
+    if note:
+        latex.SetTextSize(0.024)
+        latex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.03, 0.905, note)
 
-        # frame spanning every point, with headroom for the legend
-        vals = [f[key] for _, rows in series for f in rows] + \
-               [f[key] for f in ref_rows]
-        errs = [f[key + "Err"] for _, rows in series for f in rows] + \
-               [f[key + "Err"] for f in ref_rows]
-        lo_y = min(v - e for v, e in zip(vals, errs))
-        hi_y = max(v + e for v, e in zip(vals, errs))
-        span = (hi_y - lo_y) or 0.05 * abs(hi_y) or 1.0
+    cms_label(c1, year)
+    save(c1, f"{plotdir}/{key}_map_{eta_short}_{year}", save_pdf)
 
-        xmax = max(f["hi"] for _, rows in series for f in rows)
-        frame = ROOT.TH1F(f"frame_{key}_byeta", f";{PT_AXIS};{ytit}",
-                          1, PT_EDGES[0], xmax)
-        frame.SetDirectory(0)
-        frame.SetMinimum(lo_y - 0.10 * span)
-        frame.SetMaximum(hi_y + 0.45 * span)     # room for the legend
-        frame.GetYaxis().SetTitleOffset(1.5)
 
-        c = make_canvas(f"c_{key}_byeta")
-        frame.Draw()
-        for _, g in graphs:
-            g.Draw("P SAME")
-        keep += [frame] + [g for _, g in graphs]
+def resolution_maps(fits, plotdir, year, label, save_pdf=False):
+    """The three maps (sigma, mu, N_eff) for every eta topology, on a
+    common z scale per quantity."""
+    shorts = [b["short"] for b in eta_bins()]
+    by_eta = {sh: [f for f in fits if f.get("group") == f"mu2d_{sh}"]
+              for sh in shorts}
+    by_eta = {sh: v for sh, v in by_eta.items() if v}
+    if not by_eta:
+        return
 
-        leg = ROOT.TLegend(SF.PAD_LEFT_MARGIN + 0.04,
-                           1 - SF.PAD_TOP_MARGIN - 0.04 - 0.055 * len(graphs),
-                           SF.PAD_LEFT_MARGIN + 0.34,
-                           1 - SF.PAD_TOP_MARGIN - 0.04)
-        leg.SetBorderSize(0)
-        leg.SetFillStyle(0)
-        leg.SetTextFont(42)
-        leg.SetTextSize(0.030)
-        leg.SetHeader("|#eta| topology")
-        for lab, g in graphs:
-            leg.AddEntry(g, lab, "lp")
-        leg.Draw()
-        keep.append(leg)
+    panels = [
+        ("sigma", "fitted #sigma (GeV)", "4.2f"),
+        ("mu", "fitted #mu (GeV)", "6.1f"),
+        ("n_eff", "N_{eff}", "4.0f"),
+    ]
+    for key, ytit, fmt in panels:
+        vals = [f[key] for v in by_eta.values() for f in v
+                if f.get(key) is not None]
+        if not vals:
+            continue
+        lo, hi = min(vals), max(vals)
+        pad = 0.05 * (hi - lo) if hi > lo else (0.05 * abs(hi) or 1.0)
+        zrange = (lo - pad, hi + pad)
+        for sh, v in by_eta.items():
+            resolution_map(v, plotdir, year, sh, label, key, ytit,
+                           zrange, save_pdf, fmt)
+        print(f"  {key} map: z range {zrange[0]:.3g} .. {zrange[1]:.3g} "
+              f"(shared across {', '.join(by_eta)})")
 
-        cms_label(c, year)
-        save(c, f"{plotdir}/{key}_vs_pt_byeta_{year}", save_pdf)
+
+def fit_cell(x, hist, tag, min_entries):
+    """Fit one map cell WITHOUT writing canvases.
+
+    sigFit.fit_one always draws the ratio and pull panels, which is right
+    for a handful of bins and wrong for ~60 map cells per eta region. This
+    does the same two-pass Minuit2 fit with the same pinned nuisances and
+    returns just the numbers.
+    """
+    norm = SF.range_integral(hist)
+    n_eff = SF.effective_entries(hist)
+    if hist.GetEntries() < min_entries or norm <= 0:
+        return None
+
+    data = ROOT.RooDataHist(f"dh_{tag}", "data", ROOT.RooArgList(x), hist)
+    pdf, bundle = SF.make_signal_pdf(x, tag)
+    nom, nuis = bundle["nom"], bundle["nuis"]
+    for v in nuis.values():
+        v.setVal(0.0)
+        v.setConstant(True)
+
+    opts = [ROOT.RooFit.Minimizer("Minuit2"), ROOT.RooFit.Strategy(2),
+            ROOT.RooFit.Save(True), ROOT.RooFit.Range("full"),
+            ROOT.RooFit.SumW2Error(True), ROOT.RooFit.PrintLevel(-1)]
+    pdf.fitTo(data, *opts)
+    res = pdf.fitTo(data, *opts)
+
+    parked = [k for k, v in nom.items() if SF.near_bound(v)]
+    ok = res.status() == 0 and res.covQual() == 3 and not parked
+    return {"mu": nom["mu"].getVal(), "muErr": nom["mu"].getError(),
+            "sigma": nom["sigma"].getVal(),
+            "sigmaErr": nom["sigma"].getError(),
+            "yield": norm, "n_eff": n_eff,
+            "status": res.status(), "cov_qual": res.covQual(),
+            "params_at_bound": parked, "ok": ok,
+            "_keep": (pdf, bundle, data)}
 
 
 def input_files(args, year):
@@ -567,7 +620,7 @@ def main():
     df = ROOT.RDataFrame(TREE, files)
     cols = set(str(c) for c in df.GetColumnNames())
 
-    need = ["Muon1_eta", "Muon2_eta", PTCOL, args.mass]
+    need = ["Muon1_eta", "Muon2_eta", "Muon1_pt", "Muon2_pt", args.mass]
     missing = [c for c in need if c not in cols]
     if missing:
         raise SystemExit(f"input has no {', '.join(missing)}")
@@ -591,8 +644,7 @@ def main():
     # eta categories (inclusive in pT), pT bins (inclusive in eta), then a
     # pT scan inside each eta category
     eta_shorts = [b["short"] for b in eta_bins()]
-    groups = [("eta", ETA_AXIS), ("pt", PT_AXIS)]
-    groups += [(f"pt_{sh}", f"{PT_AXIS}, {sh}") for sh in eta_shorts]
+    groups = [("eta", ETA_AXIS)]
 
     print(f"sample  : {args.sig} ({args.category})"
           f"\nyear    : {year}"
@@ -602,8 +654,9 @@ def main():
           + f"\nmass    : {args.mass}"
           f"\neta     : {ETA_EDGES}  -> "
           f"{', '.join(b['short'] for b in eta_bins())}"
-          f"\npT      : {PT_EDGES} GeV ({PTCOL})"
-          + (f" + open bin >{PT_EDGES[-1]:g}" if PT_OVERFLOW else "")
+          f"\nmuon map: {MU2D_MIN:g}-{MU2D_MAX:g} GeV in "
+          f"{MU2D_WIDTH:g} GeV cells + open, lead vs sub "
+          f"({len(mu2d_cells(eta_bins()[0]))} cells per topology)"
           + f"\ngroups  : {', '.join(g for g, _ in groups)}"
           f"\nweight  : {weight or 'unweighted'}"
           f"\nwindow  : {XLOW}-{XHIGH} GeV, {MASSBINS} bins"
@@ -628,7 +681,7 @@ def main():
                        "filt": None, "group": None,
                        "h": histo("inclusive", None)})
 
-    all_bins = eta_bins() + pt_bins() + cross_bins()
+    all_bins = eta_bins()
     for b in all_bins:
         tag = f"{b['tag']}_{year}"
         booked.append({**b, "tag": tag, "h": histo(tag, b["filt"])})
@@ -704,15 +757,62 @@ def main():
     for group, axis in groups:
         overlay_pdfs(x, fits, outdir, year, group, axis, args.pdf)
         summary_graph(fits, outdir, year, group, axis, args.pdf)
-    summary_by_eta(fits, outdir, year, args.pdf)
+    # --- the 2D resolution maps -------------------------------------
+    print(f"\nfitting the leading-vs-subleading pT map "
+          f"({args.min_entries}+ entries per cell)")
+    map_fits, keep_cells = [], []
+    for eb in eta_bins():
+        cells = mu2d_cells(eb)
+        booked_cells = [(c, histo(f"{c['tag']}_{year}", c["filt"]))
+                        for c in cells]
+        nok = 0
+        for c, hh in booked_cells:
+            h = hh.GetValue()
+            h.SetDirectory(0)
+            if args.cell_plots:
+                r = fit_one(x, h, f"{c['tag']}_{year}", c["label"], outdir,
+                            freeze=False, year=year, save_pdf=args.pdf)
+                if r is None:
+                    continue
+                _, _, _, rec = r
+                out = {"mu": rec["parameters"]["mu"]["value"],
+                       "muErr": rec["parameters"]["mu"]["error"],
+                       "sigma": rec["parameters"]["sigma"]["value"],
+                       "sigmaErr": rec["parameters"]["sigma"]["error"],
+                       "yield": rec["normalization"]["integral"],
+                       "n_eff": rec["normalization"]["effective_entries"],
+                       "status": rec["fit_quality"]["status"],
+                       "cov_qual": rec["fit_quality"]["cov_qual"],
+                       "params_at_bound": rec["fit_quality"]["params_at_bound"],
+                       "ok": rec["fit_quality"]["ok"]}
+            else:
+                out = fit_cell(x, h, f"{c['tag']}_{year}", args.min_entries)
+            if out is None:
+                map_fits.append({**c, "sigma": None, "mu": None,
+                                 "n_eff": None, "skipped": True})
+                continue
+            keep_cells.append(out.pop("_keep", None))
+            nok += 1
+            map_fits.append({**c, **out})
+            dump[c["tag"]] = {"label": c["label"], "short": c["short"],
+                              "group": c["group"], "filter": c["filt"],
+                              **{k: v for k, v in out.items()
+                                 if k != "_keep"}}
+        print(f"  {eb['short']}: {nok} of {len(cells)} cells fitted")
+
+    resolution_maps(map_fits, outdir, year,
+                    f"{args.sig} {year}", args.pdf)
 
     out = {"provenance": {
         "written_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git_commit": git_commit(), "files": files, "year": year,
         "eras": None if args.file else eras,
         "sig": args.sig, "category": args.category,
-        "mass_column": args.mass, "pt_column": PTCOL,
-        "eta_edges": ETA_EDGES, "pt_edges": PT_EDGES,
+        "mass_column": args.mass,
+        "eta_edges": ETA_EDGES,
+        "mu2d": {"min": MU2D_MIN, "max": MU2D_MAX, "width": MU2D_WIDTH,
+                 "lead": MU2D_LEAD, "sub": MU2D_SUB,
+                 "min_entries": args.min_entries},
         "groups": [g for g, _ in groups], "weight": weight,
         "fit_range": [XLOW, XHIGH], "n_bins": MASSBINS}, "fits": dump}
     jf = os.path.join(outdir, f"fitEtaBins_{args.sig}_{year}.json")
