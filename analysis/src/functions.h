@@ -608,7 +608,7 @@ float wrongOSSFmass(const Vec_f& pts,
             bool nearZ   = fabs(M - Z_MASS) < 15.;
             bool lowMass = M < 12.;
 
-            ir (nearZ || lowMass) {
+            if (nearZ || lowMass) {
                 float score = nearZ ? fabs(M - Z_MASS) : (12. - M);
                 if (score < bestScore) {
                     bestScore = score;
