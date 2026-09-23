@@ -85,6 +85,14 @@ PALETTE_RGB = [
 # sigFit; 600x600 canvas -> 0.144.
 CMS_EXTRA_OFFSET = 2.4
 
+# z-axis colour palette for the 2D resolution maps. Any ROOT EColorPalette
+# works: kPastel, kBird, kViridis, kCividis, kTemperatureMap, kRainBow, ...
+# A SEQUENTIAL palette (kViridis, kCividis) is the safer choice for a
+# resolution map, since the eye then reads "darker = better"; kPastel and
+# kRainBow are not monotonic in lightness, so nearby cells can look more
+# different than they are.
+MAP_PALETTE = ROOT.kCandy
+
 # overlay legend
 OVERLAY_TEXT_SIZE = 0.026   # NDC; each entry is two lines of this
 OVERLAY_GAP = 0.03          # NDC between the tallest curve and the legend
@@ -152,12 +160,16 @@ def parse_args():
     p.add_argument("--weight", default="w_allSF",
                    help="weight column, or 'none' for unweighted")
     p.add_argument("-o", "--plotdir",
-                   default=f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/EtaBinFits",
+                   default=f"/home/submit/{getpass.getuser()}/public_html/HmumuFits/EtaBinFits",
                    help="base output dir. Everything is written to a "
                         "<plotdir>/<year>/ subdirectory, so runs for different "
                         "years never overwrite each other.")
     p.add_argument("--no-inclusive", action="store_true",
                    help="skip the inclusive fit used as the delta reference")
+    p.add_argument("--palette", default=None,
+                   help="ROOT palette name for the 2D maps, e.g. kPastel, "
+                        "kBird, kViridis, kCividis, kTemperatureMap "
+                        f"(default: whatever MAP_PALETTE is set to)")
     p.add_argument("--pdf", action="store_true", help="also write .pdf")
     return p.parse_args()
 
@@ -510,20 +522,25 @@ def resolution_map(cells, plotdir, year, eta_short, label, key, ytit,
 
     c1 = make_canvas(f"c_map_{key}_{eta_short}")
     c1.SetRightMargin(0.17)
+    ROOT.gStyle.SetPalette(MAP_PALETTE)
     ROOT.gStyle.SetPaintTextFormat(fmt)
     h.Draw("COLZ0 TEXT")
 
+    # Inside the frame, top-left: the CMS header occupies
+    # y = 1 - topMargin + 0.2*topMargin (0.936 by default), so anything
+    # above ~0.90 collides with it. The upper-left of the map is empty by
+    # construction (subleading <= leading), so the text has that space.
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(0.030)
-    latex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.03, 0.945,
-                    f"{label}   {eta_short}")
-    note = (f"open cells: #geq {MU2D_MAX:g} GeV"
-            if any(c.get("open_x") or c.get("open_y") for c in cells) else "")
-    if note:
+    latex.SetTextSize(0.032)
+    x0 = SF.PAD_LEFT_MARGIN + 0.04
+    latex.DrawLatex(x0, 0.86, f"{label}")
+    latex.DrawLatex(x0, 0.81, f"|#eta| topology: {eta_short}")
+    if any(c.get("open_x") or c.get("open_y") for c in cells):
         latex.SetTextSize(0.024)
-        latex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.03, 0.905, note)
+        latex.DrawLatex(x0, 0.76,
+                        f"overflow bin: #geq {MU2D_MAX:g} GeV")
 
     cms_label(c1, year)
     save(c1, f"{plotdir}/{key}_map_{eta_short}_{year}", save_pdf)
@@ -610,7 +627,12 @@ def input_files(args, year):
 
 
 def main():
+    global MAP_PALETTE
     args = parse_args()
+    if args.palette:
+        if not hasattr(ROOT, args.palette):
+            raise SystemExit(f"ROOT has no palette named {args.palette}")
+        MAP_PALETTE = getattr(ROOT, args.palette)
     SF.setup_style()
     year = normalize_year(args.year)
 
@@ -638,7 +660,7 @@ def main():
 
     # every output goes under <plotdir>/<year>/, and every fit tag carries the
     # year too, so runs for different years cannot overwrite one another
-    outdir = os.path.join(args.plotdir, year)
+    outdir = os.path.join(args.plotdir, args.category, year)
     os.makedirs(outdir, exist_ok=True)
 
     # eta categories (inclusive in pT), pT bins (inclusive in eta), then a
@@ -790,14 +812,34 @@ def main():
             if out is None:
                 map_fits.append({**c, "sigma": None, "mu": None,
                                  "n_eff": None, "skipped": True})
+                dump[c["tag"]] = {
+                    "label": c["label"], "short": c["short"],
+                    "group": c["group"], "filter": c["filt"],
+                    "skipped": f"fewer than {args.min_entries} entries",
+                    "fit_quality": {"ok": True},   # skipped, not failed
+                }
                 continue
             keep_cells.append(out.pop("_keep", None))
             nok += 1
             map_fits.append({**c, **out})
-            dump[c["tag"]] = {"label": c["label"], "short": c["short"],
-                              "group": c["group"], "filter": c["filt"],
-                              **{k: v for k, v in out.items()
-                                 if k != "_keep"}}
+            # Same nested schema as the fit_one records, so the JSON is
+            # uniform and the final "which fits need checking" scan does
+            # not have to know where an entry came from.
+            dump[c["tag"]] = {
+                "label": c["label"], "short": c["short"],
+                "group": c["group"], "filter": c["filt"],
+                "parameters": {
+                    "mu": {"value": out["mu"], "error": out["muErr"]},
+                    "sigma": {"value": out["sigma"],
+                              "error": out["sigmaErr"]},
+                },
+                "normalization": {"integral": out["yield"],
+                                  "effective_entries": out["n_eff"]},
+                "fit_quality": {"status": out["status"],
+                                "cov_qual": out["cov_qual"],
+                                "params_at_bound": out["params_at_bound"],
+                                "ok": out["ok"]},
+            }
         print(f"  {eb['short']}: {nok} of {len(cells)} cells fitted")
 
     resolution_maps(map_fits, outdir, year,
