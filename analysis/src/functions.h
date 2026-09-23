@@ -633,6 +633,40 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i
 
 }
 
+// Mass of the opposite-sign pair that is NOT the Higgs candidate, where
+// i1,i2 are the Higgs pair as returned by getMuonIndices (positions in the
+// goodMuons-masked arrays, i.e. index_Mu).
+//
+// With three muons the net charge is +-1, so exactly two opposite-sign pairs
+// exist and this one is unique. With more muons there are several and the
+// first found is returned, so only use this for the 3-muon case.
+//
+// Returns -1 when there is no such pair, which the caller must treat as "no
+// veto" rather than as a mass.
+float massNonHiggsOS(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i& charges, const float mass_, const int i1, const int i2){
+
+  const int n = etas.size();
+
+  for (int i = 0; i < n; i++){
+
+    for (int j = i+1; j < n; j++){
+
+      if ((i==i1 && j==i2) || (i==i2 && j==i1)) continue; // the Higgs pair
+
+      if (charges[i]*charges[j]>0) continue; // looking for OS
+
+      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], mass_);
+      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], mass_);
+
+      return (pi + pj).M();
+
+    }
+  }
+
+  return -1.f;
+
+}
+
 stdVec_i pickExtraMu(const Vec_f& pts,
 		   int mu1_idx, int mu2_idx)
 {
@@ -811,9 +845,11 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
   } else {
 
-    float max = 0;
+    // Run 2 (CMS arXiv:2009.04363): the candidate is the highest-pT OS pair
+    // with 110 < m < 150; fall back to the highest-pT pair if none qualifies
+    float max = 0, maxWin = 0;
 
-    int n = etas.size(), index0 = -1, index1 = -1;
+    int n = etas.size(), index0 = -1, index1 = -1, iWin = -1, jWin = -1;
 
     for (int i = 0; i < n; i++){
 
@@ -830,11 +866,17 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 	  index0 = i;
 	  index1 = j;
 	}
+	float M = (pi+pj).M();
+	if (M > 110. && M < 150. && maxWin < PT) {
+	  maxWin = PT;
+	  iWin = i;
+	  jWin = j;
+	}
       }
     }
 
-    idx_[0] = index0;
-    idx_[1] = index1;
+    idx_[0] = (iWin >= 0) ? iWin : index0;
+    idx_[1] = (iWin >= 0) ? jWin : index1;
 
   }
 
