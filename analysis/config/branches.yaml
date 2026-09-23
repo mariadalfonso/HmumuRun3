@@ -23,8 +23,10 @@ base:
   - luminosityBlock
   - boson_ptWeight
   - HiggsCandCorrMass
+  - HiggsCandCorrMassErr
   - HiggsCandCorrPt
   - HiggsCandCorrRapidity
+  - HiggsCandMass
   - HiggsCandMassErr
   - cosThetaCS
   - phiStarCS

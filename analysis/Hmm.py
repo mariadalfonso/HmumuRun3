@@ -725,10 +725,11 @@ def analysis(files,year,mc,sumW):
     df = doCategories(dfComm,mc,year)
 
     # Zgamma has these: |dz| < 1.0 cm, |dxy| < 0.5 cm, SIP3D < 4
-    df = (df.Define("HiggsCandMass","Minv(Muon1Vec_,Muon2Vec_)") # BScorrected only
-          .Define("HiggsCandMassErr","MinvErr(Muon1Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu1], Muon2Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu2])")
+    df = (df.Define("HiggsCandMass","Minv(Muon1Vec_,Muon2Vec_)") # BS corrected only
+          .Define("HiggsCandMassErr","MinvErr(Muon1Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu1], Muon2Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu2])") # Relative mass resolution, BS corrected only
           .Define("HiggsCandCorr","Pair12(Muon1Vec,Muon2Vec)")
-          .Define("HiggsCandCorrMass","HiggsCandCorr.M()")
+          .Define("HiggsCandCorrMass","HiggsCandCorr.M()") # BS + FSR corrected 
+          .Define("HiggsCandCorrMassErr","MinvErr(Muon1Vec.Pt(), Muon_bsConstrainedPtErr[idx_mu1], Muon2Vec.Pt(), Muon_bsConstrainedPtErr[idx_mu2])") # Relative mass resolution, BS + FSR corrected
           .Define("HiggsCandCorrPt","HiggsCandCorr.Pt()")
           .Define("HiggsCandCorrEta","HiggsCandCorr.Eta()")
           .Define("HiggsCandCorrPhi","HiggsCandCorr.Phi()")
