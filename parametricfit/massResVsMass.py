@@ -125,6 +125,19 @@ CMS_SCALE = 0.72
 # sits on top of the colour map, which is the only reliable way to keep it
 # legible whatever the palette and wherever the events fall. The price is a
 # taller top margin.
+# Mass range DRAWN on the 2D map. The histograms are still booked over the
+# full [XLOW, XHIGH] window, so the quantiles, the profiles and the JSON are
+# unaffected -- only the view zooms. Outside ~115-135 the map is a sparse
+# scatter that compresses the interesting region.
+MAP_MASS_RANGE = (115.0, 135.0)
+
+# Log z on the 2D map. The occupancy spans orders of magnitude -- the peak
+# cell holds a few hundred times what a tail cell does -- so on a linear
+# scale everything outside the core reads as the lowest colour. Log z shows
+# the tail structure instead, at the cost of making the core look less
+# dominant than it is.
+MAP_LOGZ = False
+
 HDR_TOP_MARGIN = 0.135
 HDR_CMS_SIZE = 0.046
 HDR_SUB_SIZE = 0.032
@@ -172,6 +185,15 @@ def parse_args():
     p.add_argument("-o", "--plotdir",
                    default=os.path.expanduser(
                        "~/public_html/HmumuFits/massResVsMass"))
+    p.add_argument("--logz", action="store_true",
+                   help="log z axis on the 2D map, to see the tail "
+                        "occupancy rather than only the core")
+    p.add_argument("--map-mass-range", nargs=2, type=float, default=None,
+                   metavar=("LO", "HI"),
+                   help=f"mass range drawn on the 2D map (default "
+                        f"{MAP_MASS_RANGE[0]:g} {MAP_MASS_RANGE[1]:g}); the "
+                        f"histograms are still filled over the full window, "
+                        f"so only the view changes. Pass 0 0 for no zoom.")
     p.add_argument("--force-profile", action="store_true",
                    help="write the standalone median-vs-mass plot even for a "
                         "single sample, where it duplicates the curves "
@@ -383,8 +405,18 @@ def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
     h2.GetZaxis().SetLabelFont(43)
     h2.GetZaxis().SetLabelSize(18)
 
+    if MAP_MASS_RANGE:
+        h2.GetXaxis().SetRangeUser(*MAP_MASS_RANGE)
+
     c = make_canvas(f"c2d_{entry['sig']}_{entry['variant']}", right=0.16)
     c.SetTopMargin(HDR_TOP_MARGIN)
+    if MAP_LOGZ:
+        # An empty bin is 0, which has no place on a log axis: ROOT then
+        # drops it to the underflow colour, indistinguishable from a bin
+        # holding one event. Setting the floor just below 1 keeps the two
+        # apart -- empty stays blank, one event gets the lowest colour.
+        c.SetLogz()
+        h2.SetMinimum(0.5)
     ROOT.gStyle.SetPalette(MAP_PALETTE)
     h2.Draw("COLZ")
 
@@ -419,7 +451,8 @@ def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
         # tail, so the band is not symmetric about the median.
         right2="solid: median,  dashed: #pm1#sigma"))
 
-    save(c, f"{plotdir}/{entry['sig']}_2d_{entry['variant']}_{year}",
+    sfx = "_logz" if MAP_LOGZ else ""
+    save(c, f"{plotdir}/{entry['sig']}_2d_{entry['variant']}{sfx}_{year}",
          save_pdf)
 
 
@@ -640,8 +673,12 @@ def plot_fsr_compare(entries, plotdir, year, label, ytit, save_pdf):
 # ---------------------------------------------------------------------------
 
 def main():
-    global MAP_PALETTE
+    global MAP_PALETTE, MAP_MASS_RANGE, MAP_LOGZ
     args = parse_args()
+    MAP_LOGZ = args.logz or MAP_LOGZ
+    if args.map_mass_range:
+        lo, hi = args.map_mass_range
+        MAP_MASS_RANGE = None if hi <= lo else (lo, hi)
     if args.palette:
         if not hasattr(ROOT, args.palette):
             raise SystemExit(f"ROOT has no palette named {args.palette}")
@@ -809,6 +846,7 @@ def main():
         "category": args.category, "samples": args.sig,
         "variants": {k: {"mass": m, "relerr": er} for k, m, er, _ in variants},
         "absolute": absolute, "cut": args.cut, "weight": args.weight,
+        "map_mass_range": MAP_MASS_RANGE, "map_logz": MAP_LOGZ,
         "mass_window": [XLOW, XHIGH],
         "quantiles": [Q_LO, Q_MID, Q_HI]}, "samples": dump}
     jf = os.path.join(outdir, f"massResVsMass_{year}.json")
