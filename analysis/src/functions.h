@@ -15,6 +15,7 @@ using stdVec_f = std::vector<float>;
 const float ele_mass_ = 0.000511;
 const float muon_mass_ = 0.10566;
 const float Z_mass_ = 91.1880; // GeV
+const float W_mass_ = 80.3770; // GeV
 const float H_mass_ = 125.0; // GeV
 
 // TO DO: implement the correction
