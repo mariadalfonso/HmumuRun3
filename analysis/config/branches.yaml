@@ -19,8 +19,6 @@ base:
   - w_allSF
   - lumiIntegrated
   - PV_npvsGood
-  # number of muons passing the full per-muon selection: the multiplicity
-  # getMuonIndices branches on, since it receives goodMuons-masked arrays
   - nGoodMuons
   - run
   - event
@@ -52,16 +50,9 @@ base:
 base_mc_only:
   - Muon1_genPartFlav
   - Muon2_genPartFlav
-  # gen-level origin of the selected pair: 25 = H, 23 = Z, 24 = W,
-  # 15 = tau, 4/5 = heavy flavour, 0 = unmatched
   - Muon1_genOrigin
   - Muon2_genOrigin
   - pairFromHiggs
-  # how many of the good muons came from the Higgs. With pairFromHiggs
-  # false, nGoodMuFromH == 2 means the right pair was available and the
-  # pairing chose wrong (recoverable); < 2 means an H muon was lost
-  # by the object selection (not a pairing problem).
-  - nGoodMuFromH
 
 # ---------------------------------------------------------------------
 #  Category-specific, MC and data alike.
@@ -159,7 +150,6 @@ per_mode:
     - mt
 
   isTThad:
-    # nothing category-specific; see base_mc_only
     - category
     - Muon1_sip3d
     - Muon2_sip3d
@@ -205,26 +195,6 @@ per_mode_mc_only:
     - Lepton_genPartFlav
     - boson_genMassZ
     - boson_genPtZ
-    # --- pairing study -------------------------------------------------
-    # Per-good-muon properties, masked by goodMuons, so index_Mu indexes
-    # straight into them. Variable-length arrays of nGoodMuons entries.
-    # index_Mu records what the current algorithm chose, which is what any
-    # new criterion has to be scored against.
-    - index_Mu
-    - goodMu_pt
-    - goodMu_rawpt
-    - goodMu_eta
-    - goodMu_phi
-    - goodMu_charge
-    - goodMu_genOrigin
-    - goodMu_genPartFlav
-    - goodMu_sip3d
-    - goodMu_iso04
-    - goodMu_miniIso
-    - goodMu_promptMVA
-    - goodMu_jetDF
-    - goodMu_mt
-    - goodMu_dRminB
 
   isVhad:
     - boson_genMassZ
@@ -232,26 +202,6 @@ per_mode_mc_only:
 
   isTTlep:
     - Lepton_genPartFlav
-    # --- pairing study -------------------------------------------------
-    # Per-good-muon properties, masked by goodMuons, so index_Mu indexes
-    # straight into them. Variable-length arrays of nGoodMuons entries.
-    # index_Mu records what the current algorithm chose, which is what any
-    # new criterion has to be scored against.
-    - index_Mu
-    - goodMu_pt
-    - goodMu_rawpt
-    - goodMu_eta
-    - goodMu_phi
-    - goodMu_charge
-    - goodMu_genOrigin
-    - goodMu_genPartFlav
-    - goodMu_sip3d
-    - goodMu_iso04
-    - goodMu_miniIso
-    - goodMu_promptMVA
-    - goodMu_jetDF
-    - goodMu_mt
-    - goodMu_dRminB
 
   isTThad:
     # nothing category-specific; see base_mc_only

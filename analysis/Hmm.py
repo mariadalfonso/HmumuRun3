@@ -242,12 +242,6 @@ def doCategories(df,mc,year):
     if mc>0:
         df = (df.Define("Muon1_genPartFlav","Muon_genPartFlav[idx_mu1]")
               .Define("Muon2_genPartFlav","Muon_genPartFlav[idx_mu2]")
-              # per-good-muon origin, in the same order getMuonIndices sees
-              .Define("goodMu_genOrigin",
-                      "genOriginPdgVec(Muon_genPartIdx[goodMuons], GenPart_pdgId, GenPart_genPartIdxMother)")
-              .Define("nGoodMuFromH","(int) Sum(goodMu_genOrigin == 25)")
-              # gen-level origin of the two selected muons: 25 = H, 23 = Z,
-              # 24 = W, 15 = tau, 4/5 = heavy flavour, 0 = unmatched
               .Define("Muon1_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu1], GenPart_pdgId, GenPart_genPartIdxMother)")
               .Define("Muon2_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu2], GenPart_pdgId, GenPart_genPartIdxMother)")
               .Define("pairFromHiggs","Muon1_genOrigin==25 && Muon2_genOrigin==25")
@@ -256,35 +250,6 @@ def doCategories(df,mc,year):
               .Redefine("boson_ptWeight","(float)computeDYturbo(boson_genPtZ, boson_genMassZ)")
 #              .Define("higgs_genPtLHE","getLHEPart_boson(LHEPart_pt, LHEPart_status, LHEPart_pdgId, 25)")
 #              .Define("boson_genPtLHE","getLHEPart_boson(LHEPart_pt, LHEPart_status, LHEPart_pdgId, 23)")
-              )
-
-    # Pairing study, only where >2 good muons are possible (the other five
-    # categories apply mu_veto, so the pair is forced). Per-good-muon
-    # properties in the SAME order getMuonIndices sees them, i.e. masked by
-    # goodMuons, so index_Mu indexes directly into these arrays. With these
-    # plus goodMu_genOrigin any pairing criterion can be scored offline
-    # against the current choice, without re-running.
-    if mc>0 and (mode == "isVlep" or mode == "isTTlep"):
-        df = (df.Define("goodMu_pt","Muon_bsConstrainedPt[goodMuons]")
-              .Define("goodMu_rawpt","Muon_pt[goodMuons]")
-              .Define("goodMu_eta","Muon_eta[goodMuons]")
-              .Define("goodMu_phi","Muon_phi[goodMuons]")
-              .Define("goodMu_charge","Muon_charge[goodMuons]")
-              .Define("goodMu_genPartFlav","Muon_genPartFlav[goodMuons]")
-              .Define("goodMu_sip3d","Muon_sip3d[goodMuons]")
-              .Define("goodMu_iso04","Muon_pfRelIso04_all[goodMuons]")     # FSR-corrected
-              .Define("goodMu_miniIso","Muon_miniPFRelIso_all[goodMuons]") # not FSR-corrected
-              .Define("goodMu_promptMVA","Muon_promptMVA[goodMuons]")
-              .Define("goodMu_jetDF","Muon_jetDF[goodMuons]")
-              # m_T with MET: the WH handle, the W muon carries the neutrino
-              .Define("goodMu_mt",
-                      "mtVec(Muon_bsConstrainedPt[goodMuons], Muon_phi[goodMuons],"
-                      "      PuppiMET_pt, PuppiMET_phi)")
-              # dR to the nearest loose b-jet: the ttH handle, the intruder
-              # descends from a top
-              .Define("goodMu_dRminB",
-                      "dRminVec(Muon_eta[goodMuons], Muon_phi[goodMuons],"
-                      "         Jet_eta[BJETSloose], Jet_phi[BJETSloose])")
               )
 
     # --- Reusable blocks ---
@@ -405,7 +370,7 @@ def doCategories(df,mc,year):
         category_map = {
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",  # W→e  (WH)
             2: f"({n_goodEle}>0 && {q_looseEle}==0 && {n_looseEle}==2 && {q_goodMu}==0 && {n_looseMu}==2)", # Z→ee (ZH)
-            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_goodMu})==1 && {freeOfZ})",  # W→μ  (WH)
+            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_goodMu})==1 && {noZnonH})",  # W→μ  (WH)
             4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0)",                   # Z→μμ (ZH)
         }
 
