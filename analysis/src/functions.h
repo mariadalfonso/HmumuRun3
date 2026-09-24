@@ -15,6 +15,7 @@ using stdVec_f = std::vector<float>;
 const float ele_mass_ = 0.000511;
 const float muon_mass_ = 0.10566;
 const float Z_mass_ = 91.1880; // GeV
+const float W_mass_ = 80.3770; // GeV
 const float H_mass_ = 125.0; // GeV
 
 // TO DO: implement the correction
@@ -760,6 +761,81 @@ struct PairingResult {
 };
 
 
+struct WHPairingResult {
+    Pair  Hpair;
+    int   Wmu;     // index of the muon assigned to the W
+    float mtW;     // its transverse mass with MET
+    float score;   // chi2-like, see below
+    bool  valid;
+};
+
+// Resolutions entering the WH score. The two terms are on very different
+// scales, so unlike findBestZHCombo -- where both terms are dimuon masses of
+// comparable resolution and a plain sum of |dm| is defensible -- these MUST
+// be weighted or the mT term, whose deviations are tens of GeV, swamps the
+// mass term, whose deviations are a few GeV.
+const float sigma_mH_  =  2.0; // GeV, dimuon mass resolution
+const float sigma_mTlo_ = 30.0; // GeV, mT below mW: the Jacobian tail, common
+const float sigma_mThi_ = 15.0; // GeV, mT above mW: resolution only, rare
+
+// H + W with three muons: the opposite-sign pair is the Higgs candidate and
+// the remaining muon is the W lepton, scored against m_H and the mT of that
+// muon with MET.
+//
+// Three muons have net charge +-1, so exactly two opposite-sign pairs exist
+// and each leaves a different muon over: two hypotheses, and the leftover is
+// unique in each. Only defined for n == 3; anything else returns invalid.
+//
+// The mT penalty is ASYMMETRIC on purpose. For a real W the transverse mass
+// has a Jacobian edge at m_W and a long tail below it, so a value under m_W
+// is ordinary while one above it needs resolution to explain. A symmetric
+// |mT - m_W| penalty therefore punishes the correct assignment, and measures
+// worse than simply taking the larger mT (65% against 68% on W-H, 3mu).
+WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const float met_pt, const float met_phi) {
+
+  WHPairingResult best;
+  best.valid = false;
+  best.score = std::numeric_limits<float>::max();
+  best.Wmu = -1;
+  best.mtW = -1.f;
+
+  const int n = etas.size();
+  if (n != 3) return best;
+
+  for (int i = 0; i < n; i++) {
+
+    for (int j = i+1; j < n; j++) {
+
+      if (charges[i]*charges[j] > 0) continue; // Higgs candidate must be OS
+
+      const int k = 3 - i - j;                 // the leftover muon, 0+1+2 = 3
+
+      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], muon_mass_);
+      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], muon_mass_);
+
+      const float mH  = (pi + pj).M();
+      const float mtW = mt(pts[k], phis[k], met_pt, met_phi);
+
+      const float dH = (mH - H_mass_) / sigma_mH_;
+      const float dW = (mtW > W_mass_) ? (mtW - W_mass_) / sigma_mThi_
+                                       : (W_mass_ - mtW) / sigma_mTlo_;
+
+      const float score = dH*dH + dW*dW;
+
+      if (score < best.score) {
+        best.valid = true;
+        best.score = score;
+        best.Hpair = Pair{i, j, mH};
+        best.Wmu   = k;
+        best.mtW   = mtW;
+      }
+    }
+  }
+
+  return best;
+
+}
+
 PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges) {
 // useful for the Zmumu + Hmm 4mu final state
 
@@ -817,7 +893,7 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
 
 }
 
-stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const std::string mode){
+stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const std::string mode, const float met_pt, const float met_phi){
 
   stdVec_i idx_(2, -1);
 
@@ -832,6 +908,16 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
     }
     idx_[0]=0;
     idx_[1]=1;
+
+  } else if (n == 3 and (mode=="isVlep" or mode=="isTTlep")) {
+    // target W-->munu and H-->mumu
+
+    auto result = findBestWHCombo(pts, etas, phis, charges, met_pt, met_phi);
+
+    if (result.valid) {
+      idx_[0] = result.Hpair.i;
+      idx_[1] = result.Hpair.j;
+    } // falls through to the generic branch below if no OS pair exists
 
   } else if (n == 4 and mode=="isVlep") {
     // target Z-->mumu and H--> mumu
