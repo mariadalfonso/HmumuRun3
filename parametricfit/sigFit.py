@@ -86,7 +86,7 @@ RATIO_GUIDES = (1.2, 0.8)   # Template/Fit, +/-0.2 around 1
 PULL_GUIDES = (2.0, -2.0)   # +/-2 sigma
 PAD_TOP_MARGIN = 0.08
 PAD_BOTTOM_MARGIN = 0.13
-PAD_LEFT_MARGIN = 0.16
+PAD_LEFT_MARGIN = 0.15
 PAD_RIGHT_MARGIN = 0.05
 
 # Lower-pad text in ABSOLUTE pixel sizes (font code ending in 3), so it
@@ -103,9 +103,10 @@ LINE_SPACING = 1.35          # dy = LINE_SPACING * text size
 PARAM_BLOCK_WIDTH = 0.42     # left edge of the right block, from the frame's
                              # right edge. Widen if long lines get clipped.
 
-DATA_MARKER_STYLE = 20
-DATA_MARKER_SIZE = 1.2
-DATA_LINE_WIDTH = 2
+# Marker style
+DATA_MARKER_STYLE = 24
+DATA_MARKER_SIZE = 0.8
+DATA_LINE_WIDTH = 1
 
 FIT_COLOR_RGB = (237, 41, 57)     # plot_style "redMed"
 
@@ -334,7 +335,7 @@ def _style_lower_marker(obj):
     obj.SetMarkerSize(DATA_MARKER_SIZE)
     obj.SetMarkerColor(ROOT.kBlack)
     obj.SetLineColor(ROOT.kBlack)
-
+    obj.SetLineWidth(DATA_LINE_WIDTH)
 
 def near_bound(var, tol=0.01):
     """True if a floating parameter ended up parked on a limit."""
@@ -440,6 +441,34 @@ def _annotate(nom, chi2_ndf, norm, n_eff, label):
 
     return latex
 
+def fit_legend(frame, x1=None, y1=None, x2=None, y2=None,
+               model="DSCB model", data="Simulation"):
+    """Legend for a mass-fit panel: the points, then the curve.
+
+    Takes the drawn objects off the RooPlot by the names given to
+    plotOn ("dat", "fit"), so the marker and line styles in the legend are
+    whatever was actually drawn rather than a second set that can drift.
+    """
+    x1 = PAD_LEFT_MARGIN + 0.03 if x1 is None else x1
+    x2 = PAD_LEFT_MARGIN + 0.25 if x2 is None else x2
+    y2 = 0.65 if y2 is None else y2
+    y1 = 0.5 if y1 is None else y1
+
+    leg = ROOT.TLegend(x1, y1, x2, y2)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(42)
+    leg.SetTextSize(0.034)
+    d = frame.findObject("dat")
+    f = frame.findObject("fit")
+    if d:
+        leg.AddEntry(d, data, "pe")
+    if f:
+        leg.AddEntry(f, model, "l")
+    leg.Draw()
+    return leg
+
+
 def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
              year=None, save_pdf=False):
     """Write two 2-panel canvases and return chi2/ndf.
@@ -466,11 +495,10 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
     _style_ratio_axis(frame.GetYaxis(), RATIO_Y_TITLE_OFFSET)
     frame.GetXaxis().SetLabelSize(0)      # shared axis: labels on lower pad
     frame.GetXaxis().SetTitleSize(0)
-    frame.SetMaximum(1.1 * frame.GetMaximum())   # headroom
+    frame.SetMaximum(1.1 * frame.GetMaximum())  # headroom
 
     ratio = _make_ratio(hist, pdf, x, norm)
     _style_lower_marker(ratio)
-    ratio.SetLineWidth(DATA_LINE_WIDTH)
     ratio.GetYaxis().SetTitle("Template/Fit")
     ratio.GetXaxis().SetTitle("m_{#mu#mu} [GeV]")
     ratio.GetYaxis().SetRangeUser(0.0, 2.0)
@@ -509,6 +537,7 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
         frame.Draw()
         keep_txt = _annotate(nom, chi2_ndf, norm, n_eff, label)
         keep_cms = cms_label(pad1, year)
+        keep_leg = fit_legend(frame)
 
         pad2.cd()
         lower.Draw(draw)
@@ -531,7 +560,7 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
         canvas.SaveAs(f"{outbase}_{kind}.png")
         if save_pdf:
             canvas.SaveAs(f"{outbase}_{kind}.pdf")
-        del keep_txt, keep_cms, pad1, pad2, outer, canvas
+        del keep_txt, keep_cms, keep_leg, pad1, pad2, outer, canvas
 
     return chi2_ndf
 

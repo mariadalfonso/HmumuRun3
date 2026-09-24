@@ -567,8 +567,8 @@ def plot_ratio_overlay(cond, ref1d, label, outbase, year, save_pdf):
             g.SetPoint(k, xv, d / f)
             g.SetPointError(k, 0.0, e / f)
             k += 1
-        g.SetMarkerStyle(20)
-        g.SetMarkerSize(0.5)
+        g.SetMarkerStyle(sf.DATA_MARKER_STYLE)
+        g.SetMarkerSize(sf.DATA_MARKER_SIZE)
         g.SetMarkerColor(col)
         g.SetLineColor(col)
         g.Draw("P SAME")
@@ -631,7 +631,7 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
     frame = x.frame(ROOT.RooFit.Title(""))
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
                 ROOT.RooFit.MarkerStyle(sf.DATA_MARKER_STYLE),
-                ROOT.RooFit.MarkerSize(0.6),
+                ROOT.RooFit.MarkerSize(sf.DATA_MARKER_SIZE),
                 ROOT.RooFit.MarkerColor(ROOT.kBlack),
                 ROOT.RooFit.LineColor(ROOT.kBlack),
                 ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2))
@@ -672,7 +672,7 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
         ratio.SetBinError(b, ey / f)
 
     ratio.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    ratio.SetMarkerSize(0.6)
+    ratio.SetMarkerSize(sf.DATA_MARKER_SIZE)
     ratio.SetMarkerColor(ROOT.kBlack)
     ratio.SetLineColor(ROOT.kBlack)
     ratio.GetYaxis().SetRangeUser(*RATIO_Y_RANGE)
@@ -686,7 +686,7 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
         if ph.GetErrorYhigh(i) <= 0 and ph.GetErrorYlow(i) <= 0:
             ph.RemovePoint(i)
     ph.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    ph.SetMarkerSize(0.6)
+    ph.SetMarkerSize(sf.DATA_MARKER_SIZE)
     ph.SetMarkerColor(ROOT.kBlack)
     ph.SetLineColor(ROOT.kBlack)
     pull_frame.addPlotable(ph, "P")
@@ -703,7 +703,7 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
     sf._style_ratio_axis(frame.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
     frame.GetXaxis().SetLabelSize(0)
     frame.GetXaxis().SetTitleSize(0)
-    frame.SetMaximum(1.25 * frame.GetMaximum())
+    frame.SetMaximum(1.1 * frame.GetMaximum()) # headroom
 
     os.makedirs(os.path.dirname(outbase), exist_ok=True)
     for kind, lower, central, guides, draw in (
@@ -715,6 +715,8 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
         keep_txt = _annotate(nom, chi2_ndf, data.sumEntries(),
                              data.numEntries(), n_eff, label)
         keep_cms = sf.cms_label(pad1, year)
+        keep_leg = sf.fit_legend(frame,
+                                 model="DSCB model (#sigma = #kappa r M_{H})")
 
         pad2.cd()
         lower.Draw(draw)
@@ -734,7 +736,7 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
         canvas.SaveAs(f"{outbase}_{kind}.png")
         if save_pdf:
             canvas.SaveAs(f"{outbase}_{kind}.pdf")
-        del keep_txt, keep_cms, lines, pad1, pad2, outer, canvas
+        del keep_txt, keep_cms, keep_leg, lines, pad1, pad2, outer, canvas
 
     return chi2_ndf, (bin_x, bin_y, bin_e, bin_f)
 
@@ -814,7 +816,7 @@ def plot_resolution(r, r_values, w_values, keys, label, outbase, year,
         h.Scale(1.0 / h.Integral() / h.GetBinWidth(1))   # -> density
 
     h.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    h.SetMarkerSize(0.6)
+    h.SetMarkerSize(sf.DATA_MARKER_SIZE)
     h.SetMarkerColor(ROOT.kBlack)
     h.SetLineColor(ROOT.kBlack)
     h.SetTitle(";#sigma_{m}/m;probability density")

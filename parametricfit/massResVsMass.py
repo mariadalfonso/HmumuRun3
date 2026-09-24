@@ -71,6 +71,11 @@ from sigFit import git_commit, XLOW, XHIGH
 from prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
                          SIGNAL_YEAR_GROUPS, expand_year, get_signal_files,
                          normalize_year)
+# The |eta| topology comes from fitEtaBins rather than being redefined
+# here, so BB/BE/EE mean exactly the same thing in both scripts and
+# changing ETA_EDGES changes both. Importing it is safe: everything in
+# that module is behind a __main__ guard.
+from fitEtaBins import ETA_EDGES, eta_bins
 
 ROOT.gROOT.SetBatch(True)
 ROOT.TH1.SetDefaultSumw2(True)
@@ -125,6 +130,19 @@ CMS_SCALE = 0.72
 # sits on top of the colour map, which is the only reliable way to keep it
 # legible whatever the palette and wherever the events fall. The price is a
 # taller top margin.
+# Mass slices for the sigma_m/m distribution. These need NOT partition the
+# window -- the script reports any gap or overlap rather than silently
+# adjusting them, because a deliberate gap (skipping the peak, say) and an
+# accidental one look identical in the code.
+MASS_SLICES = [(110.0, 120.0), (120.0, 130.0), (130.0, 150.0)]
+
+# |eta| topology split. The same BB/BE/EE categories fitEtaBins uses, so
+# the resolution seen here can be matched against the sigma fitted there.
+ETA_DERIVED = {
+    "absEta1": "(float)std::abs(Muon1_eta)",
+    "absEta2": "(float)std::abs(Muon2_eta)",
+}
+
 # Mass range DRAWN on the 2D map. The histograms are still booked over the
 # full [XLOW, XHIGH] window, so the quantiles, the profiles and the JSON are
 # unaffected -- only the view zooms. Outside ~115-135 the map is a sparse
@@ -194,6 +212,16 @@ def parse_args():
                         f"{MAP_MASS_RANGE[0]:g} {MAP_MASS_RANGE[1]:g}); the "
                         f"histograms are still filled over the full window, "
                         f"so only the view changes. Pass 0 0 for no zoom.")
+    p.add_argument("--mass-slices", nargs="+", type=float, default=None,
+                   metavar="EDGE",
+                   help="mass slice EDGES for the sigma_m/m distributions, "
+                        "e.g. 110 120 125 130 150. Default is "
+                        + " ".join(f"{a:g}-{b:g}" for a, b in MASS_SLICES)
+                        + "; any gap or overlap is reported, not fixed.")
+    p.add_argument("--no-slices", action="store_true",
+                   help="skip the mass-slice distributions")
+    p.add_argument("--no-eta", action="store_true",
+                   help="skip the |eta| topology split (BB/BE/EE)")
     p.add_argument("--force-profile", action="store_true",
                    help="write the standalone median-vs-mass plot even for a "
                         "single sample, where it duplicates the curves "
@@ -380,7 +408,9 @@ def band_graph(xs, los, his, col):
     return g
 
 
-def median_graph(xs, mids, col, style=20):
+def median_graph(xs, mids, col, style=None):
+    """Marker style defaults to sigFit's, so points match across scripts."""
+    style = SF.DATA_MARKER_STYLE if style is None else style
     g = ROOT.TGraph(len(xs))
     for i, (xx, mm) in enumerate(zip(xs, mids)):
         g.SetPoint(i, xx, mm)
@@ -388,7 +418,7 @@ def median_graph(xs, mids, col, style=20):
     g.SetLineWidth(3)
     g.SetMarkerColor(col)
     g.SetMarkerStyle(style)
-    g.SetMarkerSize(0.7)
+    g.SetMarkerSize(SF.DATA_MARKER_SIZE)
     return g
 
 
@@ -408,7 +438,9 @@ def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
     if MAP_MASS_RANGE:
         h2.GetXaxis().SetRangeUser(*MAP_MASS_RANGE)
 
-    c = make_canvas(f"c2d_{entry['sig']}_{entry['variant']}", right=0.16)
+    esfx = f"_{entry['eta']}" if entry.get("eta") else ""
+    c = make_canvas(f"c2d_{entry['sig']}_{entry['variant']}{esfx}",
+                    right=0.16)
     c.SetTopMargin(HDR_TOP_MARGIN)
     if MAP_LOGZ:
         # An empty bin is 0, which has no place on a log axis: ROOT then
@@ -445,15 +477,16 @@ def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
     # shorter caption keeps the whole second line on one row.
     keep.append(header_2d(
         c, year,
-        left2=f"{entry['sig']}, {entry['desc']}",
+        left2=(f"{entry['sig']}, {entry['desc']}"
+               + (f", {entry['eta']}" if entry.get("eta") else "")),
         # "+/-1 sigma" is the usual shorthand for the 16-84% range. It is
         # exact only for a Gaussian, and this distribution has a long high
         # tail, so the band is not symmetric about the median.
         right2="solid: median,  dashed: #pm1#sigma"))
 
     sfx = "_logz" if MAP_LOGZ else ""
-    save(c, f"{plotdir}/{entry['sig']}_2d_{entry['variant']}{sfx}_{year}",
-         save_pdf)
+    save(c, f"{plotdir}/{entry['sig']}_2d_{entry['variant']}"
+            f"{esfx}{sfx}_{year}", save_pdf)
 
 
 def plot_profile(entries, plotdir, year, label, ytit, save_pdf,
@@ -581,6 +614,209 @@ def plot_1d(entries, plotdir, year, label, xtit, save_pdf,
     save(c, f"{plotdir}/dist{suffix}_{year}", save_pdf)
 
 
+def check_slices(slices, lo=None, hi=None):
+    """Report gaps and overlaps in the mass slices."""
+    lo = XLOW if lo is None else lo
+    hi = XHIGH if hi is None else hi
+    ss = sorted(slices)
+    msgs = []
+    if ss[0][0] > lo:
+        msgs.append(f"{lo:g}-{ss[0][0]:g} not covered")
+    for (a1, b1), (a2, b2) in zip(ss, ss[1:]):
+        if a2 > b1:
+            msgs.append(f"{b1:g}-{a2:g} not covered")
+        elif a2 < b1:
+            msgs.append(f"{a2:g}-{b1:g} counted twice")
+    if ss[-1][1] < hi:
+        msgs.append(f"{ss[-1][1]:g}-{hi:g} not covered")
+    return msgs
+
+
+def slice_distributions(entry, slices=None):
+    """sigma_m/m distribution in each mass slice.
+
+    Taken as y-projections of the 2D histogram that is already booked, so
+    the slices cost nothing extra -- no second pass over the files.
+
+    Each is normalised to unit area, so the comparison is of SHAPE: the
+    question is whether the resolution distribution itself changes across
+    the mass window, not how many events each slice holds.
+    """
+    slices = MASS_SLICES if slices is None else slices
+    h2 = entry["h2"]
+    xax = h2.GetXaxis()
+    probs = array("d", [Q_LO, Q_MID, Q_HI])
+
+    out = []
+    for lo, hi in slices:
+        b1 = xax.FindBin(lo + 1e-6)
+        b2 = xax.FindBin(hi - 1e-6)
+        name = (f"slice_{entry['sig']}_{entry['variant']}"
+                f"{entry.get('eta') or 'incl'}_{lo:g}_{hi:g}")
+        h = h2.ProjectionY(name.replace(".", "p"), b1, b2)
+        h.SetDirectory(0)
+        n = h.Integral()
+        if n <= 0:
+            continue
+        qs = array("d", [0.0, 0.0, 0.0])
+        h.GetQuantiles(3, qs, probs)
+        h.Scale(1.0 / n / h.GetBinWidth(1))
+        out.append({"lo": lo, "hi": hi, "h": h, "n": n,
+                    "q16": qs[0], "median": qs[1], "q84": qs[2]})
+    return out
+
+
+def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
+                     slices=None):
+    """The slice distributions overlaid, with their medians marked."""
+    sl = entry.get("slices") or slice_distributions(entry, slices)
+    if len(sl) < 2:
+        return
+
+    esfx = f"_{entry['eta']}" if entry.get("eta") else ""
+    c = make_canvas(f"cslice_{entry['sig']}_{entry['variant']}{esfx}")
+    keep = []
+
+    ymax = max(s["h"].GetMaximum() for s in sl)
+    leg = ROOT.TLegend(1 - SF.PAD_RIGHT_MARGIN - 0.46,
+                       1 - SF.PAD_TOP_MARGIN - 0.06 - 0.05 * len(sl),
+                       1 - SF.PAD_RIGHT_MARGIN - 0.02,
+                       1 - SF.PAD_TOP_MARGIN - 0.06)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(42)
+    leg.SetTextSize(0.027)
+
+    for i, sd in enumerate(sl):
+        h = sd["h"]
+        h.SetStats(0)
+        h.SetLineColor(color(i))
+        h.SetLineWidth(3)
+        h.SetTitle(f";{xtit};fraction of events")
+        style_axes(h)
+        h.SetMaximum(1.40 * ymax)
+        h.Draw("HIST" if i == 0 else "HIST SAME")
+        keep.append(h)
+
+        ln = ROOT.TLine(sd["median"], 0.0, sd["median"], 1.05 * ymax)
+        ln.SetLineColor(color(i))
+        ln.SetLineStyle(ROOT.kDashed)
+        ln.SetLineWidth(2)
+        ln.Draw("SAME")
+        keep.append(ln)
+
+        leg.AddEntry(h, f"{sd['lo']:g}-{sd['hi']:g} GeV  "
+                        f"(med {sd['median']:.4g})", "l")
+
+    leg.Draw()
+    keep.append(leg)
+
+    tex = ROOT.TLatex()
+    tex.SetNDC()
+    tex.SetTextFont(42)
+    tex.SetTextSize(0.028)
+    dy = 0.042
+    lines = [f"{entry['sig']}, {label.split(',')[0].strip()}",
+             entry["desc"]]
+    if entry.get("eta"):
+        lines.append(f"|#eta| topology: {entry['eta']}")
+    lines.append("dashed: median")
+    for i, ln_ in enumerate(lines):
+        tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln_)
+    keep.append(tex)
+
+    keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+    save(c, f"{plotdir}/{entry['sig']}_slices_{entry['variant']}"
+            f"{esfx}_{year}", save_pdf)
+
+
+def plot_eta_compare(entries, plotdir, year, label, ytit, save_pdf):
+    """Median resolution versus mass, one curve per |eta| topology.
+
+    The point of the split: BB, BE and EE have genuinely different
+    resolutions, and this shows how much, and whether the MASS dependence
+    differs between them. fitEtaBins fits a single sigma in each of these
+    categories -- this is the per-event error behind those numbers, so the
+    two should tell the same story.
+
+    One canvas per variant, since pre- and post-FSR are different
+    measurements rather than two series to overlay.
+    """
+    shorts = [b["short"] for b in eta_bins()]
+    for vkey in sorted({e["variant"] for e in entries}):
+        rows = [(sh, next((e for e in entries
+                           if e["variant"] == vkey and e.get("eta") == sh
+                           and e["prof"][0]), None)) for sh in shorts]
+        rows = [(sh, e) for sh, e in rows if e]
+        if len(rows) < 2:
+            continue
+        incl = next((e for e in entries if e["variant"] == vkey
+                     and not e.get("eta") and e["prof"][0]), None)
+
+        allv = [v for _, e in rows for v in e["prof"][2]]
+        lo, hi = min(allv), max(allv)
+        span = (hi - lo) or 0.1 * abs(hi) or 1.0
+
+        frame = ROOT.TH1F(f"etaf_{vkey}", f";m_{{#mu#mu}} (GeV);{ytit}",
+                          1, XLOW, XHIGH)
+        frame.SetDirectory(0)
+        frame.SetStats(0)
+        frame.SetMinimum(lo - 0.15 * span)
+        frame.SetMaximum(hi + 0.40 * span)
+        style_axes(frame)
+
+        c = make_canvas(f"c_eta_{vkey}")
+        frame.Draw()
+        keep = [frame]
+
+        leg = ROOT.TLegend(SF.PAD_LEFT_MARGIN + 0.04,
+                           1 - SF.PAD_TOP_MARGIN - 0.04
+                           - 0.048 * (len(rows) + (1 if incl else 0)),
+                           SF.PAD_LEFT_MARGIN + 0.44,
+                           1 - SF.PAD_TOP_MARGIN - 0.04)
+        leg.SetBorderSize(0)
+        leg.SetFillStyle(0)
+        leg.SetTextFont(42)
+        leg.SetTextSize(0.027)
+
+        if incl:
+            xs, _, mids, _, _ = incl["prof"]
+            g = median_graph(xs, mids, ROOT.kBlack, 24)
+            g.SetLineStyle(ROOT.kDashed)
+            g.SetMarkerSize(0)
+            g.Draw("L SAME")
+            leg.AddEntry(g, f"inclusive  ({incl['median']:.4g})", "l")
+            keep.append(g)
+
+        for i, (sh, e) in enumerate(rows):
+            xs, los, mids, his, _ = e["prof"]
+            col = color(i)
+            band = band_graph(xs, los, his, col)
+            band.Draw("F SAME")
+            g = median_graph(xs, mids, col)
+            g.SetMarkerSize(0)
+            g.Draw("L SAME")
+            keep += [band, g]
+            leg.AddEntry(g, f"{sh}  ({e['median']:.4g})", "l")
+
+        leg.Draw()
+        keep.append(leg)
+
+        tex = ROOT.TLatex()
+        tex.SetNDC()
+        tex.SetTextFont(42)
+        tex.SetTextSize(0.026)
+        tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.42,
+                      SF.PAD_BOTTOM_MARGIN + 0.05,
+                      "line: median   band: 16-84%")
+        tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.42,
+                      SF.PAD_BOTTOM_MARGIN + 0.02, f"{label}, {vkey}")
+        keep.append(tex)
+
+        keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+        save(c, f"{plotdir}/eta_compare_{vkey}_{year}", save_pdf)
+
+
 def plot_fsr_compare(entries, plotdir, year, label, ytit, save_pdf):
     """Pre- versus post-FSR median resolution, one colour per sample.
 
@@ -705,6 +941,14 @@ def main():
     ytit = "#sigma_{m} (GeV)" if absolute else "#sigma_{m} / m"
     ymax = ABS_MAX if absolute else REL_MAX
 
+    if args.mass_slices:
+        e = args.mass_slices
+        if len(e) < 2:
+            raise SystemExit("--mass-slices needs at least two edges")
+        slices = list(zip(e, e[1:]))
+    else:
+        slices = MASS_SLICES
+
     outdir = os.path.join(args.plotdir, args.category, year)
     os.makedirs(outdir, exist_ok=True)
     label = f"{args.category}, {year}"
@@ -714,11 +958,20 @@ def main():
           f"\nsamples  : {', '.join(args.sig)}"
           f"\nvariants : "
           + "; ".join(f"{k} ({m} / {e})" for k, m, e, _ in variants)
+          + ("\neta      : " + ", ".join(b["short"] for b in eta_bins())
+             + f"  from {ETA_EDGES}" if not args.no_eta else "")
+          + ("\nslices   : "
+             + ", ".join(f"{a:g}-{b:g}" for a, b in slices)
+             if not args.no_slices else "")
           + f"\ny axis   : {'absolute (GeV)' if absolute else 'relative'}"
             f"\ncut      : {args.cut or 'none'}"
             f"\nplots    : {outdir}")
 
     # ---- book every (sample, variant) before triggering any loop -------
+    if not args.no_slices:
+        for msg in check_slices(slices):
+            print(f"note: mass slices -- {msg}")
+
     entries = []
     for sig in args.sig:
         files = (list(args.file) if args.file else
@@ -737,6 +990,21 @@ def main():
         if weight and weight not in cols:
             raise SystemExit(f"{sig}: input has no weight column {weight}")
 
+        # |eta| topology needs the per-muon eta; define the helpers once
+        eta_ok = all(c in cols for c in ("Muon1_eta", "Muon2_eta"))
+        if not args.no_eta and not eta_ok:
+            print(f"  !! {sig}: no Muon1_eta/Muon2_eta, skipping the eta "
+                  f"split")
+        if not args.no_eta and eta_ok:
+            for nm, expr in ETA_DERIVED.items():
+                if nm not in cols:
+                    df0 = df0.Define(nm, expr)
+
+        # "" is the inclusive category; the rest are BB, BE, EE
+        etas = [("", None)]
+        if not args.no_eta and eta_ok:
+            etas += [(b["short"], b["filt"]) for b in eta_bins()]
+
         for vkey, mcol, ecol, vdesc in variants:
             missing = [c for c in (mcol, ecol) if c not in cols]
             if missing:
@@ -744,29 +1012,33 @@ def main():
                       f"skipping variant {vkey}")
                 continue
 
-            df = (df0
-                  .Filter(f"!std::isnan({mcol})", "valid mass")
-                  .Filter(f"{ecol} > 0", "valid resolution")
-                  .Filter(f"{mcol} >= {XLOW} && {mcol} < {XHIGH}",
-                          "fit window"))
+            base = (df0
+                    .Filter(f"!std::isnan({mcol})", "valid mass")
+                    .Filter(f"{ecol} > 0", "valid resolution")
+                    .Filter(f"{mcol} >= {XLOW} && {mcol} < {XHIGH}",
+                            "fit window"))
             if args.cut:
-                df = df.Filter(args.cut, "user cut")
+                base = base.Filter(args.cut, "user cut")
 
             yexpr = (f"(float)({mcol} * {ecol})" if absolute
                      else f"(float){ecol}")
-            df = df.Define("_yval", yexpr)
+            base = base.Define("_yval", yexpr)
 
-            sp2 = (f"h2_{sig}_{vkey}", "", MASS_NBINS, XLOW, XHIGH,
-                   REL_NBINS, 0.0, ymax)
-            sp1 = (f"h1_{sig}_{vkey}", "", REL_NBINS, 0.0, ymax)
-            h2 = (df.Histo2D(sp2, mcol, "_yval", weight) if weight
-                  else df.Histo2D(sp2, mcol, "_yval"))
-            h1 = (df.Histo1D(sp1, "_yval", weight) if weight
-                  else df.Histo1D(sp1, "_yval"))
-            entries.append({"sig": sig, "variant": vkey, "desc": vdesc,
-                            "mass_col": mcol, "relerr_col": ecol,
-                            "files": files,
-                            "_h2": h2, "_h1": h1, "_n": df.Count()})
+            for eta_short, eta_filt in etas:
+                df = base.Filter(eta_filt, "eta") if eta_filt else base
+                sfx = f"_{eta_short}" if eta_short else ""
+                sp2 = (f"h2_{sig}_{vkey}{sfx}", "",
+                       MASS_NBINS, XLOW, XHIGH, REL_NBINS, 0.0, ymax)
+                sp1 = (f"h1_{sig}_{vkey}{sfx}", "", REL_NBINS, 0.0, ymax)
+                h2 = (df.Histo2D(sp2, mcol, "_yval", weight) if weight
+                      else df.Histo2D(sp2, mcol, "_yval"))
+                h1 = (df.Histo1D(sp1, "_yval", weight) if weight
+                      else df.Histo1D(sp1, "_yval"))
+                entries.append({"sig": sig, "variant": vkey, "desc": vdesc,
+                                "eta": eta_short,
+                                "mass_col": mcol, "relerr_col": ecol,
+                                "files": files, "_h2": h2, "_h1": h1,
+                                "_n": df.Count()})
 
     if not entries:
         raise SystemExit("nothing to plot")
@@ -786,23 +1058,47 @@ def main():
         xs, _, mids, _, _ = e["prof"]
         e["slope_per_gev"] = ((mids[-1] - mids[0]) / (xs[-1] - xs[0])
                               if len(xs) > 1 else float("nan"))
+        e["slices"] = ([] if args.no_slices
+                       else slice_distributions(e, slices))
 
     # ---- report --------------------------------------------------------
-    print(f"\n{'sample':<7}{'variant':<10}{'events':>11}{'q16':>11}"
-          f"{'median':>11}{'q84':>11}{'slope/GeV':>12}")
+    print(f"\n{'sample':<7}{'variant':<10}{'eta':<6}{'events':>11}"
+          f"{'q16':>11}{'median':>11}{'q84':>11}{'slope/GeV':>12}")
     for e in entries:
-        print(f"{e['sig']:<7}{e['variant']:<10}{e['n']:>11d}"
+        print(f"{e['sig']:<7}{e['variant']:<10}"
+              f"{e.get('eta') or 'incl':<6}{e['n']:>11d}"
               f"{e['q16']:>11.5g}{e['median']:>11.5g}{e['q84']:>11.5g}"
               f"{e['slope_per_gev']:>12.3g}")
+
+    if any(e.get("slices") for e in entries):
+        print(f"\nsigma_m/m by mass slice"
+              f"\n{'sample':<7}{'variant':<10}{'eta':<6}{'slice':<14}"
+              f"{'events':>11}{'median':>11}")
+        for e in entries:
+            for sd in e.get("slices", []):
+                rng = f"{sd['lo']:g}-{sd['hi']:g}"
+                print(f"{e['sig']:<7}{e['variant']:<10}"
+                      f"{e.get('eta') or 'incl':<6}"
+                      f"{rng:<14}{sd['n']:>11.1f}"
+                      f"{sd['median']:>11.5g}")
+
+    # how much worse is the endcap than the barrel?
+    for vkey in sorted({e["variant"] for e in entries}):
+        byeta = {e.get("eta"): e for e in entries if e["variant"] == vkey}
+        if "BB" in byeta and "EE" in byeta and byeta["BB"]["median"]:
+            ratio = byeta["EE"]["median"] / byeta["BB"]["median"]
+            print(f"  {vkey}: EE/BB median resolution = {ratio:.3f}")
 
     # FSR gain per sample, from the integrated medians
     if len(variants) > 1:
         print(f"\n{'sample':<7}{'pre':>11}{'post':>11}{'change':>10}")
         for sig in args.sig:
             pre = next((e for e in entries if e["sig"] == sig
-                        and e["variant"] == "preFSR"), None)
+                        and e["variant"] == "preFSR"
+                        and not e.get("eta")), None)
             post = next((e for e in entries if e["sig"] == sig
-                         and e["variant"] == "postFSR"), None)
+                         and e["variant"] == "postFSR"
+                         and not e.get("eta")), None)
             if not (pre and post and pre["median"]):
                 continue
             rel = (post["median"] - pre["median"]) / pre["median"]
@@ -813,9 +1109,15 @@ def main():
     # ---- plots ---------------------------------------------------------
     for e in entries:
         plot_2d(e, outdir, year, label, ytit, args.pdf)
-    n_samples = len({e["sig"] for e in entries})
+        if e.get("slices"):
+            plot_mass_slices(e, outdir, year, label, ytit, args.pdf,
+                             slices)
+    # The sample/variant overlays compare SAMPLES, so they use the
+    # inclusive category only; the eta split gets its own plot below.
+    incl_entries = [e for e in entries if not e.get("eta")]
+    n_samples = len({e["sig"] for e in incl_entries})
     for vkey, _, _, _ in variants:
-        sub = [e for e in entries if e["variant"] == vkey]
+        sub = [e for e in incl_entries if e["variant"] == vkey]
         sfx = f"_{vkey}" if len(variants) > 1 else ""
         # The standalone profile only adds something when several samples
         # share the axes: with one sample its median and band are already
@@ -826,18 +1128,26 @@ def main():
                          args.pdf, sfx)
         plot_1d(sub, outdir, year, f"{label}, {vkey}", ytit, args.pdf, sfx)
     if len(variants) > 1:
-        plot_fsr_compare(entries, outdir, year, label, ytit, args.pdf)
+        plot_fsr_compare(incl_entries, outdir, year, label, ytit, args.pdf)
+    if any(e.get("eta") for e in entries):
+        plot_eta_compare(entries, outdir, year, label, ytit, args.pdf)
 
     # ---- json ----------------------------------------------------------
     dump = {}
     for e in entries:
         xs, los, mids, his, ns = e["prof"]
-        dump.setdefault(e["sig"], {})[e["variant"]] = {
+        key = e["variant"] + (f"_{e['eta']}" if e.get("eta") else "")
+        dump.setdefault(e["sig"], {})[key] = {
+            "eta": e.get("eta") or "inclusive",
             "mass_column": e["mass_col"], "relerr_column": e["relerr_col"],
             "n_events": e["n"], "q16": e["q16"], "median": e["median"],
             "q84": e["q84"], "slope_per_gev": e["slope_per_gev"],
             "profile": {"mass": xs, "q16": los, "median": mids,
-                        "q84": his, "n": ns}}
+                        "q84": his, "n": ns},
+            "mass_slices": [{"lo": sd["lo"], "hi": sd["hi"],
+                             "n": sd["n"], "q16": sd["q16"],
+                             "median": sd["median"], "q84": sd["q84"]}
+                            for sd in e.get("slices", [])]}
 
     out = {"provenance": {
         "written_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -845,6 +1155,10 @@ def main():
         "eras": None if args.file else expand_year(year, SIGNAL_YEAR_GROUPS),
         "category": args.category, "samples": args.sig,
         "variants": {k: {"mass": m, "relerr": er} for k, m, er, _ in variants},
+        "eta_edges": ETA_EDGES,
+        "mass_slices": [list(sl) for sl in slices],
+        "eta_categories": ([b["short"] for b in eta_bins()]
+                           if not args.no_eta else []),
         "absolute": absolute, "cut": args.cut, "weight": args.weight,
         "map_mass_range": MAP_MASS_RANGE, "map_logz": MAP_LOGZ,
         "mass_window": [XLOW, XHIGH],
