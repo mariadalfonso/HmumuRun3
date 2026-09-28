@@ -368,6 +368,35 @@ int genOriginPdg(int gi, const Vec_i& pdg, const Vec_s& mom) {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// genOriginPdg for a collection: one entry per element of genIdx, in the same
+// order. Called with a goodMuons-masked Muon_genPartIdx, so the result lines
+// up with the arrays getMuonIndices receives and index_Mu indexes into it.
+// ---------------------------------------------------------------------------
+Vec_i genOriginPdgVec(const Vec_s& genIdx, const Vec_i& pdg, const Vec_s& mom) {
+
+  Vec_i out;
+  out.reserve(genIdx.size());
+  for (size_t k = 0; k < genIdx.size(); ++k)
+    out.push_back(genOriginPdg((int)genIdx[k], pdg, mom));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Value of a per-GenPart quantity for the gen particle matched to a reco muon.
+//
+// gi is Muon_genPartIdx[i], which is -1 when the muon has no gen match. The
+// matched particle is the muon as it entered the detector, i.e. after FSR and
+// bremsstrahlung: the "bare" gen muon. It is the reference for the pT measured
+// by the tracker, hence for a pull built from Muon_bsConstrainedPtErr.
+//
+// Returns bad (-999) when there is no match, so it can be cut on offline.
+// ---------------------------------------------------------------------------
+float genMatchedVal(int gi, const Vec_f& v, float bad = -999.f) {
+  if (gi < 0 || gi >= (int)v.size()) return bad;
+  return v[gi];
+}
+
 float getGenPart_boson(const Vec_f & GenPart_xyz, const Vec_i & GenPart_status, const Vec_i & GenPart_pdgId, const Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
 
   // this only works for Z

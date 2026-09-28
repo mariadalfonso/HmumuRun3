@@ -221,6 +221,16 @@ def doCategories(df,mc,year):
           .Define("Muon2Vec", "MakeTLVSum(Muon2Vec_ ,fsrIdx_mu2, FsrPhoton_pt, FsrPhoton_eta, FsrPhoton_phi)")
           .Define("Muon1_pt","Muon1Vec.Pt()")
           .Define("Muon2_pt","Muon2Vec.Pt()")
+          # --- resolution / pull study handles ---------------------------
+          # Muon{1,2}_pt     : BS-constrained + scale&smear + FSR photon (above)
+          # Muon{1,2}_pt_bs  : BS-constrained + scale&smear, no FSR photon
+          # Muon{1,2}_ptErr  : Muon_bsConstrainedPtErr, the track-fit error
+          # This pT/error combination is the one HiggsCandMassErr is built
+          # from, which is why it is the one the pull study validates.
+          .Define("Muon1_pt_bs","Muon1Vec_.Pt()")
+          .Define("Muon2_pt_bs","Muon2Vec_.Pt()")
+          .Define("Muon1_ptErr","Muon_bsConstrainedPtErr[idx_mu1]")
+          .Define("Muon2_ptErr","Muon_bsConstrainedPtErr[idx_mu2]")
           .Define("classify","topology(Muon1_eta, Muon2_eta)")
           ###
           # Jet_puIdDisc only for nanov15
@@ -245,6 +255,25 @@ def doCategories(df,mc,year):
               .Define("Muon1_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu1], GenPart_pdgId, GenPart_genPartIdxMother)")
               .Define("Muon2_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu2], GenPart_pdgId, GenPart_genPartIdxMother)")
               .Define("pairFromHiggs","Muon1_genOrigin==25 && Muon2_genOrigin==25")
+              # --- truth pT of the two selected muons ---------------------
+              # The gen particle at Muon_genPartIdx is the muon as it entered
+              # the detector, i.e. after FSR and bremsstrahlung: the "bare" gen
+              # muon. That is the reference for the pT the tracker measured,
+              # hence the partner of Muon{1,2}_pt_bs and of the track-fit
+              # error Muon{1,2}_ptErr.
+              .Define("Muon1_genIdx","(int) Muon_genPartIdx[idx_mu1]")
+              .Define("Muon2_genIdx","(int) Muon_genPartIdx[idx_mu2]")
+              .Define("Muon1_genPt","genMatchedVal(Muon1_genIdx, GenPart_pt)")
+              .Define("Muon2_genPt","genMatchedVal(Muon2_genIdx, GenPart_pt)")
+              # only needed to form genDR below, not snapshotted
+              .Define("Muon1_genEta","genMatchedVal(Muon1_genIdx, GenPart_eta)")
+              .Define("Muon2_genEta","genMatchedVal(Muon2_genIdx, GenPart_eta)")
+              .Define("Muon1_genPhi","genMatchedVal(Muon1_genIdx, GenPart_phi)")
+              .Define("Muon2_genPhi","genMatchedVal(Muon2_genIdx, GenPart_phi)")
+              # match quality, the one diagnostic worth carrying: -1 when the
+              # muon has no gen match at all
+              .Define("Muon1_genDR","Muon1_genIdx>=0 ? deltaR(Muon1_eta,Muon1_phi,Muon1_genEta,Muon1_genPhi) : -1.f")
+              .Define("Muon2_genDR","Muon2_genIdx>=0 ? deltaR(Muon2_eta,Muon2_phi,Muon2_genEta,Muon2_genPhi) : -1.f")
               .Define("boson_genMassZ","getGenPart_boson(GenPart_mass, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Define("boson_genPtZ","getGenPart_boson(GenPart_pt, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Redefine("boson_ptWeight","(float)computeDYturbo(boson_genPtZ, boson_genMassZ)")

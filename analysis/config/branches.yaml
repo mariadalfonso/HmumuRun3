@@ -39,6 +39,15 @@ base:
   - Muon2_pt
   - Muon1_eta
   - Muon2_eta
+  # --- muon pT resolution / pull study --------------------------------
+  #   Muon*_pt      BS-constrained + scale&smear + recovered FSR photon
+  #   Muon*_pt_bs   BS-constrained + scale&smear, no FSR photon
+  #   Muon*_ptErr   Muon_bsConstrainedPtErr, the track-fit error
+  # pt_bs with ptErr is the combination HiggsCandMassErr is built from.
+  - Muon1_pt_bs
+  - Muon2_pt_bs
+  - Muon1_ptErr
+  - Muon2_ptErr
   - PuppiMET_pt
   - PuppiMET_phi
   - discrMVA
@@ -53,6 +62,19 @@ base_mc_only:
   - Muon1_genOrigin
   - Muon2_genOrigin
   - pairFromHiggs
+  # how many of the good muons came from the Higgs. With pairFromHiggs
+  # false, nGoodMuFromH == 2 means the right pair was available and the
+  # pairing chose wrong (recoverable); < 2 means an H muon was lost
+  # by the object selection (not a pairing problem).
+  - nGoodMuFromH
+  # --- truth pT of the two selected muons ------------------------------
+  # Bare gen muon, i.e. the muon after FSR and bremsstrahlung, which is
+  # what the tracker measured. Truth partner of Muon*_pt_bs.
+  - Muon1_genPt
+  - Muon2_genPt
+  # dR(reco, gen), -1 when the muon has no gen match
+  - Muon1_genDR
+  - Muon2_genDR
 
 # ---------------------------------------------------------------------
 #  Category-specific, MC and data alike.
