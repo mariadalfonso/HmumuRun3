@@ -185,7 +185,7 @@ def doCategories(df,mc,year):
           .Define("goodMuons","{}".format(muonSel))
           .Define("nGoodMuons","(int) Sum(goodMuons)")
           .Filter("Sum(goodMuons)>=1","at least two good muons")
-          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}", PuppiMET_pt, PuppiMET_phi)'.format(mode))
+          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], Muon_bsConstrainedPtErr[goodMuons], "{}", PuppiMET_pt, PuppiMET_phi, PuppiMET_covXX, PuppiMET_covXY, PuppiMET_covYY)'.format(mode))
           #.Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
           .Filter("index_Mu[0]!= -1 and index_Mu[1]!= -1", "OS pair")
           .Define("mNonHiggsOS","massNonHiggsOS(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], muon_mass_, index_Mu[0], index_Mu[1])")
@@ -281,6 +281,14 @@ def doCategories(df,mc,year):
               .Define("goodMu_mt",
                       "mtVec(Muon_bsConstrainedPt[goodMuons], Muon_phi[goodMuons],"
                       "      PuppiMET_pt, PuppiMET_phi)")
+              # the resolution the WH score divides that mT by, from the
+              # PuppiMET covariance and the muon pT error
+              .Define("goodMu_mtErr",
+                      "mtErrVec(Muon_bsConstrainedPt[goodMuons], Muon_bsConstrainedPtErr[goodMuons],"
+                      "         Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi,"
+                      "         PuppiMET_covXX, PuppiMET_covXY, PuppiMET_covYY)")
+              # and the mass resolution of the SELECTED pair, for the other term
+              .Define("goodMu_ptErr","Muon_bsConstrainedPtErr[goodMuons]")
               # dR to the nearest loose b-jet: the ttH handle, the intruder
               # descends from a top
               .Define("goodMu_dRminB",

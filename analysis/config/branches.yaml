@@ -225,6 +225,8 @@ per_mode_mc_only:
     - goodMu_jetDF
     - goodMu_mt
     - goodMu_dRminB
+    - goodMu_mtErr
+    - goodMu_ptErr
 
   isVhad:
     - boson_genMassZ
@@ -252,6 +254,8 @@ per_mode_mc_only:
     - goodMu_jetDF
     - goodMu_mt
     - goodMu_dRminB
+    - goodMu_mtErr
+    - goodMu_ptErr
 
   isTThad:
     # nothing category-specific; see base_mc_only
