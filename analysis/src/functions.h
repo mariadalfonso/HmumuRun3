@@ -15,6 +15,7 @@ using stdVec_f = std::vector<float>;
 const float ele_mass_ = 0.000511;
 const float muon_mass_ = 0.10566;
 const float Z_mass_ = 91.1880; // GeV
+const float W_mass_ = 80.3770; // GeV
 const float H_mass_ = 125.0; // GeV
 
 // TO DO: implement the correction
@@ -351,18 +352,8 @@ std::pair<float, float> CollinSopperAngles(const TLorentzVector& mu1, const TLor
 // below analysis oriented functions
 
 
-// ---------------------------------------------------------------------------
-// Gen-level origin of a reconstructed muon.
-//
-// Returns the pdgId of the first non-muon ancestor of gen particle gi, walking
-// past the muon copies that FSR and bremsstrahlung insert into the chain:
-//
-//    25  H->mumu        23  Z->mumu        24  W->mu nu
-//    15  tau decay      4/5 c/b hadron      0  unmatched or no ancestor
-//
-// gi is Muon_genPartIdx[i], which is -1 when the muon has no gen match.
-// GenPart_genPartIdxMother is Short_t in NanoAOD v12+, hence Vec_s.
-// ---------------------------------------------------------------------------
+// pdgId of the first non-muon ancestor of gen particle gi (Muon_genPartIdx), skipping
+// FSR muon copies: 25 H, 23 Z, 24 W, 15 tau, 4/5 c/b hadron, 0 if unmatched.
 int genOriginPdg(int gi, const Vec_i& pdg, const Vec_s& mom) {
 
   if (gi < 0 || gi >= (int)pdg.size()) return 0;
@@ -375,20 +366,6 @@ int genOriginPdg(int gi, const Vec_i& pdg, const Vec_s& mom) {
     i = m;
   }
   return 0;
-}
-
-// ---------------------------------------------------------------------------
-// genOriginPdg for a collection: one entry per element of genIdx, in the same
-// order. Called with a goodMuons-masked Muon_genPartIdx, so the result lines
-// up with the arrays getMuonIndices receives and index_Mu indexes into it.
-// ---------------------------------------------------------------------------
-Vec_i genOriginPdgVec(const Vec_s& genIdx, const Vec_i& pdg, const Vec_s& mom) {
-
-  Vec_i out;
-  out.reserve(genIdx.size());
-  for (size_t k = 0; k < genIdx.size(); ++k)
-    out.push_back(genOriginPdg((int)genIdx[k], pdg, mom));
-  return out;
 }
 
 float getGenPart_boson(const Vec_f & GenPart_xyz, const Vec_i & GenPart_status, const Vec_i & GenPart_pdgId, const Vec_s &  GenPart_genPartIdxMother, int typeBos=23) {
@@ -460,11 +437,26 @@ float mt(float pt1, float phi1, float pt2, float phi2) {
   return std::sqrt(2*pt1*pt2*(1-std::cos(phi1-phi2)));
 }
 
-// ---------------------------------------------------------------------------
-// mt of each object against a single other object, typically MET. For the
-// pairing study: in WH the muon from the W is the one whose mt with MET is
-// consistent with m_W, which identifies it without referring to m_H.
-// ---------------------------------------------------------------------------
+// Resolution on mT, from the PuppiMET covariance and the muon pT error.
+float mtErr(const float pt, const float ptErr, const float phi,
+            const float met_pt, const float met_phi,
+            const float covXX, const float covXY, const float covYY) {
+
+  const float m = mt(pt, phi, met_pt, met_phi);
+  if (m <= 0.f) return 0.f;
+
+  const float gx = (pt/m) * (std::cos(met_phi) - std::cos(phi));
+  const float gy = (pt/m) * (std::sin(met_phi) - std::sin(phi));
+
+  float var = gx*gx*covXX + 2.f*gx*gy*covXY + gy*gy*covYY;
+
+  const float dpt = m / (2.f*pt) * ptErr;
+  var += dpt*dpt;
+
+  return std::sqrt(std::max(0.f, var));
+}
+
+// mT of each muon with MET.
 Vec_f mtVec(const Vec_f& pt, const Vec_f& phi, float met_pt, float met_phi) {
 
   Vec_f out;
@@ -474,22 +466,16 @@ Vec_f mtVec(const Vec_f& pt, const Vec_f& phi, float met_pt, float met_phi) {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// dR from each object to the nearest member of a second collection, noneVal
-// when that collection is empty. Pass the second collection already masked,
-// e.g. Jet_eta[BJETSloose], so this stays independent of the b-tagging.
-// ---------------------------------------------------------------------------
-Vec_f dRminVec(const Vec_f& eta, const Vec_f& phi,
-               const Vec_f& eta2, const Vec_f& phi2, float noneVal = 9.9f) {
+// mtErr for each muon.
+Vec_f mtErrVec(const Vec_f& pt, const Vec_f& ptErr, const Vec_f& phi,
+               float met_pt, float met_phi,
+               float covXX, float covXY, float covYY) {
 
   Vec_f out;
-  out.reserve(eta.size());
-  for (size_t k = 0; k < eta.size(); ++k) {
-    float best = noneVal;
-    for (size_t j = 0; j < eta2.size(); ++j)
-      best = std::min(best, deltaR(eta[k], phi[k], eta2[j], phi2[j]));
-    out.push_back(best);
-  }
+  out.reserve(pt.size());
+  for (size_t k = 0; k < pt.size(); ++k)
+    out.push_back(mtErr(pt[k], ptErr[k], phi[k],
+                        met_pt, met_phi, covXX, covXY, covYY));
   return out;
 }
 
@@ -553,7 +539,7 @@ float Minv(const TLorentzVector& p1, const TLorentzVector& p2) {
 }
 
 float MinvErr(const float pt1, const float err1, const float pt2, const float err2) {
-  return sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
+  return 0.5f * sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
 }
 
 float minDeta(const float etaDiMu, const float jetEta1, const float jetEta2) {
@@ -630,40 +616,6 @@ bool freeOfZ(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i
   }
 
   return freeOfZ;
-
-}
-
-// Mass of the opposite-sign pair that is NOT the Higgs candidate, where
-// i1,i2 are the Higgs pair as returned by getMuonIndices (positions in the
-// goodMuons-masked arrays, i.e. index_Mu).
-//
-// With three muons the net charge is +-1, so exactly two opposite-sign pairs
-// exist and this one is unique. With more muons there are several and the
-// first found is returned, so only use this for the 3-muon case.
-//
-// Returns -1 when there is no such pair, which the caller must treat as "no
-// veto" rather than as a mass.
-float massNonHiggsOS(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_i& charges, const float mass_, const int i1, const int i2){
-
-  const int n = etas.size();
-
-  for (int i = 0; i < n; i++){
-
-    for (int j = i+1; j < n; j++){
-
-      if ((i==i1 && j==i2) || (i==i2 && j==i1)) continue; // the Higgs pair
-
-      if (charges[i]*charges[j]>0) continue; // looking for OS
-
-      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], mass_);
-      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], mass_);
-
-      return (pi + pj).M();
-
-    }
-  }
-
-  return -1.f;
 
 }
 
@@ -755,12 +707,77 @@ struct Pair {
 struct PairingResult {
     Pair Zpair;
     Pair Hpair;
-    float score; // total deviation from MZ + MH
+    float score; // -2lnL: sum of (dm/sigma)^2 + 2ln(sigma) over both bosons
     bool valid;
 };
 
 
-PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges) {
+struct WHPairingResult {
+    Pair  Hpair;
+    int   Wmu;     // index of the muon assigned to the W
+    float mtW;     // its transverse mass with MET
+    float score;   // -2lnL, see findBestWHCombo
+    bool  valid;
+};
+
+// Z natural width, added in quadrature to the Z-hypothesis mass resolution.
+const float Gamma_Z_ = 2.4952; // GeV
+
+// WH, 3 muons: the OS pair minimising -2lnL = sum (dm/sigma)^2 + 2ln(sigma) over
+// m_H and the mT of the leftover muon. mtErr is detector-only, so it understates
+// the true mT spread. On WH 3mu, mT alone is right 65-68% vs 76% for pair-pT.
+WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const Vec_f& mts, const Vec_f& mtErrs) {
+
+  WHPairingResult best;
+  best.valid = false;
+  best.score = std::numeric_limits<float>::max();
+  best.Wmu = -1;
+  best.mtW = -1.f;
+
+  const int n = etas.size();
+  if (n != 3) return best;
+
+  for (int i = 0; i < n; i++) {
+
+    for (int j = i+1; j < n; j++) {
+
+      if (charges[i]*charges[j] > 0) continue; // Higgs candidate must be OS
+
+      const int k = 3 - i - j;                 // the leftover muon, 0+1+2 = 3
+
+      PtEtaPhiMVector pi(pts[i], etas[i], phis[i], muon_mass_);
+      PtEtaPhiMVector pj(pts[j], etas[j], phis[j], muon_mass_);
+
+      const float mH  = (pi + pj).M();
+      const float mtW = mts[k];
+
+      const float sH = mH * MinvErr(pts[i], ptErrs[i], pts[j], ptErrs[j]);
+
+      const float sT = mtErrs[k];
+      // high floor: if the covariance is missing, mT carries no weight
+      const float sW = std::max(sT, 50.f);
+
+      const float dH = (mH  - H_mass_) / sH;
+      const float dW = (mtW - W_mass_) / sW;
+
+      const float score = dH*dH + 2.f*std::log(sH)
+                        + dW*dW + 2.f*std::log(sW);
+
+      if (score < best.score) {
+        best.valid = true;
+        best.score = score;
+        best.Hpair = Pair{i, j, mH};
+        best.Wmu   = k;
+        best.mtW   = mtW;
+      }
+    }
+  }
+
+  return best;
+
+}
+
+PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs) {
 // useful for the Zmumu + Hmm 4mu final state
 
   auto makePair = [&](int i, int j) {
@@ -789,23 +806,36 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
     Pair p1 = makePair(i1, j1);
     Pair p2 = makePair(i2, j2);
 
-    // assign which pair is Z vs H
-    float d1Z = std::abs(p1.mass - Z_mass_);
-    float d1H = std::abs(p1.mass - H_mass_);
-    float d2Z = std::abs(p2.mass - Z_mass_);
-    float d2H = std::abs(p2.mass - H_mass_);
+    // per-pair resolutions, Gamma_Z in quadrature for the Z hypothesis
+    const float s1 = p1.mass * MinvErr(pts[i1], ptErrs[i1], pts[j1], ptErrs[j1]);
+    const float s2 = p2.mass * MinvErr(pts[i2], ptErrs[i2], pts[j2], ptErrs[j2]);
+
+    const float s1Z = std::sqrt(s1*s1 + Gamma_Z_*Gamma_Z_);
+    const float s2Z = std::sqrt(s2*s2 + Gamma_Z_*Gamma_Z_);
+    const float s1H = s1;
+    const float s2H = s2;
+
+    const float d1Z = (p1.mass - Z_mass_) / s1Z;
+    const float d1H = (p1.mass - H_mass_) / s1H;
+    const float d2Z = (p2.mass - Z_mass_) / s2Z;
+    const float d2H = (p2.mass - H_mass_) / s2H;
+
+    const float chi2_p1Z = d1Z*d1Z + 2.f*std::log(s1Z)
+                         + d2H*d2H + 2.f*std::log(s2H);
+    const float chi2_p2Z = d2Z*d2Z + 2.f*std::log(s2Z)
+                         + d1H*d1H + 2.f*std::log(s1H);
 
     PairingResult candidate;
     candidate.valid = true;
 
-    if (d1Z + d2H < d1H + d2Z) {
+    if (chi2_p1Z < chi2_p2Z) {
       candidate.Zpair = p1;
       candidate.Hpair = p2;
-      candidate.score = d1Z + d2H;
+      candidate.score = chi2_p1Z;
     } else {
       candidate.Zpair = p2;
       candidate.Hpair = p1;
-      candidate.score = d2Z + d1H;
+      candidate.score = chi2_p2Z;
     }
 
     if (candidate.score < best.score) {
@@ -817,7 +847,7 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
 
 }
 
-stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const std::string mode){
+stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const std::string mode, const Vec_f& mts, const Vec_f& mtErrs){
 
   stdVec_i idx_(2, -1);
 
@@ -833,10 +863,20 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
     idx_[0]=0;
     idx_[1]=1;
 
+  } else if (n == 3 and (mode=="isVlep" or mode=="isTTlep")) {
+    // target W-->munu and H-->mumu
+
+    auto result = findBestWHCombo(pts, etas, phis, charges, ptErrs, mts, mtErrs);
+
+    if (result.valid) {
+      idx_[0] = result.Hpair.i;
+      idx_[1] = result.Hpair.j;
+    }
+
   } else if (n == 4 and mode=="isVlep") {
     // target Z-->mumu and H--> mumu
 
-    auto result = findBestZHCombo(pts, etas, phis, charges);
+    auto result = findBestZHCombo(pts, etas, phis, charges, ptErrs);
 
     if (result.valid) {
       idx_[0] = result.Hpair.i;
@@ -845,8 +885,7 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
   } else {
 
-    // Run 2 (CMS arXiv:2009.04363): the candidate is the highest-pT OS pair
-    // with 110 < m < 150; fall back to the highest-pT pair if none qualifies
+    // highest-pT OS pair, preferring 110 < m < 150 (Run 2, arXiv:2009.04363)
     float max = 0, maxWin = 0;
 
     int n = etas.size(), index0 = -1, index1 = -1, iWin = -1, jWin = -1;

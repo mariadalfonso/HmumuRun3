@@ -185,9 +185,10 @@ def doCategories(df,mc,year):
           .Define("goodMuons","{}".format(muonSel))
           .Define("nGoodMuons","(int) Sum(goodMuons)")
           .Filter("Sum(goodMuons)>=1","at least two good muons")
-          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
+          .Define("goodMu_mt","mtVec(Muon_bsConstrainedPt[goodMuons], Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi)")
+          .Define("goodMu_mtErr","mtErrVec(Muon_bsConstrainedPt[goodMuons], Muon_bsConstrainedPtErr[goodMuons], Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi, PuppiMET_covXX, PuppiMET_covXY, PuppiMET_covYY)")
+          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], Muon_bsConstrainedPtErr[goodMuons], "{}", goodMu_mt, goodMu_mtErr)'.format(mode))
           .Filter("index_Mu[0]!= -1 and index_Mu[1]!= -1", "OS pair")
-          .Define("mNonHiggsOS","massNonHiggsOS(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], muon_mass_, index_Mu[0], index_Mu[1])")
           .Define("idx_mu1","Nonzero(goodMuons)[index_Mu[0]]")   # index into the FULL Muon collection
           .Define("idx_mu2","Nonzero(goodMuons)[index_Mu[1]]")
           .Define("Muon1_rawpt","Muon_pt[idx_mu1]")
@@ -272,8 +273,6 @@ def doCategories(df,mc,year):
 
     freeOfZ    = "freeOfZ(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], muon_mass_)"
     freeOfZee  = "freeOfZ(Electron_pt[goodElectrons], Electron_eta[goodElectrons], Electron_phi[goodElectrons], Electron_charge[goodElectrons], ele_mass_)"
-    # no Z in the non-Higgs OS pair. -1 means there is no such pair, so no veto
-    noZnonH    = "(mNonHiggsOS < 81. || mNonHiggsOS > 101.)"
     n_allJets  = "Sum(goodJetsAll)*1.0f"
 
     mu_veto = [
@@ -370,7 +369,7 @@ def doCategories(df,mc,year):
         category_map = {
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",  # W→e  (WH)
             2: f"({n_goodEle}>0 && {q_looseEle}==0 && {n_looseEle}==2 && {q_goodMu}==0 && {n_looseMu}==2)", # Z→ee (ZH)
-            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_goodMu})==1 && {noZnonH})",  # W→μ  (WH)
+            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_goodMu})==1 && {freeOfZ})",  # W→μ  (WH)
             4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0)",                   # Z→μμ (ZH)
         }
 
