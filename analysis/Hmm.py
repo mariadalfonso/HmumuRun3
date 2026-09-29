@@ -183,8 +183,11 @@ def doCategories(df,mc,year):
           .Redefine("Muon_pfRelIso04_all","isoCorrFSR(Muon_pfRelIso04_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
           .Redefine("Muon_miniPFRelIso_all","isoCorrFSRmini(Muon_miniPFRelIso_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
           .Define("goodMuons","{}".format(muonSel))
+          .Define("nGoodMuons","(int) Sum(goodMuons)")
           .Filter("Sum(goodMuons)>=1","at least two good muons")
-          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], "{}")'.format(mode))
+          .Define("goodMu_mt","mtVec(Muon_bsConstrainedPt[goodMuons], Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi)")
+          .Define("goodMu_mtErr","mtErrVec(Muon_bsConstrainedPt[goodMuons], Muon_bsConstrainedPtErr[goodMuons], Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi, PuppiMET_covXX, PuppiMET_covXY, PuppiMET_covYY)")
+          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], Muon_bsConstrainedPtErr[goodMuons], "{}", goodMu_mt, goodMu_mtErr)'.format(mode))
           .Filter("index_Mu[0]!= -1 and index_Mu[1]!= -1", "OS pair")
           .Define("idx_mu1","Nonzero(goodMuons)[index_Mu[0]]")   # index into the FULL Muon collection
           .Define("idx_mu2","Nonzero(goodMuons)[index_Mu[1]]")
@@ -240,6 +243,9 @@ def doCategories(df,mc,year):
     if mc>0:
         df = (df.Define("Muon1_genPartFlav","Muon_genPartFlav[idx_mu1]")
               .Define("Muon2_genPartFlav","Muon_genPartFlav[idx_mu2]")
+              .Define("Muon1_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu1], GenPart_pdgId, GenPart_genPartIdxMother)")
+              .Define("Muon2_genOrigin","genOriginPdg(Muon_genPartIdx[idx_mu2], GenPart_pdgId, GenPart_genPartIdxMother)")
+              .Define("pairFromHiggs","Muon1_genOrigin==25 && Muon2_genOrigin==25")
               .Define("boson_genMassZ","getGenPart_boson(GenPart_mass, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Define("boson_genPtZ","getGenPart_boson(GenPart_pt, GenPart_status, GenPart_pdgId, GenPart_genPartIdxMother, 23)")
               .Redefine("boson_ptWeight","(float)computeDYturbo(boson_genPtZ, boson_genMassZ)")
