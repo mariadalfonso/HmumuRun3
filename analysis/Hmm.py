@@ -424,12 +424,13 @@ def doCategories(df,mc,year):
     elif mode == "isTTlep":
 
         # Define leptonic category conditions
+        # for the dilepton can add the OS charge constraint from the 2W
         category_map = {
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",                       # W→e  (TTH semilep)
-            2: f"({n_looseEle}==2 && {n_goodEle}==2 && {q_goodEle}==0 && {q_goodMu}==0 && {n_looseMu}==2 && {freeOfZee})",       # 2W→e (TTH dilep)
-            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {n_looseMu}==3 && {freeOfZ})",    # W→μ  (TTH semilep)
+            2: f"({n_looseEle}==2 && {q_looseEle}==0 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2) && {freeOfZee}",       # 2W→e  (TTH dilep)
+            3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",                       # W→μ  (TTH semilep)
             4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0 && {n_looseMu}==4 && {freeOfZ})",         # 2W→μ (TTH dilep)
-            5: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {freeOfZ})",    # W→eW→μ (TTH dilep)
+            5: f"({n_looseEle}==1 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {freeOfZ})",                      # W→eW→μ (TTH dilep)
         }
 
         # Build a single expression with nested ternaries

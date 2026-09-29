@@ -74,6 +74,7 @@ def DefineBranchList(mode,mc):
 #                "FsrPH_pt_ratio1",
             "PuppiMET_pt",
             "PuppiMET_phi",
+            "nGoodJetsAll",
             "discrMVA"
         ]
 
@@ -111,7 +112,6 @@ def DefineBranchList(mode,mc):
 #                "jetVBF2_dPhiMET",
 	    ],
             "isGGH": [
-		"nGoodJetsAll",
 	        "Jet1_Pt",
                 "Jet1_Eta",
                 "nGoodJetsTrk",
@@ -143,8 +143,8 @@ def DefineBranchList(mode,mc):
                 "dEtaVH",
                 "dPhiVH",
                 "VMass",
-                "ZMassPull",
-                "WMassPull",
+#                "ZMassPull",
+#                "WMassPull",
                 "RPt",
             ],
             "isTTlep": [
@@ -185,7 +185,6 @@ def DefineBranchList(mode,mc):
                 "HT",
                 "WTopJetMass",
                 "WTopJetDiscr",
-                "nGoodJetsAll",
                 "Centrality",
                 "TopMassReco",
                 "TopPairChi2",

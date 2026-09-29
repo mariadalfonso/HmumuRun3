@@ -31,9 +31,12 @@ def myMCdatasets(year,mode):
     if year=="2024": mc.extend([225]) #ttZqq (for 22-23 use the TT lep binned)
     else: mc.extend([238,239])
     if year=="2024": mc.extend([249]) #ttGamma
-
     else: mc.extend([246,247,248])
     mc.extend([107,105,106]) # tt1l, tW
+
+    if mode == "isGGH":
+        if year=="2024": mc.extend([130])  # Wjets
+        else: mc.extend([129])
 
     # below for training
     if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([141,142]) # extra TTbar (2024 not there yet)
@@ -47,19 +50,18 @@ def myMCdatasets(year,mode):
 #    if year in ["12022", "22022", "12023", "22023"]:
 #        if mode == "isVhad": mc.extend([111,112,113])  # extra DY jet binned for ML training
 
-    if mode == "isTTlep" or mode == "isVlep" or mode == "isZinv" or mode == "isTThad":
+    if mode == "isTTlep" or mode == "isVlep" or mode == "isZinv" or mode == "isTThad" or mode == "isVhad":
         if year in ["12022", "22022", "12023", "22023"]: mc.extend([242,243,244,245])  # extra TTW syst var
-
         mc.extend([143,144,145,146,147,148,149])  # extra TT2l syst var
 
     if mode == "isVBF" or mode == "isGGH" or mode == "isVhad" or mode == "isTThad": mc.extend([109]) # extra DY jet mass binned
 #    if mode == "isVBF" or mode == "isGGH": mc.extend([108,110]) # extra DY jet mass binned (no point those will break MVA)
 
-    if mode == "isGGH" or mode == "isTThad":
-        mc.extend([126,127]) # MINNLO
-        if year in ["12022", "22022", "22023", "2024"]: mc.extend([128])
+    if mode == "isGGH" or mode == "isTThad" or mode == "isVBF":
+        mc.extend([126,127,128]) # MINNLO
 
     return mc
+
 
 def myData(year):
 
@@ -69,7 +71,6 @@ def myData(year):
         "12023": [-23, -24],
         "22023": [-31, -32],
         "2024":  list(range(-41, -55, -1)),  # generates -41 to -54
-#        "2024":  list(range(-51, -53, -1)),  # for SYNCH
         "2025":  list(range(-61, -73, -1)),  # generates -61 to -70
         "2026":  list(range(-81, -89, -1)),  # generates -81 to -88
     }
@@ -289,14 +290,8 @@ def BuildDict(year):
         127: (findDIR(path("/DYto2Mu_*MLL-130to200_TuneCP5_13p6TeV_powhegMINNLO-pythia8-photos")),0.60*21.65*1000), # temporaty presa quella di 120to200 empirically scaled
         128: (findDIR(path("/DYto2Mu_*MLL-200to400_TuneCP5_13p6TeV_powhegMINNLO-pythia8-photos")),3.058*1000), # temporaty presa quella di powhegV2
         129: (findDIR(path("/WtoLNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['W']),
-        130: (findDIR(path("/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8")),xsecRun3['EWKW']),
-        #WtoLNu-4Jets 1J TuneCP5 13p6TeV madgraphMLM-pythia8
-        #WtoLNu-4Jets 2J TuneCP5 13p6TeV madgraphMLM-pythia8
-        #WtoLNu-4Jets 3J TuneCP5 13p6TeV madgraphMLM-pythia8
-        #WtoLNu-2Jets 0J TuneCP5 13p6TeV amcatnloFXFX-pythia8
-        #WtoLNu-2Jets 1J TuneCP5 13p6TeV amcatnloFXFX-pythia8
-        #WtoLNu-2Jets 2J TuneCP5 13p6TeV amcatnloFXFX-pythia8
-        #VBFtoLNu TuneCP5 13p6TeV madgraph-pythia8
+        130: (findDIR(path("/WtoMuNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['W']*1./3),
+        131: (findDIR(path("/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8")),xsecRun3['EWKW']),
         ## DY-EWK
         101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),  # 1.3 ?? from Filippo ? 
         99:  (findDIR(path("/EWK-2Mu2J*M2Mu-105to160*M2J-120_TuneCP5_13p6TeV_madgraph-pythia8")),0.06443*1000), # pythia8 i.e. dipole ? (# 0.052 ?? from Filippo ) 
