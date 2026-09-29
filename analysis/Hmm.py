@@ -252,6 +252,43 @@ def doCategories(df,mc,year):
 #              .Define("boson_genPtLHE","getLHEPart_boson(LHEPart_pt, LHEPart_status, LHEPart_pdgId, 23)")
               )
 
+    # Pairing study, only where >2 good muons are possible (the other five
+    # categories apply mu_veto, so the pair is forced). Per-good-muon
+    # properties in the SAME order getMuonIndices sees them, i.e. masked by
+    # goodMuons, so index_Mu indexes directly into these arrays. With these
+    # plus goodMu_genOrigin any pairing criterion can be scored offline
+    # against the current choice, without re-running.
+    if mc>0 and (mode == "isVlep" or mode == "isTTlep"):
+        df = (df.Define("goodMu_pt","Muon_bsConstrainedPt[goodMuons]")
+              .Define("goodMu_rawpt","Muon_pt[goodMuons]")
+              .Define("goodMu_eta","Muon_eta[goodMuons]")
+              .Define("goodMu_phi","Muon_phi[goodMuons]")
+              .Define("goodMu_charge","Muon_charge[goodMuons]")
+              .Define("goodMu_genPartFlav","Muon_genPartFlav[goodMuons]")
+              .Define("goodMu_sip3d","Muon_sip3d[goodMuons]")
+              .Define("goodMu_iso04","Muon_pfRelIso04_all[goodMuons]")     # FSR-corrected
+              .Define("goodMu_miniIso","Muon_miniPFRelIso_all[goodMuons]") # not FSR-corrected
+              .Define("goodMu_promptMVA","Muon_promptMVA[goodMuons]")
+              .Define("goodMu_jetDF","Muon_jetDF[goodMuons]")
+              # m_T with MET: the WH handle, the W muon carries the neutrino
+              .Define("goodMu_mt",
+                      "mtVec(Muon_bsConstrainedPt[goodMuons], Muon_phi[goodMuons],"
+                      "      PuppiMET_pt, PuppiMET_phi)")
+              # the resolution the WH score divides that mT by, from the
+              # PuppiMET covariance and the muon pT error
+              .Define("goodMu_mtErr",
+                      "mtErrVec(Muon_bsConstrainedPt[goodMuons], Muon_bsConstrainedPtErr[goodMuons],"
+                      "         Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi,"
+                      "         PuppiMET_covXX, PuppiMET_covXY, PuppiMET_covYY)")
+              # and the mass resolution of the SELECTED pair, for the other term
+              .Define("goodMu_ptErr","Muon_bsConstrainedPtErr[goodMuons]")
+              # dR to the nearest loose b-jet: the ttH handle, the intruder
+              # descends from a top
+              .Define("goodMu_dRminB",
+                      "dRminVec(Muon_eta[goodMuons], Muon_phi[goodMuons],"
+                      "         Jet_eta[BJETSloose], Jet_phi[BJETSloose])")
+              )
+
     # --- Reusable blocks ---
 
     if (mode == "isVlep" or mode == "isTTlep"):

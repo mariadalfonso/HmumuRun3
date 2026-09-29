@@ -461,6 +461,29 @@ float mt(float pt1, float phi1, float pt2, float phi2) {
   return std::sqrt(2*pt1*pt2*(1-std::cos(phi1-phi2)));
 }
 
+// Measurement error on mT, from the PuppiMET covariance (PuppiMET_covXX,
+// covXY, covYY) and the muon pT error. With E the MET vector and phat the
+// muon transverse direction, mT^2 = 2 pT (|E| - E.phat), so
+// dmT/dE = (pT/mT)(Ehat - phat) and sigma^2 = g^T C g + (mT/2pT * sigma_pT)^2.
+// Isotropic check: C = sigma_E^2 I gives sigma_mT = sigma_E sqrt(pT/MET).
+float mtErr(const float pt, const float ptErr, const float phi,
+            const float met_pt, const float met_phi,
+            const float covXX, const float covXY, const float covYY) {
+
+  const float m = mt(pt, phi, met_pt, met_phi);
+  if (m <= 0.f) return 0.f;
+
+  const float gx = (pt/m) * (std::cos(met_phi) - std::cos(phi));
+  const float gy = (pt/m) * (std::sin(met_phi) - std::sin(phi));
+
+  float var = gx*gx*covXX + 2.f*gx*gy*covXY + gy*gy*covYY;
+
+  const float dpt = m / (2.f*pt) * ptErr;
+  var += dpt*dpt;
+
+  return std::sqrt(std::max(0.f, var));
+}
+
 // ---------------------------------------------------------------------------
 // mt of each object against a single other object, typically MET. For the
 // pairing study: in WH the muon from the W is the one whose mt with MET is
@@ -472,6 +495,19 @@ Vec_f mtVec(const Vec_f& pt, const Vec_f& phi, float met_pt, float met_phi) {
   out.reserve(pt.size());
   for (size_t k = 0; k < pt.size(); ++k)
     out.push_back(mt(pt[k], phi[k], met_pt, met_phi));
+  return out;
+}
+
+// mtErr for a collection: the per-muon mT resolution the WH score divides by.
+Vec_f mtErrVec(const Vec_f& pt, const Vec_f& ptErr, const Vec_f& phi,
+               float met_pt, float met_phi,
+               float covXX, float covXY, float covYY) {
+
+  Vec_f out;
+  out.reserve(pt.size());
+  for (size_t k = 0; k < pt.size(); ++k)
+    out.push_back(mtErr(pt[k], ptErr[k], phi[k],
+                        met_pt, met_phi, covXX, covXY, covYY));
   return out;
 }
 
@@ -553,8 +589,10 @@ float Minv(const TLorentzVector& p1, const TLorentzVector& p2) {
   return (p1 + p2).M();
 }
 
+// Relative dimuon mass resolution. The angles are measured far better than
+// the momenta, so sigma_m / m = 0.5 * sqrt( (s1/p1)^2 + (s2/p2)^2 ).
 float MinvErr(const float pt1, const float err1, const float pt2, const float err2) {
-  return sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
+  return 0.5f * sqrt((err1*err1)/(pt1*pt1) + (err2*err2)/(pt2*pt2));
 }
 
 float minDeta(const float etaDiMu, const float jetEta1, const float jetEta2) {
@@ -756,7 +794,7 @@ struct Pair {
 struct PairingResult {
     Pair Zpair;
     Pair Hpair;
-    float score; // total deviation from MZ + MH
+    float score; // -2lnL: sum of (dm/sigma)^2 + 2ln(sigma) over both bosons
     bool valid;
 };
 
@@ -769,29 +807,39 @@ struct WHPairingResult {
     bool  valid;
 };
 
-// Resolutions entering the WH score. The two terms are on very different
-// scales, so unlike findBestZHCombo -- where both terms are dimuon masses of
-// comparable resolution and a plain sum of |dm| is defensible -- these MUST
-// be weighted or the mT term, whose deviations are tens of GeV, swamps the
-// mass term, whose deviations are a few GeV.
-const float sigma_mH_  =  2.0; // GeV, dimuon mass resolution
-const float sigma_mTlo_ = 30.0; // GeV, mT below mW: the Jacobian tail, common
-const float sigma_mThi_ = 15.0; // GeV, mT above mW: resolution only, rare
+// ---------------------------------------------------------------------------
+// Resolutions entering the chi2 scores of findBestWHCombo and findBestZHCombo.
+// Each term is a deviation divided by its resolution and squared, so terms on
+// different scales combine correctly -- an unweighted sum of |dm| lets the mT
+// term, whose deviations are tens of GeV, swamp a mass term whose deviations
+// are a few GeV.
+//
+// Every resolution is measured: the mass ones per candidate pair from
+// mass * MinvErr(...), the mT one from mtErr(...), which propagates the
+// PuppiMET covariance and so already carries the MET magnitude error, its
+// direction error and their correlation. The only constant left is the Z
+// natural width, which is a property of the boson rather than of the
+// measurement.
+//
+// Note the mT term is then a pure detector resolution, ~15-20 GeV, while the
+// mT of a correctly assigned W muon is spread further than that by the decay
+// angle and the W recoil. So a W muon far from mW is penalised as an outlier
+// when it is not one. Measurable if it matters: the RMS of goodMu_mt about mW
+// for muons with genOrigin == +-24 in samples 12 and 13.
+const float Gamma_Z_ = 2.4952; // GeV
 
-// H + W with three muons: the opposite-sign pair is the Higgs candidate and
-// the remaining muon is the W lepton, scored against m_H and the mT of that
-// muon with MET.
+// H + W with three muons: the opposite-sign pair is the Higgs candidate, the
+// remaining muon is the W lepton. Three muons give exactly two OS pairs, so
+// two hypotheses. Only defined for n == 3, anything else returns invalid.
 //
-// Three muons have net charge +-1, so exactly two opposite-sign pairs exist
-// and each leaves a different muon over: two hypotheses, and the leftover is
-// unique in each. Only defined for n == 3; anything else returns invalid.
+// Score is -2lnL = (dm/sigma)^2 + 2ln(sigma) per term. The log term matters
+// because sigma differs between hypotheses: without it the worse-measured
+// pair is the cheaper Higgs candidate.
 //
-// The mT penalty is ASYMMETRIC on purpose. For a real W the transverse mass
-// has a Jacobian edge at m_W and a long tail below it, so a value under m_W
-// is ordinary while one above it needs resolution to explain. A symmetric
-// |mT - m_W| penalty therefore punishes the correct assignment, and measures
-// worse than simply taking the larger mT (65% against 68% on W-H, 3mu).
-WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const float met_pt, const float met_phi) {
+// The mT term is weak either way: measured on W-H, 3mu, |mT - mW| gets 65%
+// and simply taking the larger mT gets 68%, against 76% for the pair-pT rule
+// it replaces. Do not expect much from it.
+WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const float met_pt, const float met_phi, const float covXX, const float covXY, const float covYY) {
 
   WHPairingResult best;
   best.valid = false;
@@ -816,11 +864,21 @@ WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f
       const float mH  = (pi + pj).M();
       const float mtW = mt(pts[k], phis[k], met_pt, met_phi);
 
-      const float dH = (mH - H_mass_) / sigma_mH_;
-      const float dW = (mtW > W_mass_) ? (mtW - W_mass_) / sigma_mThi_
-                                       : (W_mass_ - mtW) / sigma_mTlo_;
+      const float sH = mH * MinvErr(pts[i], ptErrs[i], pts[j], ptErrs[j]);
 
-      const float score = dH*dH + dW*dW;
+      const float sT = mtErr(pts[k], ptErrs[k], phis[k],
+                             met_pt, met_phi, covXX, covXY, covYY);
+      // Floored high, not low: PuppiMET_covXX/XY/YY are present in v15, so
+      // this never fires, but if the covariance were ever missing sT would be
+      // 0 and a 1 GeV floor would make the mT term decisive rather than
+      // harmless. 50 GeV degrades it to "mT says nothing".
+      const float sW = std::max(sT, 50.f);
+
+      const float dH = (mH  - H_mass_) / sH;
+      const float dW = (mtW - W_mass_) / sW;
+
+      const float score = dH*dH + 2.f*std::log(sH)
+                        + dW*dW + 2.f*std::log(sW);
 
       if (score < best.score) {
         best.valid = true;
@@ -836,7 +894,7 @@ WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f
 
 }
 
-PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges) {
+PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs) {
 // useful for the Zmumu + Hmm 4mu final state
 
   auto makePair = [&](int i, int j) {
@@ -859,29 +917,42 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
     int i2 = p.second.first, j2 = p.second.second;
 
     // enforce OS requirement
-    if (charges[i1] * charges[j1] != -1) continue;
-    if (charges[i2] * charges[j2] != -1) continue;
+    if (charges[i1] * charges[j1] > 0) continue;
+    if (charges[i2] * charges[j2] > 0) continue;
 
     Pair p1 = makePair(i1, j1);
     Pair p2 = makePair(i2, j2);
 
-    // assign which pair is Z vs H
-    float d1Z = std::abs(p1.mass - Z_mass_);
-    float d1H = std::abs(p1.mass - H_mass_);
-    float d2Z = std::abs(p2.mass - Z_mass_);
-    float d2H = std::abs(p2.mass - H_mass_);
+    // per-pair resolutions, Gamma_Z in quadrature for the Z hypothesis
+    const float s1 = p1.mass * MinvErr(pts[i1], ptErrs[i1], pts[j1], ptErrs[j1]);
+    const float s2 = p2.mass * MinvErr(pts[i2], ptErrs[i2], pts[j2], ptErrs[j2]);
+
+    const float s1Z = std::sqrt(s1*s1 + Gamma_Z_*Gamma_Z_);
+    const float s2Z = std::sqrt(s2*s2 + Gamma_Z_*Gamma_Z_);
+    const float s1H = s1;
+    const float s2H = s2;
+
+    const float d1Z = (p1.mass - Z_mass_) / s1Z;
+    const float d1H = (p1.mass - H_mass_) / s1H;
+    const float d2Z = (p2.mass - Z_mass_) / s2Z;
+    const float d2H = (p2.mass - H_mass_) / s2H;
+
+    const float chi2_p1Z = d1Z*d1Z + 2.f*std::log(s1Z)
+                         + d2H*d2H + 2.f*std::log(s2H);
+    const float chi2_p2Z = d2Z*d2Z + 2.f*std::log(s2Z)
+                         + d1H*d1H + 2.f*std::log(s1H);
 
     PairingResult candidate;
     candidate.valid = true;
 
-    if (d1Z + d2H < d1H + d2Z) {
+    if (chi2_p1Z < chi2_p2Z) {
       candidate.Zpair = p1;
       candidate.Hpair = p2;
-      candidate.score = d1Z + d2H;
+      candidate.score = chi2_p1Z;
     } else {
       candidate.Zpair = p2;
       candidate.Hpair = p1;
-      candidate.score = d2Z + d1H;
+      candidate.score = chi2_p2Z;
     }
 
     if (candidate.score < best.score) {
@@ -893,7 +964,7 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
 
 }
 
-stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const std::string mode, const float met_pt, const float met_phi){
+stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const std::string mode, const float met_pt, const float met_phi, const float covXX, const float covXY, const float covYY){
 
   stdVec_i idx_(2, -1);
 
@@ -912,7 +983,7 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
   } else if (n == 3 and (mode=="isVlep" or mode=="isTTlep")) {
     // target W-->munu and H-->mumu
 
-    auto result = findBestWHCombo(pts, etas, phis, charges, met_pt, met_phi);
+    auto result = findBestWHCombo(pts, etas, phis, charges, ptErrs, met_pt, met_phi, covXX, covXY, covYY);
 
     if (result.valid) {
       idx_[0] = result.Hpair.i;
@@ -922,7 +993,7 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
   } else if (n == 4 and mode=="isVlep") {
     // target Z-->mumu and H--> mumu
 
-    auto result = findBestZHCombo(pts, etas, phis, charges);
+    auto result = findBestZHCombo(pts, etas, phis, charges, ptErrs);
 
     if (result.valid) {
       idx_[0] = result.Hpair.i;
@@ -931,8 +1002,9 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
 
   } else {
 
-    // Run 2 (CMS arXiv:2009.04363): the candidate is the highest-pT OS pair
-    // with 110 < m < 150; fall back to the highest-pT pair if none qualifies
+    // Run 2 (CMS arXiv:2009.04363): highest-pT OS pair with 110 < m < 150.
+    // A preference, not a requirement: a hard cut here would empty the Z
+    // control region and the sidebands of every n>2 event.
     float max = 0, maxWin = 0;
 
     int n = etas.size(), index0 = -1, index1 = -1, iWin = -1, jWin = -1;
