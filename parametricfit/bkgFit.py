@@ -3,14 +3,17 @@ bkgFit.py -- blinded background fit, with an F-test-selected envelope.
 
 Blinding
 --------
-    Higgs SR   115 - 135 GeV        BLINDED: never fitted, never plotted
-    sideband   110-115 + 135-150    what the fit sees
+    Higgs SR   120 - 130 GeV        BLINDED: never fitted, never plotted
+    sideband   110-120 + 130-150    what the fit sees
 
-Half the window is masked, so the shape is constrained by 20 GeV of data
-and extrapolated across 20 GeV. Two consequences worth keeping in mind:
-high-order candidates are much less well determined than they would be
-with a narrow blind window, and the normalisation has to be extrapolated
-rather than counted.
+This is NARROWER than the analysis's `isH` region (115-135) on purpose:
+the fit only needs the signal region masked, and a narrower mask leaves
+30 of the 40 GeV to constrain the shape instead of 20. SR_LO/SR_HI at the
+top of the file set it; widen them to 115-135 if the fit region has to
+match `isH` exactly.
+
+Even so the normalisation is EXTRAPOLATED rather than counted, since the
+fit never sees the masked bins.
 
 The full-range data DOES go into the workspace, as `datahist_<tag>`,
 because the datacard's `observation -1` needs it and an observed result
@@ -77,9 +80,16 @@ for _i in range(ROOT.RooMsgService.instance().numStreams()):
 # ---------------------------------------------------------------------------
 # blinding
 # ---------------------------------------------------------------------------
-SR_LO, SR_HI = 115.0, 135.0        # blinded Higgs signal region
-R_SB_LOW = "sbLow"                 # 110 - 115
-R_SB_HIGH = "sbHigh"               # 135 - 150
+# Blinded window for the BACKGROUND FIT. Deliberately narrower than the
+# analysis's `isH` definition (115-135): the fit only needs the signal
+# region masked, and a narrower mask leaves 30 of the 40 GeV to constrain
+# the shape instead of 20. Widen to 115-135 if the fit region has to match
+# `isH` exactly. Everything downstream -- the named ranges, the chi2 bin
+# merging and its segments, the shaded box on the plot, f_sb and so the
+# extrapolated norm -- follows from these two numbers.
+SR_LO, SR_HI = 120.0, 130.0        # blinded Higgs signal region
+R_SB_LOW = "sbLow"                 # 110 - 120
+R_SB_HIGH = "sbHigh"               # 130 - 150
 R_SB = "sideband"                  # the union, what the fit uses
 R_FULL = "full"
 R_SR = "sr"
@@ -92,12 +102,44 @@ R_SR = "sr"
 F_THRESHOLD = 0.05
 # Goodness of fit: keep a candidate whose chi2 p-value exceeds this.
 GOF_THRESHOLD = 0.01
+
+# Minimum significance data/sqrt(sum err^2) a chi2 bin must reach; bins
+# below it are merged with their neighbours first. Ported from ATLAS
+# BkgParam (Chi2MinBinSignificance in its config). Without this, the
+# sparse 130-150 tail contributes bins of a handful of events whose
+# residuals are not chi2-distributed, so the p-value -- and therefore the
+# GOF cut -- is least reliable exactly where the candidates differ most.
+# 0 disables merging.
+CHI2_MIN_BIN_SIGNIFICANCE = 3.0
 # Candidates to consider at all. bern0 is a flat line and bern1 a straight
 # one -- kept because the F-test should be allowed to choose them.
 CANDIDATES = None                  # None -> everything in pdfDefinitions
 
 # normalisation is extrapolated from the sideband, so give it room
 NORM_RANGE = (0.2, 5.0)            # x the extrapolated value
+
+# Data gets a FILLED circle. sigFit uses an open one (24) for simulation,
+# so the two are distinguishable at a glance: open = MC, filled = data.
+# The SIZE still comes from sigFit, so the points match in scale.
+DATA_MARKER_STYLE = 20
+
+# ---------------------------------------------------------------------------
+# spurious-signal scan (ATLAS BkgParam recipe, adapted)
+# ---------------------------------------------------------------------------
+# ATLAS scans the mass hypothesis, does an S+B fit at every point to a
+# background-only template, and requires the fitted signal to be small --
+# both against its own error (Z = S/dS) and against the expected signal
+# (mu = S/S_ref) -- taking the WORST point, because a function can be
+# unbiased at 125 and badly biased at 122.
+#
+# Adaptation: with blinded data there is no signal-free dataset to fit, so
+# the truth is an Asimov generated from each envelope member in turn.
+# Fitting member B to an Asimov from member A measures how much fake
+# signal the envelope's own spread can produce -- precisely the quantity
+# discrete profiling claims to cover but never checks.
+MH_SCAN = (120.0, 130.0, 1.0)      # low, high, step
+SS_MAX_Z = 0.5                     # |S| / dS
+SS_MAX_MU = 0.20                   # |S| / S_ref
 
 # ---------------------------------------------------------------------------
 # plotting
@@ -189,35 +231,121 @@ def fit_candidate(x, data, name, tag, sb_range):
             "sb_fraction": itg_sb, "result": res}
 
 
-def sideband_chi2(x, h, pdf, sb_idx, norm_full, npar):
-    """chi2 over SIDEBAND BINS ONLY.
+def merge_chi2_bins(h_data, h_pdf, blind_lo, blind_hi, threshold):
+    """Merge low-significance bins, then chi2 over what is left.
+
+    Port of ATLAS BkgParam's Parameterization::calcChi2. Three behaviours
+    matter and none is obvious:
+
+      * Bins are accumulated until data/sqrt(sum err^2) reaches
+        `threshold`, then emitted as one merged bin, so no chi2 bin is
+        built from a handful of events.
+      * The blinded window SPLITS the histogram into segments and merging
+        never spans it -- otherwise a bin from the low sideband could be
+        merged with one from the high sideband, 20 GeV away.
+      * A leftover at the end of a segment that does not reach the
+        threshold is merged BACKWARDS into the previous bin of that same
+        segment, rather than emitted under-populated or dropped.
+
+    Returns (chi2, n_merged_bins).
+    """
+    bins = []                      # (data, pdf, err2)
+    cur = [0.0, 0.0, 0.0]
+    segment_start = 0
+
+    def has_current():
+        return cur[2] > 0.0 or abs(cur[0]) > 1e-6 or abs(cur[1]) > 1e-6
+
+    def passes():
+        if cur[2] <= 0.0:
+            return False
+        if threshold <= 0.0:
+            return True
+        if abs(cur[0]) < 1e-6:
+            return False
+        return cur[0] / cur[2] ** 0.5 >= threshold
+
+    def emit():
+        if has_current() and cur[2] > 0.0:
+            bins.append(tuple(cur))
+        cur[0] = cur[1] = cur[2] = 0.0
+
+    def flush_segment():
+        if not has_current():
+            return
+        if not passes() and len(bins) > segment_start:
+            d, p, e = bins[-1]
+            bins[-1] = (d + cur[0], p + cur[1], e + cur[2])
+            cur[0] = cur[1] = cur[2] = 0.0
+            return
+        emit()
+
+    ax = h_data.GetXaxis()
+    go_blind = (blind_lo < blind_hi
+                and (blind_lo > ax.GetXmin() or blind_hi < ax.GetXmax()))
+
+    for i in range(1, h_data.GetNbinsX() + 1):
+        c = h_data.GetBinCenter(i)
+        if go_blind and blind_lo < c < blind_hi:
+            flush_segment()
+            segment_start = len(bins)
+            continue
+        cur[0] += h_data.GetBinContent(i)
+        cur[1] += h_pdf.GetBinContent(i)
+        cur[2] += h_data.GetBinError(i) ** 2
+        if passes():
+            emit()
+
+    flush_segment()
+
+    chi2 = sum(((d - p) / e ** 0.5) ** 2 for d, p, e in bins if e > 0)
+    return chi2, len(bins)
+
+
+def pdf_histogram(x, h_data, pdf, norm_full, name):
+    """Expectation per bin on h_data's binning, as a TH1 for the merge.
+
+    Same convention as sideband_chi2: pdf.getVal(nset) is normalised over
+    the FULL window, so the expectation is norm_full * density * binwidth.
+    """
+    h = h_data.Clone(name)
+    h.SetDirectory(0)
+    h.Reset()
+    nset = ROOT.RooArgSet(x)
+    saved = x.getVal()
+    for i in range(1, h_data.GetNbinsX() + 1):
+        x.setVal(h_data.GetBinCenter(i))
+        h.SetBinContent(i, norm_full * pdf.getVal(nset)
+                        * h_data.GetBinWidth(i))
+    x.setVal(saved)
+    return h
+
+
+def sideband_chi2(x, h, pdf, sb_idx, norm_full, npar, threshold=None):
+    """chi2 over SIDEBAND BINS ONLY, with low-significance bins merged.
 
     A goodness-of-fit that included bins the fit never saw would not be a
     goodness-of-fit. pdf.getVal(nset) is normalised over the FULL window,
     so the expectation in a bin is norm_full * density * binwidth, with
     norm_full = full_yield(n_sb, fit) = n_sb / f_sb.
+
+    The merging is what makes the p-value trustworthy in the sparse tail;
+    set threshold = 0 to recover the unmerged, bin-by-bin chi2.
     """
-    nset = ROOT.RooArgSet(x)
-    saved = x.getVal()
-    chi2 = 0.0
-    used = 0
-    for i in sb_idx:
-        e = h.GetBinError(i)
-        o = h.GetBinContent(i)
-        if e <= 0:
-            continue
-        x.setVal(h.GetBinCenter(i))
-        dens = pdf.getVal(nset)          # normalised over the full window
-        exp = norm_full * dens * h.GetBinWidth(i)
-        if exp <= 0:
-            continue
-        chi2 += (o - exp) ** 2 / e ** 2
-        used += 1
-    x.setVal(saved)
-    ndf = used - npar
+    threshold = (CHI2_MIN_BIN_SIGNIFICANCE if threshold is None
+                 else threshold)
+    h_pdf = pdf_histogram(x, h, pdf, norm_full, f"hpdf_{pdf.GetName()}")
+    chi2, nbins = merge_chi2_bins(h, h_pdf, SR_LO, SR_HI, threshold)
+    ndf = nbins - npar
+    if ndf <= 0:
+        print(f"  warning: {pdf.GetName()} left {nbins} merged chi2 bins "
+              f"for {npar} parameters -- no degrees of freedom")
     p = ROOT.TMath.Prob(chi2, ndf) if ndf > 0 else 0.0
-    return {"chi2": chi2, "ndf": ndf, "chi2_ndf": chi2 / ndf if ndf > 0 else -1,
-            "pvalue": p, "n_bins": used}
+    return {"chi2": chi2, "ndf": ndf,
+            "chi2_ndf": chi2 / ndf if ndf > 0 else -1.0,
+            "pvalue": p, "n_bins": nbins,
+            "n_bins_raw": len(sb_idx),
+            "chi2_threshold": threshold}
 
 
 def ftest(fits, family):
@@ -251,6 +379,89 @@ def ftest(fits, family):
     return chosen, steps
 
 
+def load_signal_shape(x, sigjson, tag):
+    """Signal PDF for the spurious-signal scan, from a sigFit JSON.
+
+    Rebuilt from the parameter JSON rather than read out of the signal
+    workspace: no second RooWorkspace in the session, and it does not
+    matter which PDF class the workspace was written with. Every shape
+    parameter is held constant, as in the analysis.
+    """
+    with open(sigjson) as fh:
+        rec = json.load(fh)
+    pdf, bundle = pdefs.create_signal_pdf(x, f"{tag}_ss")
+    for k, v in bundle["nom"].items():
+        if k in rec.get("parameters", {}):
+            v.setVal(rec["parameters"][k]["value"])
+        v.setConstant(True)
+    for v in bundle["nuis"].values():
+        v.setVal(0.0)
+        v.setConstant(True)
+    nrm = rec.get("normalization", {})
+    sref = nrm.get("integral", nrm.get("sum_weights"))
+    if sref is None:
+        raise SystemExit(f"{sigjson} has no normalization to use as S_ref")
+    return pdf, bundle, float(sref)
+
+
+def spurious_signal_scan(x, fits, envelope, sig_pdf, sref, norm_by_model,
+                         mh_var, scan=None):
+    """For each (truth, fitter) pair, scan m_H and keep the worst bias.
+
+    The Asimov is generated from the truth model at ITS OWN extrapolated
+    full-window yield, so each pair is tested at the yield that model
+    actually implies -- the envelope's yield spread is part of what is
+    being probed, not something to normalise away.
+
+    Returns {(truth, fitter): worst point}.
+    """
+    scan = MH_SCAN if scan is None else scan
+    lo, hi, step = scan
+    masses, m = [], lo
+    while m <= hi + 1e-9:
+        masses.append(m)
+        m += step
+
+    out = {}
+    for truth in envelope:
+        n_truth = norm_by_model[truth]
+        # signal-free Asimov from the truth model, over the FULL window
+        asimov = fits[truth]["pdf"].generateBinned(
+            ROOT.RooArgSet(x), n_truth, ROOT.RooFit.ExpectedData(True))
+        asimov.SetName(f"asimov_{truth}")
+
+        for fitter in envelope:
+            worst = None
+            for mh in masses:
+                mh_var.setVal(mh)
+                nsig = ROOT.RooRealVar(f"nsig_{truth}_{fitter}", "nsig",
+                                       0.0, -5.0 * sref, 5.0 * sref)
+                nbkg = ROOT.RooRealVar(f"nbkg_{truth}_{fitter}", "nbkg",
+                                       n_truth, 0.2 * n_truth, 5.0 * n_truth)
+                model = ROOT.RooAddPdf(
+                    f"sb_{truth}_{fitter}", "s+b",
+                    ROOT.RooArgList(sig_pdf, fits[fitter]["pdf"]),
+                    ROOT.RooArgList(nsig, nbkg))
+                res = model.fitTo(
+                    asimov, ROOT.RooFit.Minimizer("Minuit2"),
+                    ROOT.RooFit.Strategy(1), ROOT.RooFit.Save(True),
+                    ROOT.RooFit.Extended(True),
+                    ROOT.RooFit.SumW2Error(False),
+                    ROOT.RooFit.PrintLevel(-1))
+                s_, ds = nsig.getVal(), nsig.getError()
+                z = abs(s_) / ds if ds > 0 else float("inf")
+                mu = abs(s_) / sref if sref > 0 else float("inf")
+                if worst is None or z > worst["Z"]:
+                    worst = {"mh": mh, "S": s_, "dS": ds, "Z": z, "mu": mu,
+                             "status": res.status()}
+                del res, model, nsig, nbkg
+            worst["passes"] = (worst["Z"] < SS_MAX_Z
+                               and worst["mu"] < SS_MAX_MU)
+            out[(truth, fitter)] = worst
+        del asimov
+    return out
+
+
 # ---------------------------------------------------------------------------
 # plots
 # ---------------------------------------------------------------------------
@@ -258,7 +469,7 @@ def ftest(fits, family):
 def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
                   sb_range, save_pdf, nbins, n_sb):
     """Data with the SR suppressed, every envelope member drawn across the
-    full range, and a ratio panel against the best model.
+    full range, and a ratio panel against the best-fit model.
 
     Two RooFit details matter here:
       * data.plotOn(..., CutRange(sideband)) ZEROES the SR bins but still
@@ -274,7 +485,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     frame = x.frame(ROOT.RooFit.Title(""))
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
                 ROOT.RooFit.CutRange(sb_range),
-                ROOT.RooFit.MarkerStyle(sf.DATA_MARKER_STYLE),
+                ROOT.RooFit.MarkerStyle(DATA_MARKER_STYLE),
                 ROOT.RooFit.MarkerSize(sf.DATA_MARKER_SIZE),
                 ROOT.RooFit.MarkerColor(ROOT.kBlack),
                 ROOT.RooFit.LineColor(ROOT.kBlack),
@@ -311,7 +522,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     frame.SetMinimum(0.0)
     frame.SetMaximum(1.35 * frame.GetMaximum())
 
-    # ratio of data and of each member to the best, over the full range
+    # ratio of data and of each member to the best-fit model
     hdat = frame.getHist("dat")
     cbest = frame.getCurve(best)
     rgraphs = []
@@ -326,7 +537,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         g.SetPoint(k, xv, yv / f)
         g.SetPointError(k, 0.0, ey / f)
         k += 1
-    g.SetMarkerStyle(sf.DATA_MARKER_STYLE)
+    g.SetMarkerStyle(DATA_MARKER_STYLE)
     g.SetMarkerSize(sf.DATA_MARKER_SIZE)
     g.SetMarkerColor(ROOT.kBlack)
     g.SetLineColor(ROOT.kBlack)
@@ -356,7 +567,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     rframe.SetStats(0)
     rframe.SetMinimum(0.80)
     rframe.SetMaximum(1.20)
-    rframe.SetTitle(f";m_{{#mu#mu}} [GeV];Data / {best}")
+    rframe.SetTitle(";m_{#mu#mu} [GeV];Data/Template")
     sf._style_ratio_axis(rframe.GetXaxis(), sf.RATIO_X_TITLE_OFFSET)
     sf._style_ratio_axis(rframe.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
 
@@ -394,7 +605,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     leg.AddEntry(frame.getHist("dat"), "Data (sideband)", "pe")
     for nm in envelope:
         leg.AddEntry(frame.getCurve(nm),
-                     nm + ("  (best)" if nm == best else ""), "l")
+                     nm + ("  (best fit)" if nm == best else ""), "l")
     leg.Draw()
     keep.append(leg)
     keep.append(sf.cms_label(pad1, year))
@@ -438,6 +649,16 @@ def main():
     ap.add_argument("--candidates", nargs="+", default=None,
                     help="restrict the candidate list (default: all in "
                          "pdfDefinitions)")
+    ap.add_argument("--scan-mh", action="store_true",
+                    help="spurious-signal scan: for every (truth, fitter) "
+                         "pair in the envelope, scan m_H and report the "
+                         "worst bias. Needs --sigjson.")
+    ap.add_argument("--sigjson", default=None,
+                    help="sigFit *_params.json, for the signal shape and "
+                         "the S_ref used by --scan-mh")
+    ap.add_argument("--mh-scan", nargs=3, type=float, default=None,
+                    metavar=("LO", "HI", "STEP"),
+                    help="m_H scan range (default %s)" % (MH_SCAN,))
     ap.add_argument("--multipdf", action="store_true",
                     help="build the RooMultiPdf and write the workspace. "
                          "Needs the Combine container; everything else "
@@ -535,8 +756,12 @@ def main():
     if not envelope:
         raise SystemExit("no candidate passed the goodness-of-fit cut; "
                          "inspect the fits before lowering GOF_THRESHOLD")
+    # the member with the best goodness-of-fit p-value. It is the
+    # reference for the ratio panel and the source of the extrapolated
+    # norm, but it is NOT 'the' background model: the whole envelope
+    # goes into the multipdf and Combine profiles over pdfindex.
     best = envelope[0]
-    print(f"\nenvelope : {', '.join(envelope)}   (best: {best})")
+    print(f"\nenvelope : {', '.join(envelope)}   (best fit: {best})")
 
     # ---- normalisation, extrapolated -----------------------------------
     # The fit only saw the sideband, so the full-range yield is the
@@ -556,6 +781,51 @@ def main():
         print("           this spread is the extrapolation uncertainty; "
               "Combine\n           profiles it through the floating norm "
               "and pdfindex")
+
+    # ---- spurious-signal scan ------------------------------------------
+    ss = sref = None
+    if args.scan_mh:
+        if not args.sigjson or not os.path.isfile(args.sigjson):
+            raise SystemExit("--scan-mh needs --sigjson pointing at a "
+                             "sigFit *_params.json")
+        scan = tuple(args.mh_scan) if args.mh_scan else MH_SCAN
+        sig_pdf, sig_bundle, sref = load_signal_shape(x, args.sigjson, tag)
+        norm_by_model = {nm: full_yield(n_sb, fits[nm]) for nm in envelope}
+
+        print(f"\nspurious-signal scan: m_H {scan[0]:g}-{scan[1]:g} GeV "
+              f"step {scan[2]:g}, S_ref = {sref:.1f}")
+        print(f"criteria |S|/dS < {SS_MAX_Z} and |S|/S_ref < {SS_MAX_MU}, "
+              f"at the WORST point of the scan")
+        ss = spurious_signal_scan(x, fits, envelope, sig_pdf, sref,
+                                  norm_by_model, sig_bundle["mh"], scan)
+
+        print(f"\n{'truth':<9}{'fitted':<9}{'m_H':>7}{'S':>11}{'dS':>9}"
+              f"{'|S|/dS':>9}{'|S|/Sref':>10}")
+        for (t_, f_), r in sorted(ss.items()):
+            mark = "" if r["passes"] else "   FAIL"
+            print(f"{t_:<9}{f_:<9}{r['mh']:>7.1f}{r['S']:>11.2f}"
+                  f"{r['dS']:>9.2f}{r['Z']:>9.3f}{r['mu']:>10.3f}{mark}")
+
+        cross = [f"{t_}->{f_}" for (t_, f_), r in ss.items()
+                 if not r["passes"] and t_ != f_]
+        same = [t_ for (t_, f_), r in ss.items()
+                if not r["passes"] and t_ == f_]
+        if same:
+            print(f"\nWARNING: {', '.join(same)} fails against its OWN "
+                  f"Asimov. That is a closure failure, not a model-choice\n"
+                  f"effect -- check the fit before reading anything else "
+                  f"from this table.")
+        if cross:
+            print(f"\n{len(cross)} cross-model pair(s) fail: "
+                  f"{', '.join(cross)}")
+            print("With discrete profiling this is information, not a veto: "
+                  "Combine\nprofiles the envelope, so a biased member "
+                  "widens the interval rather\nthan biasing the result. A "
+                  "large bias means the envelope is too loose --\n"
+                  "consider dropping that member or tightening the GOF cut.")
+        elif not same:
+            print("\nall pairs pass: no choice within the envelope can "
+                  "fake a signal\nlarger than the stated criteria")
 
     # ---- plots ---------------------------------------------------------
     plotdir = os.path.join(args.plotdir, args.category)
@@ -625,6 +895,11 @@ def main():
         "envelope": envelope,
         "rejected_by_gof": rejected,
         "best": best,
+        "spurious_signal": ({
+            "scan": list(args.mh_scan or MH_SCAN),
+            "max_Z": SS_MAX_Z, "max_mu": SS_MAX_MU, "sref": sref,
+            "pairs": {f"{t_}__{f_}": r for (t_, f_), r in ss.items()},
+        } if ss else None),
         "normalization": {"value": norm_val, "sideband_count": n_sb,
                           "sb_fraction": f_sb,
                           "envelope_spread": [min(spread), max(spread)]
