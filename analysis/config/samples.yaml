@@ -620,7 +620,7 @@ data:
     -87: "{scratch}/{year}/Run2026D/Muon2/*/*/*/*/*"
     -88: "{scratch}/{year}/Run2026D/Muon3/*/*/*/*/*"
     -181: "{ceph}/{year}/Run2026B/ParkingDoubleMuonLowMass*/*/*/*/*/*"
-    -182: "{ceph}/{year}/Run2026B/ParkingDoubleMuonLowMass*/*/*/*/*/*"   # KB: check, same path as -181 (Run2026D intended?)
+    -182: "{ceph}/{year}/Run2026D/ParkingDoubleMuonLowMass*/*/*/*/*/*"
 
 # ---------------------------------------------------------------------
 #  Which data ids to process per period ('parking' is the
