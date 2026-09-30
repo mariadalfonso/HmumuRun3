@@ -462,7 +462,7 @@ def BuildDict(year):
             -88: ("Run2026D/Muon3/*/*/*/*/*",dirNameScratch),
             #
             -181: ("Run2026B/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
-            -182: ("Run2026B/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
+            -182: ("Run2026D/ParkingDoubleMuonLowMass*/*/*/*/*/*",dirName),
         }
     }
 

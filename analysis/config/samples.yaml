@@ -179,6 +179,16 @@ groups:
   ttz_qq_v12: [238, 239]
   ttgamma_v15: [249]
   ttgamma_v12: [246, 247, 248]
+  # mode-dependent extras (training, systematic variations), see getMCList
+  wjets: [129]
+  wjets_mu: [130]
+  ttbar_2l_training: [141, 142]
+  vv_amcnlo: [208, 209, 210, 211, 212]
+  vv_amcnlo_2024: [207]                   # 207 still missing outside 2024
+  ttw_syst: [242, 243, 244, 245]
+  ttbar_2l_syst: [143, 144, 145, 146, 147, 148, 149]
+  dy_mass_binned: [109]
+  dy_minnlo: [126, 127, 128]
 
 # ---------------------------------------------------------------------
 #  MC samples: id -> path pattern + cross-section.
@@ -334,8 +344,11 @@ samples:
     path: "{ceph}/{year}/WtoLNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/NANOAODSIM/{campaign}"
     xsec: {ref: W}
   130:
+    path: "{ceph}/{year}/WtoMuNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/NANOAODSIM/{campaign}"
+    xsec: {ref: W, br: one_lepton_flavour}
+  131:
     path: "{ceph}/{year}/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8/NANOAODSIM/{campaign}"
-    xsec: {ref: EWKW}                                          # DY-EWK
+    xsec: {ref: EWKW}
 
   # --- Drell-Yan (EWK) ---
   101:
@@ -606,6 +619,8 @@ data:
     -86: "{scratch}/{year}/Run2026D/Muon1/*/*/*/*/*"
     -87: "{scratch}/{year}/Run2026D/Muon2/*/*/*/*/*"
     -88: "{scratch}/{year}/Run2026D/Muon3/*/*/*/*/*"
+    -181: "{ceph}/{year}/Run2026B/ParkingDoubleMuonLowMass*/*/*/*/*/*"
+    -182: "{ceph}/{year}/Run2026D/ParkingDoubleMuonLowMass*/*/*/*/*/*"
 
 # ---------------------------------------------------------------------
 #  Which data ids to process per period ('parking' is the

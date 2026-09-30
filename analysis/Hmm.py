@@ -186,8 +186,7 @@ def doCategories(df,mc,year):
           .Define("nGoodMuons","(int) Sum(goodMuons)")
           .Filter("Sum(goodMuons)>=1","at least two good muons")
           .Define("goodMu_mt","mtVec(Muon_bsConstrainedPt[goodMuons], Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi)")
-          .Define("goodMu_mtErr","mtErrVec(Muon_bsConstrainedPt[goodMuons], Muon_bsConstrainedPtErr[goodMuons], Muon_phi[goodMuons], PuppiMET_pt, PuppiMET_phi, PuppiMET_covXX, PuppiMET_covXY, PuppiMET_covYY)")
-          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], Muon_bsConstrainedPtErr[goodMuons], "{}", goodMu_mt, goodMu_mtErr)'.format(mode))
+          .Define("index_Mu",'getMuonIndices(Muon_bsConstrainedPt[goodMuons], Muon_eta[goodMuons], Muon_phi[goodMuons], Muon_charge[goodMuons], Muon_bsConstrainedPtErr[goodMuons], "{}", goodMu_mt)'.format(mode))
           .Filter("index_Mu[0]!= -1 and index_Mu[1]!= -1", "OS pair")
           .Define("idx_mu1","Nonzero(goodMuons)[index_Mu[0]]")   # index into the FULL Muon collection
           .Define("idx_mu2","Nonzero(goodMuons)[index_Mu[1]]")
