@@ -15,7 +15,6 @@ using stdVec_f = std::vector<float>;
 const float ele_mass_ = 0.000511;
 const float muon_mass_ = 0.10566;
 const float Z_mass_ = 91.1880; // GeV
-const float W_mass_ = 80.3770; // GeV
 const float H_mass_ = 125.0; // GeV
 
 // TO DO: implement the correction
@@ -722,11 +721,13 @@ struct WHPairingResult {
 
 // Z natural width, added in quadrature to the Z-hypothesis mass resolution.
 const float Gamma_Z_ = 2.4952; // GeV
+// W mT mean and RMS
+const float RMS_mT_ = 32.9; // GeV
+const float mean_mT_ = 60.7; // GeV
 
 // WH, 3 muons: the OS pair minimising -2lnL = sum (dm/sigma)^2 + 2ln(sigma) over
-// m_H and the mT of the leftover muon. mtErr is detector-only, so it understates
-// the true mT spread. On WH 3mu, mT alone is right 65-68% vs 76% for pair-pT.
-WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const Vec_f& mts, const Vec_f& mtErrs) {
+// m_H and the mT of the leftover muon.
+WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const Vec_f& mts) {
 
   WHPairingResult best;
   best.valid = false;
@@ -753,15 +754,10 @@ WHPairingResult findBestWHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f
 
       const float sH = mH * MinvErr(pts[i], ptErrs[i], pts[j], ptErrs[j]);
 
-      const float sT = mtErrs[k];
-      // high floor: if the covariance is missing, mT carries no weight
-      const float sW = std::max(sT, 50.f);
-
       const float dH = (mH  - H_mass_) / sH;
-      const float dW = (mtW - W_mass_) / sW;
+      const float dW = (mtW - mean_mT_) / RMS_mT_;
 
-      const float score = dH*dH + 2.f*std::log(sH)
-                        + dW*dW + 2.f*std::log(sW);
+      const float score = dH*dH + 2.f*std::log(sH) + dW*dW;
 
       if (score < best.score) {
         best.valid = true;
@@ -847,7 +843,7 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
 
 }
 
-stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const std::string mode, const Vec_f& mts, const Vec_f& mtErrs){
+stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const std::string mode, const Vec_f& mts){
 
   stdVec_i idx_(2, -1);
 
@@ -866,7 +862,7 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
   } else if (n == 3 and (mode=="isVlep" or mode=="isTTlep")) {
     // target W-->munu and H-->mumu
 
-    auto result = findBestWHCombo(pts, etas, phis, charges, ptErrs, mts, mtErrs);
+    auto result = findBestWHCombo(pts, etas, phis, charges, ptErrs, mts);
 
     if (result.valid) {
       idx_[0] = result.Hpair.i;
