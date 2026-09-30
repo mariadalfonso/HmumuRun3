@@ -263,6 +263,23 @@ def getMCList(year, mode):
     mc += g("ttgamma_v15") if is_2024 else g("ttgamma_v12")
     mc += g("top_other")
 
+    if mode == "isGGH":
+        mc += g("wjets_mu") if is_2024 else g("wjets")
+
+    # training samples and systematic variations
+    if mode in ("isTThad", "isTTlep", "isZinv", "isVhad"):
+        mc += g("ttbar_2l_training")
+    if mode == "isVlep":
+        mc += (g("vv_amcnlo_2024") if is_2024 else []) + g("vv_amcnlo")
+    if mode in ("isTTlep", "isVlep", "isZinv", "isTThad", "isVhad"):
+        if is_v12:
+            mc += g("ttw_syst")
+        mc += g("ttbar_2l_syst")
+    if mode in ("isVBF", "isGGH", "isVhad", "isTThad"):
+        mc += g("dy_mass_binned")
+    if mode in ("isGGH", "isTThad", "isVBF"):
+        mc += g("dy_minnlo")
+
     return list(dict.fromkeys(mc))   # de-duplicate, preserve order
 
 
