@@ -123,7 +123,16 @@ CMS_SCALE = 0.72
 # window -- the script reports any gap or overlap rather than silently
 # adjusting them, because a deliberate gap (skipping the peak, say) and an
 # accidental one look identical in the code.
-MASS_SLICES = [(110.0, 120.0), (120.0, 130.0), (130.0, 150.0)]
+# Mass slices for the sigma_m/m distributions, overlaid within each |eta|
+# category. 5 GeV steps across the peak region: close enough together that
+# the populations are comparable, which the earlier 110-120 / 120-130 /
+# 130-150 split was not (93% of ggH landed in the middle slice).
+#
+# These deliberately do NOT cover the full window -- 110-115 and 135-150
+# are left out because they hold almost no signal. The startup coverage
+# check will say so; that note is expected here, not a warning.
+MASS_SLICES = [(115.0, 120.0), (120.0, 125.0),
+               (125.0, 130.0), (130.0, 135.0)]
 
 # |eta| topology split. The same BB/BE/EE categories fitEtaBins uses, so
 # the resolution seen here can be matched against the sigma fitted there.
@@ -214,6 +223,13 @@ def parse_args():
                         + "; any gap or overlap is reported, not fixed.")
     p.add_argument("--no-slices", action="store_true",
                    help="skip the mass-slice distributions")
+    p.add_argument("--eta-norm", action="store_true",
+                   help="area-normalise the BB/BE/EE sigma_m/m overlay. "
+                        "Off by default: the categories partition the "
+                        "sample, so raw counts show the shape difference "
+                        "AND the relative populations at once. Normalise "
+                        "when the shapes are what matter and BB's "
+                        "dominance is getting in the way.")
     p.add_argument("--no-eta", action="store_true",
                    help="skip the |eta| topology split (BB/BE/EE)")
     p.add_argument("--force-profile", action="store_true",
@@ -551,15 +567,20 @@ def plot_1d(entries, plotdir, year, label, xtit, save_pdf,
     leg.SetTextFont(42)
     leg.SetTextSize(0.028)
 
+    # Clone before scaling. Scaling e["h1"] in place would leave it
+    # normalised for every later consumer -- plot_eta_dist reads the same
+    # objects and reports their yields, which would then all read 1.
     ymax = 0.0
+    shown = []
     for e in live:
-        h = e["h1"]
+        h = e["h1"].Clone(f"dist_{e['sig']}_{e['variant']}")
+        h.SetDirectory(0)
         if h.Integral() > 0:
             h.Scale(1.0 / h.Integral())
         ymax = max(ymax, h.GetMaximum())
+        shown.append((e, h))
 
-    for i, e in enumerate(live):
-        h = e["h1"]
+    for i, (e, h) in enumerate(shown):
         h.SetStats(0)
         h.SetLineColor(color(i))
         h.SetLineWidth(3)
@@ -618,9 +639,11 @@ def slice_distributions(entry, slices=None):
     Taken as y-projections of the 2D histogram that is already booked, so
     the slices cost nothing extra -- no second pass over the files.
 
-    Each is normalised to unit area, so the comparison is of SHAPE: the
-    question is whether the resolution distribution itself changes across
-    the mass window, not how many events each slice holds.
+    Area-normalised, so every curve integrates to one. With 5 GeV slices
+    across the peak the populations still differ by a few times, and the
+    question here is whether the SHAPE of the resolution distribution
+    moves across the peak -- not how many events each slice holds. The
+    per-slice yields are in the legend so that is still visible.
     """
     slices = MASS_SLICES if slices is None else slices
     h2 = entry["h2"]
@@ -640,7 +663,10 @@ def slice_distributions(entry, slices=None):
             continue
         qs = array("d", [0.0, 0.0, 0.0])
         h.GetQuantiles(3, qs, probs)
-        h.Scale(1.0 / n / h.GetBinWidth(1))
+        # LEFT UNNORMALISED, on purpose: the slice populations are part of
+        # what the plot shows. It was previously scaled by 1/n/binwidth,
+        # i.e. to a probability DENSITY -- which made the y values ~200 and
+        # the "fraction of events" label wrong twice over.
         out.append({"lo": lo, "hi": hi, "h": h, "n": n,
                     "q16": qs[0], "median": qs[1], "q84": qs[2]})
     return out
@@ -653,11 +679,22 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
     if len(sl) < 2:
         return
 
+    # clone before scaling: the stored histograms are shared with the
+    # table and the JSON, which report raw yields
+    drawn = []
+    for sd in sl:
+        h = sd["h"].Clone(f"{sd['h'].GetName()}_norm")
+        h.SetDirectory(0)
+        n = h.Integral()
+        if n > 0:
+            h.Scale(1.0 / n)
+        drawn.append((sd, h, n))
+
     esfx = f"_{entry['eta']}" if entry.get("eta") else ""
     c = make_canvas(f"cslice_{entry['sig']}_{entry['variant']}{esfx}")
     keep = []
 
-    ymax = max(s["h"].GetMaximum() for s in sl)
+    ymax = max(h.GetMaximum() for _, h, _ in drawn)
     leg = ROOT.TLegend(1 - SF.PAD_RIGHT_MARGIN - 0.46,
                        1 - SF.PAD_TOP_MARGIN - 0.06 - 0.05 * len(sl),
                        1 - SF.PAD_RIGHT_MARGIN - 0.02,
@@ -667,8 +704,7 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
     leg.SetTextFont(42)
     leg.SetTextSize(0.027)
 
-    for i, sd in enumerate(sl):
-        h = sd["h"]
+    for i, (sd, h, n_sd) in enumerate(drawn):
         h.SetStats(0)
         h.SetLineColor(color(i))
         h.SetLineWidth(3)
@@ -686,7 +722,7 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
         keep.append(ln)
 
         leg.AddEntry(h, f"{sd['lo']:g}-{sd['hi']:g} GeV  "
-                        f"(med {sd['median']:.4g})", "l")
+                        f"(med {sd['median']:.4g}, {n_sd:.0f} ev)", "l")
 
     leg.Draw()
     keep.append(leg)
@@ -708,6 +744,105 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
     keep.append(cms_label(c, year, scale=CMS_SCALE))
     save(c, f"{plotdir}/{entry['sig']}_slices_{entry['variant']}"
             f"{esfx}_{year}", save_pdf)
+
+
+def plot_eta_dist(entries, plotdir, year, label, xtit, save_pdf,
+                  normalise=False):
+    """sigma_m/m for BB, BE and EE overlaid, integrated over the mass window.
+
+    The eta topology is the split worth looking at. Unlike a mass split it
+    is NOT correlated with the resolution through the reconstruction: a
+    forward muon is measured worse because of where it is in the detector,
+    not because it happened to fluctuate. So a difference between these
+    curves is a statement about the detector rather than a selection
+    effect.
+
+    RAW weighted counts by default. The three categories partition the
+    sample, so the counts carry real information: a category with poor
+    resolution but 5% of the events is a different situation from one
+    with 30%, and area-normalising hides that. The trade is that BB
+    dominates, so the EE shape is compressed -- use --eta-norm when the
+    shapes are the question.
+    """
+    shorts = [b["short"] for b in eta_bins()]
+    for vkey in sorted({e["variant"] for e in entries}):
+        for sig in sorted({e["sig"] for e in entries}):
+            rows = [(sh, next((e for e in entries
+                               if e["variant"] == vkey and e["sig"] == sig
+                               and e.get("eta") == sh), None))
+                    for sh in shorts]
+            rows = [(sh, e) for sh, e in rows if e and e["h1"].Integral() > 0]
+            if len(rows) < 2:
+                continue
+            incl = next((e for e in entries
+                         if e["variant"] == vkey and e["sig"] == sig
+                         and not e.get("eta")
+                         and e["h1"].Integral() > 0), None)
+
+            # clone before scaling: plot_1d scales e["h1"] IN PLACE, so
+            # touching the originals here would double-scale whichever
+            # function ran second
+            curves = []
+            for i, (sh, e) in enumerate(rows):
+                h = e["h1"].Clone(f"etad_{sig}_{vkey}_{sh}")
+                h.SetDirectory(0)
+                yield_ = h.Integral()
+                if normalise and yield_ > 0:
+                    h.Scale(1.0 / yield_)
+                curves.append((sh, h, yield_, e["median"], color(i)))
+            if incl is not None:
+                h = incl["h1"].Clone(f"etad_{sig}_{vkey}_incl")
+                h.SetDirectory(0)
+                yi = h.Integral()
+                if normalise and yi > 0:
+                    h.Scale(1.0 / yi)
+                curves.append(("inclusive", h, yi, incl["median"],
+                               ROOT.kBlack))
+
+            ymax = max(h.GetMaximum() for _, h, _, _, _ in curves)
+            c = make_canvas(f"cetad_{sig}_{vkey}")
+            keep = []
+            leg = ROOT.TLegend(1 - SF.PAD_RIGHT_MARGIN - 0.44,
+                               1 - SF.PAD_TOP_MARGIN - 0.06
+                               - 0.048 * len(curves),
+                               1 - SF.PAD_RIGHT_MARGIN - 0.02,
+                               1 - SF.PAD_TOP_MARGIN - 0.06)
+            leg.SetBorderSize(0)
+            leg.SetFillStyle(0)
+            leg.SetTextFont(42)
+            leg.SetTextSize(0.026)
+
+            for j, (sh, h, yield_, med, col) in enumerate(curves):
+                h.SetStats(0)
+                h.SetLineColor(col)
+                h.SetLineWidth(3)
+                if sh == "inclusive":
+                    h.SetLineStyle(ROOT.kDashed)
+                h.SetTitle(f";{xtit};"
+                           + ("fraction of events" if normalise else "Events"))
+                style_axes(h)
+                h.SetMaximum(1.45 * ymax)
+                h.Draw("HIST" if j == 0 else "HIST SAME")
+                keep.append(h)
+
+                leg.AddEntry(h, f"{sh}  (med {med:.4g}, {yield_:.0f} ev)",
+                             "l")
+            leg.Draw()
+            keep.append(leg)
+
+            tex = ROOT.TLatex()
+            tex.SetNDC()
+            tex.SetTextFont(42)
+            tex.SetTextSize(0.028)
+            lines = [f"{sig}, {label.split(',')[0].strip()}",
+                     rows[0][1]["desc"]]
+            for k, ln_ in enumerate(lines):
+                tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04,
+                              0.86 - k * 0.042, ln_)
+            keep.append(tex)
+
+            keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+            save(c, f"{plotdir}/{sig}_etadist_{vkey}_{year}", save_pdf)
 
 
 def plot_eta_compare(entries, plotdir, year, label, ytit, save_pdf):
@@ -1105,6 +1240,8 @@ def main():
         plot_fsr_compare(incl_entries, outdir, year, label, ytit, args.pdf)
     if any(e.get("eta") for e in entries):
         plot_eta_compare(entries, outdir, year, label, ytit, args.pdf)
+        plot_eta_dist(entries, outdir, year, label, ytit, args.pdf,
+                      normalise=args.eta_norm)
 
     # ---- json ----------------------------------------------------------
     dump = {}
