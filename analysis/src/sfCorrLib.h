@@ -257,7 +257,7 @@ MyCorrections::MyCorrections(int year) {
   ////  EGM https://twiki.cern.ch/twiki/bin/view/CMS/EgammSFandSSRun3
   //////////////
 
-  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025) {
+  if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
 
     std::string fileNameIDELE   = dirName+"EGM/"+subDirName+"electron.json.gz";
     auto csetIDELE = correction::CorrectionSet::from_file(fileNameIDELE);
