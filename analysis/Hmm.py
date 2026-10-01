@@ -48,6 +48,11 @@ def parse_args():
                         help="process only the first N files of each sample. The "
                              "normalisation is computed from the same subset, so the "
                              "output is correct but with reduced statistics.")
+    parser.add_argument("--musmear", action="store_true",
+                        help="add the MC resolution-smearing term to the muon "
+                             "pT error in quadrature. Needs computeMUresolution "
+                             "in sfCorrLib.h; without it Muon{1,2}_ptErrSmear "
+                             "is written as -1. See PLAN_muon_pterr.md.")
     parser.add_argument("-j", "--ncores", type=int, default=0,
                         help="ROOT implicit-MT threads; 0 means all available cores. "
                              "Set this when running several processes at once.")
@@ -229,8 +234,48 @@ def doCategories(df,mc,year):
           # from, which is why it is the one the pull study validates.
           .Define("Muon1_pt_bs","Muon1Vec_.Pt()")
           .Define("Muon2_pt_bs","Muon2Vec_.Pt()")
+          .Define("Muon1_pt_bsRaw","Muon_bsConstrainedPtUncorr[idx_mu1]")
+          .Define("Muon2_pt_bsRaw","Muon_bsConstrainedPtUncorr[idx_mu2]")
           .Define("Muon1_ptErr","Muon_bsConstrainedPtErr[idx_mu1]")
           .Define("Muon2_ptErr","Muon_bsConstrainedPtErr[idx_mu2]")
+          # The scale part of computeMUcorrection rescales pT and leaves the
+          # error alone, so move the error onto the corrected scale: a pure
+          # rescaling leaves the RELATIVE error invariant. Exact for data.
+          # For MC the ratio is k*(1+Delta) with Delta the random smearing
+          # draw, so this carries that noise; the smearing itself is a
+          # separate quadrature term that needs the WIDTH from MuonScaRe,
+          # not the realised draw. See PLAN_muon_pterr.md.
+          .Define("Muon1_ptErrScale","Muon1_pt_bsRaw>0 ? Muon1_ptErr*Muon1_pt_bs/Muon1_pt_bsRaw : Muon1_ptErr")
+          .Define("Muon2_ptErrScale","Muon2_pt_bsRaw>0 ? Muon2_ptErr*Muon2_pt_bs/Muon2_pt_bsRaw : Muon2_ptErr")
+          # Scale correction AND the MC resolution smearing. The smearing is
+          # an independent Gaussian broadening that the track fit never saw,
+          # so it adds in quadrature with the scaled track-fit error:
+          #   sigma^2 = (k*sigma_trk)^2 + (sigma_smear * pT_corr)^2
+          # The width is per muon and comes from MuonScaRe, evaluated on the
+          # uncorrected pT. -1 when --musmear was not given, or in data,
+          # where there is no smearing and ptErrScale is already exact.
+          .Define("Muon1_ptSmearRel","Muon_ptSmearRel[idx_mu1]")
+          .Define("Muon2_ptSmearRel","Muon_ptSmearRel[idx_mu2]")
+          .Define("Muon1_ptErrSmear","Muon1_ptSmearRel>=0 ? (float)sqrt(Muon1_ptErrScale*Muon1_ptErrScale + Muon1_ptSmearRel*Muon1_pt_bs*Muon1_ptSmearRel*Muon1_pt_bs) : -1.f")
+          .Define("Muon2_ptErrSmear","Muon2_ptSmearRel>=0 ? (float)sqrt(Muon2_ptErrScale*Muon2_ptErrScale + Muon2_ptSmearRel*Muon2_pt_bs*Muon2_ptSmearRel*Muon2_pt_bs) : -1.f")
+          # --- FSR recovery -------------------------------------------------
+          # The photon is nearly collinear, so d(pT_mugamma)/d(pT_mu) ~ 1 and
+          # the muon's ABSOLUTE error is unchanged by adding it. The photon's
+          # own term is not available (FsrPhoton has no energy error in
+          # NanoAOD) and is small: pT_gamma/pT_mu of a few percent times an
+          # ECAL resolution of a few percent. What does change is the
+          # RELATIVE error, since pT grows. hasFSR is there so the two
+          # populations can be fitted separately rather than assumed equal.
+          .Define("Muon1_hasFSR","fsrIdx_mu1>=0")
+          .Define("Muon2_hasFSR","fsrIdx_mu2>=0")
+          .Define("Muon1_fsrPt","fsrIdx_mu1>=0 ? FsrPhoton_pt[fsrIdx_mu1] : -1.f")
+          .Define("Muon2_fsrPt","fsrIdx_mu2>=0 ? FsrPhoton_pt[fsrIdx_mu2] : -1.f")
+          .Define("Muon1_fsrDR","fsrIdx_mu1>=0 ? deltaR(Muon1_eta,Muon1_phi,FsrPhoton_eta[fsrIdx_mu1],FsrPhoton_phi[fsrIdx_mu1]) : -1.f")
+          .Define("Muon2_fsrDR","fsrIdx_mu2>=0 ? deltaR(Muon2_eta,Muon2_phi,FsrPhoton_eta[fsrIdx_mu2],FsrPhoton_phi[fsrIdx_mu2]) : -1.f")
+          # relative error to pair with the FSR-corrected Muon{i}_pt, i.e.
+          # what MinvErr should be given. Same absolute error, larger pT.
+          .Define("Muon1_ptErrRel","Muon1_pt>0 ? Muon1_ptErrScale/Muon1_pt : -1.f")
+          .Define("Muon2_ptErrRel","Muon2_pt>0 ? Muon2_ptErrScale/Muon2_pt : -1.f")
           .Define("classify","topology(Muon1_eta, Muon2_eta)")
           ###
           # Jet_puIdDisc only for nanov15
@@ -709,6 +754,23 @@ def objScaleSmear(df, year, mc):
 
         # get the EGM scale
         df = df.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, event, run, isData, "{0}")'.format(year))
+
+    # Muon_bsConstrainedPtErr is the track-fit error on the UNCORRECTED
+    # Muon_bsConstrainedPt, and computeMUcorrection does not touch it. Keep
+    # the pre-correction value so the applied factor can be recovered.
+    df = df.Define("Muon_bsConstrainedPtUncorr","Muon_bsConstrainedPt")
+
+    # Relative width of the smearing computeMUcorrection applies below. This
+    # is the WIDTH, not the realised draw: the draw is already in the pT and
+    # multiplying the error by it would add noise without inflating anything.
+    # Taken before the Redefine so it is evaluated on the uncorrected pT, the
+    # same input MuonScaRe itself uses.
+    if args.musmear:
+        df = df.Define("Muon_ptSmearRel",
+                       'computeMUresolution(Muon_bsConstrainedPt, Muon_eta, '
+                       'Muon_nTrackerLayers, isData)')
+    else:
+        df = df.Define("Muon_ptSmearRel", "ROOT::VecOps::RVec<float>(Muon_pt.size(), -1.f)")
 
     if year in ["12022", "22022", "12023", "22023", "2024", "2025", "2026"]:
         df = df.Redefine("Muon_bsConstrainedPt",'computeMUcorrection(Muon_bsConstrainedPt, Muon_eta, Muon_phi, Muon_charge, Muon_nTrackerLayers, isData, event, luminosityBlock)')

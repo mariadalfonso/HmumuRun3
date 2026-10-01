@@ -46,8 +46,35 @@ base:
   # pt_bs with ptErr is the combination HiggsCandMassErr is built from.
   - Muon1_pt_bs
   - Muon2_pt_bs
+  - Muon1_pt_bsRaw
+  - Muon2_pt_bsRaw
+  # track-fit error, as NanoAOD gives it: the error on _pt_bsRaw
   - Muon1_ptErr
   - Muon2_ptErr
+  # the same RELATIVE error moved onto the corrected pT scale. Exact for
+  # data; for MC it carries the random smearing draw, and the smearing
+  # itself still needs a quadrature term from MuonScaRe's resolution width.
+  - Muon1_ptErrScale
+  - Muon2_ptErrScale
+  # scale correction AND the MC smearing, added in quadrature:
+  #   sigma^2 = (k*sigma_trk)^2 + (sigma_smear*pT_corr)^2
+  # -1 without Hmm.py --musmear, and in data where there is no smearing
+  - Muon1_ptSmearRel
+  - Muon2_ptSmearRel
+  - Muon1_ptErrSmear
+  - Muon2_ptErrSmear
+  # relative error to pair with the FSR-corrected Muon*_pt. The absolute
+  # error is unchanged by adding a collinear photon; the relative one is not.
+  - Muon1_ptErrRel
+  - Muon2_ptErrRel
+  # FSR recovery: hasFSR splits the two populations so they can be fitted
+  # separately, since the photon's own energy error is not available
+  - Muon1_hasFSR
+  - Muon2_hasFSR
+  - Muon1_fsrPt
+  - Muon2_fsrPt
+  - Muon1_fsrDR
+  - Muon2_fsrDR
   - PuppiMET_pt
   - PuppiMET_phi
   - discrMVA
@@ -62,11 +89,6 @@ base_mc_only:
   - Muon1_genOrigin
   - Muon2_genOrigin
   - pairFromHiggs
-  # how many of the good muons came from the Higgs. With pairFromHiggs
-  # false, nGoodMuFromH == 2 means the right pair was available and the
-  # pairing chose wrong (recoverable); < 2 means an H muon was lost
-  # by the object selection (not a pairing problem).
-  - nGoodMuFromH
   # --- truth pT of the two selected muons ------------------------------
   # Bare gen muon, i.e. the muon after FSR and bremsstrahlung, which is
   # what the tracker measured. Truth partner of Muon*_pt_bs.
