@@ -1,10 +1,10 @@
 # VH 12022 -- sample list for isVhad
-# generated 2026-09-08 01:26 from config/samples.yaml by tools/make_datasets.py (prompt data stream)
+# generated 2026-10-05 08:56 from config/samples.yaml by make_datasets.py (prompt data stream)
 #
 # Committed to git: regenerate only when the datasets change.
 # Comment a line out to skip that sample.
 
-# --- MC (53) ---
+# --- MC (67) ---
 10     # VBF*Hto2Mu_*M-125
 11     # GluGlu*Hto2Mu_*M-125
 12     # WminusH*Hto2Mu_*M-125
@@ -58,6 +58,20 @@
 107    # TTtoLNu2Q
 105    # TWminusto2L2Nu
 106    # TbarWplusto2L2Nu
+141    # TTto2L2Nu-2Jets
+142    # TTto2L2Nu-3Jets
+242    # TTLNu-1Jets
+243    # TTLNu-1Jets
+244    # TTLNu-1Jets
+245    # TTLNu-1Jets
+143    # TTto2L2Nu
+144    # TTto2L2Nu
+145    # TTto2L2Nu
+146    # TTto2L2Nu
+147    # TTto2L2Nu_*ERD*On*_13p6TeV_powheg-pythia8
+148    # TTto2L2Nu_*Hdamp-158
+149    # TTto2L2Nu_*Hdamp-418
+109    # DYto2Mu-2Jets*MLL-105*o160
 
 # --- data (4) ---
 -11    # Run2022C/SingleMuon
