@@ -1,23 +1,32 @@
 import ROOT
 
 from prepareFits import getHisto
-from pdfDefinitions import *
-from fitUtils import *
+from pdfDefinitions import PDFDefinitions
+##from fitUtils import * # unused ?
 
 ROOT.gROOT.SetBatch()
 combine_base = "/code/HiggsAnalysis/CombinedLimit"
 ROOT.gSystem.Load("/code/HiggsAnalysis/CombinedLimit/build/lib/libHiggsAnalysisCombinedLimit.so")
 # NB before loading the singularity, do 'conda deactivate'
 
+ROOT.ROOT.EnableImplicitMT(32)
+
+# to speed up
+ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
+ROOT.RooMsgService.instance().getStream(1).removeTopic(ROOT.RooFit.NumIntegration)
+#cmdList.Add(ROOT.RooFit.PrintLevel(-1))
+
 blinded=False
 doMultiPdf=True
-do_bias_study = True
 
-workspaceName = 'WS_JUL23'
+workspaceName = 'WS_SEPT'
 
 ## for GF and VBF
 xlowRange = 110
 xhighRange = 150
+
+lowBlind = 120
+highBlind = 130
 
 category_suffix = {
     "ggHcat":  "ggHcat",
@@ -29,26 +38,14 @@ category_suffix = {
     "TTLcat":  "TTLcat",
 }
 
-# TO DO BETTER
-mc_list = {
-    "VLcat":  ["VH","ttH"], #qqH and ggH are no relevant stat
-    "TTLcat":  ["VH","ttH"],
-    "Zinvcat":  ["qqH","VH","ttH"],
-    "VHcat":  ["VH","ttH"],
-    "TTHcat":  ["VH","ttH"],
-    #
-    "ggHcat":  ["ggH","qqH","VH","ttH"],
-    "VBFcat":  ["ggH","qqH","VH","ttH"],
-}
-
-bkg_model_selection = {
-    "ggHcat": {"model1": "pow3", "model2": "bern3"},
-    "VBFcat": {"model1": "exp3", "model2": "bern2"},
-    "VHcat": {"model1": "bern2", "model2": "exp1"},
-    "VLcat": {"model1": "bern2", "model2": "exp1"},
-    "Zinvcat": {"model1": "bern2", "model2": "exp1"},
-    "TTHcat": {"model1": "bern2", "model2": "exp1"},
-    "TTLcat": {"model1": "bern2", "model2": "exp1"},
+CATEGORIES = {
+    "ggHcat":  dict(bins=["incl","bdt0","bdt1","bdt2"],               signals=["ggH","qqH","VH","ttH"], bkg=("pow3","bern3")),
+    "VBFcat":  dict(bins=["incl","bdt0","bdt1","bdt2","bdt3"],        signals=["ggH","qqH","VH","ttH"], bkg=("exp3","bern2")),
+    "VHcat":   dict(bins=["incl","bdt0","bdt1","bdt2"],               signals=["VH","ttH"],             bkg=("bern2","exp1")),
+    "VLcat":   dict(bins=["incl","bdt0","bdt1","bdt2","bdt3"],        signals=["VH","ttH"],             bkg=("bern2","exp1")),
+    "Zinvcat": dict(bins=["incl","bdt0","bdt1","bdt2"],               signals=["qqH","VH","ttH"],       bkg=("bern2","exp1")),
+    "TTHcat":  dict(bins=["incl","bdt0","bdt1","bdt2"],               signals=["VH","ttH"],             bkg=("bern2","exp1")),
+    "TTLcat":  dict(bins=["incl","bdt0","bdt1","bdt2"],               signals=["VH","ttH"],             bkg=("bern2","exp1")),
 }
 
 def finalWorkspace(w, data, model, norm, year, doMultiPdf=False, tag='',storedPdfs=''):
@@ -72,14 +69,13 @@ def finalWorkspace(w, data, model, norm, year, doMultiPdf=False, tag='',storedPd
 
     return w
 
-
-def setVar(tag, lowBlind='-1', highBlind='-1'):
+def setVar(tag, lowBlind=None, highBlind=None):
 
     suffix = category_suffix[tag]
     x = ROOT.RooRealVar(f"mh{suffix}", "m_{#mu,#mu}", xlowRange, xhighRange)
 
     x.setRange("full", xlowRange, xhighRange)
-    if lowBlind!='-1':
+    if lowBlind is not None and highBlind is not None:
         x.setRange("left", xlowRange, lowBlind)
         x.setRange("right", highBlind, xhighRange)
 
@@ -87,7 +83,7 @@ def setVar(tag, lowBlind='-1', highBlind='-1'):
 
     return x
 
-def  fitSig(tag_ , year, binMVA):
+def  fitSig(tag_ , year, binMVA, cfg):
 
     tag = tag_+"_"+binMVA+"_"+year
 
@@ -101,13 +97,13 @@ def  fitSig(tag_ , year, binMVA):
 
     pdfDef = PDFDefinitions()
 
-    for sig in mc_list[tag_]:
+    for sig in cfg["signals"]:
     
         data_full = getHisto(10*int(xhighRange - xlowRange), xlowRange, xhighRange, doLog, tag_, year, doSignal, binMVA, sig)
         print('getHisto  DONE')
 
-        data = ROOT.RooDataHist('datahist'+tag, 'data', ROOT.RooArgList(x), data_full)
-
+        data = ROOT.RooDataHist('datahist_'+tag+'_'+sig, 'data', ROOT.RooArgList(x), data_full)
+        
         # -----------------------------------------------------------------------------
 
         # Create signal PDF
@@ -170,7 +166,7 @@ def  fitSig(tag_ , year, binMVA):
 
                 ratioHist.SetBinContent(i + 1, ratio)
                 ratioHist.SetBinError(i + 1, dataHist.GetErrorY(i) / y_fit if y_fit != 0 else 0)
-
+            
             ratioHist.GetYaxis().SetTitle("Ratio")
             ratioHist.GetYaxis().SetTitleSize(0.08)
             ratioHist.GetYaxis().SetLabelSize(0.08)
@@ -192,7 +188,7 @@ def  fitSig(tag_ , year, binMVA):
 
             # ========== Save the canvas ==========
             canvas.Draw()
-            htmldir = "~/public_html/HMUMU_FITS/JUL23"
+            htmldir = "~/public_html/HMUMU_FITS/SEPT"
             canvas.SaveAs(htmldir+"/signal_"+tag+'_'+sig+"_"+str(year)+".png")
             chi2_ndf = plotFrameWithNormRange.chiSquare()
             print("Chi² / ndf =", chi2_ndf)
@@ -236,7 +232,7 @@ def  fitSig(tag_ , year, binMVA):
 
     w.writeToFile(workspaceName+"/Signal_"+tag+"_workspace.root")
 
-def  fitBkg(tag_, year, binMVA):
+def  fitBkg(tag_, year, binMVA, cfg):
 
     tag = tag_+"_"+binMVA+"_"+year
 
@@ -244,8 +240,6 @@ def  fitBkg(tag_, year, binMVA):
     # Create a empty workspace (one for all signal)
     w = ROOT.RooWorkspace("w", "workspace")
 
-    lowBlind = 120
-    highBlind = 130
     x = setVar(tag_, lowBlind, highBlind)
     nBins = 10*int(xhighRange-xlowRange)
 
@@ -261,14 +255,11 @@ def  fitBkg(tag_, year, binMVA):
 
     data_reduced_manual = data_full.Clone()
 
-    # get bin indices for the blinded region
-    bin_low = data_reduced_manual.FindBin(lowBlind)
-    bin_high = data_reduced_manual.FindBin(highBlind)
-
-    # zero out all bins in [lowBlind, highBlind]
-    for i in range(bin_low, bin_high + 1):
-        data_reduced_manual.SetBinContent(i, 0.0)
-        data_reduced_manual.SetBinError(i, 0.0)
+    for i in range(1, data_reduced_manual.GetNbinsX() + 1):
+        c = data_reduced_manual.GetBinCenter(i)
+        if lowBlind <= c < highBlind:
+            data_reduced_manual.SetBinContent(i, 0.0)
+            data_reduced_manual.SetBinError(i, 0.0)
 
     data_reduced = ROOT.RooDataHist('datahistReduce_'+tag, 'dataReduced', ROOT.RooArgList(x), data_reduced_manual)
 
@@ -283,8 +274,7 @@ def  fitBkg(tag_, year, binMVA):
     all_formulas = bkg_pdfs_result['formulas']
 
     # Select models for this category
-    model1_name = bkg_model_selection[tag_]["model1"]
-    model2_name = bkg_model_selection[tag_]["model2"]
+    model1_name, model2_name = cfg["bkg"]
 
     model1 = all_pdfs[model1_name]
     model2 = all_pdfs[model2_name]
@@ -296,7 +286,8 @@ def  fitBkg(tag_, year, binMVA):
     cmdList = ROOT.RooLinkedList()
     cmdList.Add(ROOT.RooFit.Minimizer("Minuit2"))
     cmdList.Add(ROOT.RooFit.Strategy(2))
-    cmdList.Add(ROOT.RooFit.Range("full"))
+    if blinded: cmdList.Add(ROOT.RooFit.Range("left,right"))
+    else: cmdList.Add(ROOT.RooFit.Range("full"))
     cmdList.Add(ROOT.RooFit.Save(True))
 
     if blinded: fitresults = model1.fitTo(blindedData,cmdList)
@@ -374,6 +365,7 @@ def  fitBkg(tag_, year, binMVA):
 
     plotFrameWithNormRange.Draw()
 #    hresid = plotFrameWithNormRange.residHist()
+#    hresid = plotFrameWithNormRange.residHist("fit_data", "fit_curve", True)
 
     offsetY = 0.75*data_full.GetMaximum()
     latex = ROOT.TLatex()
@@ -384,7 +376,7 @@ def  fitBkg(tag_, year, binMVA):
     latex.DrawLatex(130 ,offsetY + 0.20*data_full.GetMaximum(), model2.GetName())
 
     canvas.Draw()
-    htmldir = "~/public_html/HMUMU_FITS/JUL23"
+    htmldir = "~/public_html/HMUMU_FITS/SEPT"
     if blinded: canvas.SaveAs(htmldir+"/bkg_"+tag+"_"+str(year)+"blinded.png")
     else: canvas.SaveAs(htmldir+"/bkg_"+tag+"_"+str(year)+".png")
 
@@ -401,30 +393,8 @@ def  fitBkg(tag_, year, binMVA):
 if __name__ == "__main__":
 
     for year in ['Run3']:
-
-        for binX in ["bdt0", "bdt1", "bdt2","bdt3"]:
-            fitSig('VBFcat',year,binX)
-            fitBkg('VBFcat',year,binX)
-
-        for binX in ["bdt0", "bdt1", "bdt2"]:
-            fitSig('VHcat',year,binX)
-            fitBkg('VHcat',year,binX)
-
-        for binX in ["bdt0", "bdt1", "bdt2"]:
-            fitSig('ggHcat',year,binX)
-            fitBkg('ggHcat',year,binX)
-
-            fitSig('Zinvcat',year,binX)
-            fitBkg('Zinvcat',year,binX)
-
-            fitSig('TTHcat',year,binX)
-            fitBkg('TTHcat',year,binX)
-
-            fitSig('VLcat',year,binX)
-            fitBkg('VLcat',year,binX)
-
-#        for binX in ["bdt0", "bdt1","incl"]:
-        for binX in ["bdt0", "bdt1"]:
-
-            fitSig('TTLcat',year,binX)
-            fitBkg('TTLcat',year,binX)
+        for cat,cfg in CATEGORIES.items():
+            print('doing cat ', cat)
+            for binX in cfg["bins"]:
+                fitSig(cat, year, binX, cfg)
+                fitBkg(cat, year, binX, cfg)

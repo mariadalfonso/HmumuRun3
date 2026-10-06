@@ -74,7 +74,7 @@ class FitUtilities:
         chi2_info = FitUtilities.calculate_chi2_from_fit(fitresult, n_data_points)
         
         output_str = (f"{model_name:30s}  chi2/ndof={chi2_info['chi2_ndof']:7.3f}  "
-                     f"ndof={chi2_info['ndof']:3d}  n_params={chi2_info['n_params']:2d}\n")
+                      f"ndof={chi2_info['ndof']:3d}  n_params={chi2_info['n_params']:2d}\n")
         
         print(output_str.rstrip('\n'))
         if file_obj:
@@ -96,3 +96,19 @@ class FitUtilities:
         best_model = min(fitresults_dict.items(), 
                         key=lambda x: x[1]['chi2_ndof'] if x[1]['chi2_ndof'] > 0 else float('inf'))
         return best_model
+
+    @staticmethod
+    def select_by_aic(nll_dict):
+        """
+        Model choice by AIC = 2*NLL + 2*k, lowest wins.
+
+        Use this, not chi2/ndof, when comparing PDFs of different order on the
+        same dataset: minNll() differences between nested models are
+        meaningful even though minNll() on its own is not a chi2.
+
+        Args:
+            nll_dict: {model_name: (minNll, n_float_params)}
+        """
+        aic = {name: 2.0 * nll + 2.0 * k for name, (nll, k) in nll_dict.items()}
+        best = min(aic.items(), key=lambda kv: kv[1])
+        return best[0], aic

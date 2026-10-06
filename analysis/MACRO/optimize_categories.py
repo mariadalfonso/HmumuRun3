@@ -24,6 +24,19 @@ signal_files = {
     "TTLcat":  ["15"],             # TTL
 }
 
+max_cat = {
+    "ggHcat":  3,             # ggH
+    "VBFcat":  4,             # VBF
+    "VHcat":   3, # VH
+    "VLcat":   4, # VL
+    "Zinvcat": 3,             # VL
+    "TTHcat":  3,             # TTH
+    "TTLcat":  3,             # TTL
+}
+
+# max categories to try
+MAX_CAT = int(max_cat[category])
+
 mytree = ROOT.TChain('events')
 mytree = loadTree(mytree, directory, category, year )
 
@@ -37,8 +50,6 @@ MVAdiscr_max = 1.0
 #MIN_BKG = 100   # corresponds to 10% stat uncertainty
 MIN_BKG = 20  ## from Zgamma
 
-# max categories to try
-MAX_CAT = 3
 
 # number of scan points for MVAdiscr
 SCAN_POINTS = 50
@@ -103,8 +114,8 @@ bkg_counts = []
 
 for edge in grid:
 
-    s = sig.Filter(f"discrMVA0 >= {edge}").Sum(WEIGHT_BRANCH).GetValue()
-    b = bkg.Filter(f"discrMVA0 >= {edge}").Sum(WEIGHT_BRANCH).GetValue()
+    s = sig.Filter(f"discrMVA >= {edge}").Sum(WEIGHT_BRANCH).GetValue()
+    b = bkg.Filter(f"discrMVA >= {edge}").Sum(WEIGHT_BRANCH).GetValue()
 
     sig_counts.append(s)
     bkg_counts.append(b)
@@ -185,11 +196,11 @@ for i in range(len(best_edges)-1):
     high = best_edges[i+1]
 
     s = sig.Filter(
-        f"discrMVA0 >= {low} && discrMVA0 < {high}"
+        f"discrMVA >= {low} && discrMVA < {high}"
     ).Sum(WEIGHT_BRANCH).GetValue()
 
     b = bkg.Filter(
-        f"discrMVA0 >= {low} && discrMVA0 < {high}"
+        f"discrMVA >= {low} && discrMVA < {high}"
     ).Sum(WEIGHT_BRANCH).GetValue()
 
     print(f"[{low:.4f}, {high:.4f}]  S={s}  B={b}  S/sqrt(B)={s/math.sqrt(b):.3f}")

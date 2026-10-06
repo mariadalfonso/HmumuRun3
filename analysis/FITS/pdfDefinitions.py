@@ -91,15 +91,15 @@ class PDFDefinitions:
                                      params['gauss_mu'], params['gauss_sigma'])
 
         # ===== EXPONENTIAL PDFs =====
-        params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -0.022, -0.018)
+        params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -0.5, 0.)
         params['exp_p2'] = RooRealVar(f'exp_p2{tag}', 'exp_p2', -1e-2, -10, 10)
         params['exp_p3'] = RooRealVar(f'exp_p3{tag}', 'exp_p3', -1e-3, -10, 0)
-        params['exp_c1'] = RooRealVar(f'exp_c1{tag}', 'exp_c1', 0., 1.)
-        params['exp_c2'] = RooRealVar(f'exp_c2{tag}', 'exp_c2', 0., 1.)
+        params['exp_c1'] = RooRealVar(f'exp_c1{tag}', 'exp_c1', 0.5, 0., 1.)
+        params['exp_c2'] = RooRealVar(f'exp_c2{tag}', 'exp_c2', 0.5, 0., 1.)
 
-        formulas['exp_frac1'] = RooFormulaVar(f"exp_frac1{tag}", "@0", 
+        formulas['exp_frac1'] = RooFormulaVar(f"exp_frac1{tag}", "@0",
                                               RooArgList(params['exp_c1']))
-        formulas['exp_frac2'] = RooFormulaVar(f"exp_frac2{tag}", "(1-@0)*@1", 
+        formulas['exp_frac2'] = RooFormulaVar(f"exp_frac2{tag}", "(1-@0)*@1",
                                               RooArgList(params['exp_c1'], params['exp_c2']))
 
         # Store intermediate exponential PDFs

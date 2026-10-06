@@ -2,7 +2,7 @@ import ROOT
 from array import array
 import math
 
-ROOT.ROOT.EnableImplicitMT()
+ROOT.ROOT.EnableImplicitMT(32)
 RDataFrame = ROOT.RDataFrame
 ROOT.gStyle.SetOptStat(0)
 ROOT.gROOT.SetBatch()
@@ -27,6 +27,81 @@ lumis={
     '_2026':25.8, #from Gluillelmo
     '_Run3':312, #C-G
 }
+
+# Map category → file tags
+signal_files = {
+    "ggH":  ["11"],             # ggH
+    "qqH":  ["10"],             # VBF
+    "VH":   ["12", "13", "14"], # VH
+    "ttH":  ["15"],             # TTL
+}
+
+# Year-specific samples
+data_files = {
+    "_12022": ["-11", "-13", "-14"],
+    "_22022": ["-15", "-16", "-17"],
+    "_12023": ["-23", "-24"],
+    "_22023": ["-31", "-32"],
+    "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 … -54
+    "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 … -72
+    "_2026" : [str(i) for i in range(-81, -89, -1)],  # -61 … -72
+    "_Run3" : ["-11", "-13", "-14", "-15", "-16", "-17", "-23", "-24", "-31", "-32"]+ [str(i) for i in range(-41, -55, -1)] + [str(i) for i in range(-61, -73, -1)] + [str(i) for i in range(-81, -89, -1)],
+}
+
+SELECTIONS = {
+    "VBFcat": {
+        "bdt3" : "discrMVA>=0.96",
+        "bdt2" : "discrMVA>=0.90 && discrMVA<0.96",
+        "bdt1" : "discrMVA>=0.72 && discrMVA<0.90",
+        "bdt0" : "discrMVA<0.72",
+        "incl" : "true",
+        ""     : "true",
+    },
+    "ggHcat": {
+        "bdt2" : "discrMVA>=0.78",
+        "bdt1" : "discrMVA>=0.5 && discrMVA<0.78",
+        "bdt0" : "discrMVA<0.5",
+        "incl" : "true",
+        ""     : "true",
+    },
+    "VHcat": {
+        "bdt2" : "discrMVA>=0.90",
+        "bdt1" : "discrMVA>=0.50 && discrMVA<0.90",
+        "bdt0" : "discrMVA<0.50",
+        "incl" : "true",
+        ""     : "true",
+    },
+    "VLcat": {
+        "bdt3" : "discrMVA>=0.80",
+        "bdt2" : "discrMVA>=0.68 && discrMVA<0.80",
+        "bdt1" : "discrMVA>=0.34 && discrMVA<0.68",
+        "bdt0" : "discrMVA<0.34",
+        "incl" : "true",
+        ""     : "true",
+    },
+    "Zinvcat": {
+        "bdt2" : "discrMVA>=0.98",
+        "bdt1" : "discrMVA>=0.72 && discrMVA<0.98",
+        "bdt0" : "discrMVA<0.72",
+        "incl" : "true",
+        ""     : "true",
+    },
+    "TTHcat": {
+        "bdt2" : "discrMVA>=0.94",
+        "bdt1" : "discrMVA>=0.78 && discrMVA<0.94",
+        "bdt0" : "discrMVA<0.78",
+        "incl" : "true",
+        ""     : "true",
+    },
+    "TTLcat": {
+        "bdt2" : "discrMVA>=0.58",
+        "bdt1" : "discrMVA>=0.58 && discrMVA<0.36",
+        "bdt0" : "discrMVA<0.36",
+        "incl" : "true",
+        ""     : "true",
+    },
+}
+
 
 def safe_add_tree(file_list, filepath_pattern, treename="events"):
     """Safely add ROOT files to a list if they contain the TTree."""
@@ -100,15 +175,8 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
    dirLOCAL_='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'+category+'/'
    files = []
 
-   mytree = ROOT.TChain('events')   
-   # Map category → file tags
-   signal_files = {
-         "ggH":  ["11"],             # ggH
-         "qqH":  ["10"],             # VBF
-         "VH":   ["12", "13", "14"], # VH
-         "ttH":  ["15"],             # TTL
-   }
-
+   mytree = ROOT.TChain('events')
+   
    # Add files safely
    if sig != '':
        for tag in signal_files.get(sig, []):
@@ -116,83 +184,21 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
            else: path = f"{dirLOCAL_}snapshot_mc_{tag}_*_{category}.root"
            safe_add_tree(files, path)
 
-   # Year-specific samples
-   data_samples = {
-       "_12022": ["-11", "-13", "-14"],
-       "_22022": ["-15", "-16", "-17"],
-       "_12023": ["-23", "-24"],
-       "_22023": ["-31", "-32"],
-       "_2024" : [str(i) for i in range(-41, -55, -1)],  # -41 … -54
-       "_2025" : [str(i) for i in range(-61, -73, -1)],  # -61 … -72
-       "_2026" : [str(i) for i in range(-81, -89, -1)],  # -61 … -72
-       "_Run3" : ["-11", "-13", "-14", "-15", "-16", "-17", "-23", "-24", "-31", "-32"]+ [str(i) for i in range(-41, -55, -1)] + [str(i) for i in range(-61, -73, -1)] + [str(i) for i in range(-81, -89, -1)],
-   }
-
    # Add files safely
-   for tag in data_samples.get(year, []):
-         if year != '_Run3': path = f"{dirLOCAL_}snapshot_mc_{tag}{year}_{category}.root"
-         else: path = f"{dirLOCAL_}snapshot_mc_{tag}_*_{category}.root"
-         safe_add_tree(files, path)
+   if not doSignal:
+       for tag in data_files.get(year, []):
+           if year != '_Run3': path = f"{dirLOCAL_}snapshot_mc_{tag}{year}_{category}.root"
+           else: path = f"{dirLOCAL_}snapshot_mc_{tag}_*_{category}.root"
+           safe_add_tree(files, path)
 
    #-------------- selection
 
-   selMVAvl = {
-       "bdt2" : "discrMVA0>=0.78",
-       "bdt1" : "discrMVA0>=0.32 && discrMVA0<0.78",
-       "bdt0" : "discrMVA0<0.32",
-       "incl" : "true",
-       "" : "true"
-   }
-
-   selMVAzinv = {
-       "bdt2" : "discrMVA0>=0.98",
-       "bdt1" : "discrMVA0>=0.78 && discrMVA0<0.98",
-       "bdt0" : "discrMVA0<0.78",
-       "incl" : "true",
-       "" : "true"
-   }
-
-   selMVAvh = {
-       "bdt2" : "discrMVA0>=0.94",
-       "bdt1" : "discrMVA0>=0.86 && discrMVA0<0.94",
-       "bdt0" : "discrMVA0<0.86",
-       "incl" : "true",
-       "" : "true"
-   }
-
-   selMVAttl = {
-       "bdt1" : "discrMVA0>=0.54",
-       "bdt0" : "discrMVA0<0.54",
-       "incl" : "true",
-       "" : "true"
-   }
-
-   selMVAtth = {
-       "bdt2" : "discrMVA0>=0.98",
-       "bdt1" : "discrMVA0>=0.8 && discrMVA0<0.98",
-       "bdt0" : "discrMVA0<0.8",
-       "incl" : "true",
-       "" : "true"
-   }
-
-   selMVAvbf = {
-       "bdt2" : "discrMVA0>=0.92",
-       "bdt1" : "discrMVA0>=0.64 && discrMVA0<0.92",
-       "bdt0" : "discrMVA0<0.64",
-       "incl" : "true",
-       "" : "true"
-   }
-
-   selMVAggh = {
-       "bdt2" : "discrMVA0>=0.76",
-       "bdt1" : "discrMVA0>=0.5 && discrMVA0<0.76",
-       "bdt0" : "discrMVA0<0.5",
-       "incl" : "true",
-       "" : "true"
-   }
-
    # VLcat: 1 W->e; 2 Z->ee; 3 W->μ; 4 Z→μμ
 
+   Sel_MVA = SELECTIONS[category]
+   selection_cut = Sel_MVA[binMVA]
+   
+   '''
    if category in ["VBFcat"]:
        selection_cut = selMVAvbf[binMVA]
    elif category in ["VLcat"]:
@@ -210,10 +216,11 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
        selection_cut = selMVAttl[binMVA]
    else:
        raise ValueError(f"Unknown category {category}")
-
+   '''
+   
    # --- Build the RDataFrame ---
    df = ROOT.RDataFrame("events", files)
-   print(f"✅ Loaded {df.Count().GetValue()} entries from {len(files)} files")
+#   print(f"✅ Loaded {df.Count().GetValue()} entries from {len(files)} files")
 
    df = df.Filter("{}".format(selection_cut),"selection cut")
 
@@ -237,5 +244,6 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig=''):
    )
 
    # Convert to TH1 for later ROOT use
-   h.GetValue().SetDirectory(0)
-   return h.GetValue()
+   out = h.GetValue().Clone()
+   out.SetDirectory(0)
+   return out
