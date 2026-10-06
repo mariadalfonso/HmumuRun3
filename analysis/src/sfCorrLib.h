@@ -259,11 +259,13 @@ MyCorrections::MyCorrections(int year) {
 
   if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
 
+    /*
     std::string fileNameIDELE   = dirName+"EGM/"+subDirName+"electron.json.gz";
     auto csetIDELE = correction::CorrectionSet::from_file(fileNameIDELE);
 
     const std::string tagNameEleID = "Electron-ID-SF"; // both reco and ID
     csetIDELE->at(tagNameEleID);
+    */
 
     std::string fileNameEnergyEtDependentELE = dirName+"EGM/"+subDirName+"electronSS_EtDependent.json.gz";
     auto csetEnergyEtDependentELE = correction::CorrectionSet::from_file(fileNameEnergyEtDependentELE);
