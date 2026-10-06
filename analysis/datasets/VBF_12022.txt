@@ -1,10 +1,10 @@
 # VBF 12022 -- sample list for isVBF
-# generated 2026-09-08 01:26 from config/samples.yaml by tools/make_datasets.py (prompt data stream)
+# generated 2026-10-05 08:56 from config/samples.yaml by make_datasets.py (prompt data stream)
 #
 # Committed to git: regenerate only when the datasets change.
 # Comment a line out to skip that sample.
 
-# --- MC (52) ---
+# --- MC (56) ---
 10     # VBF*Hto2Mu_*M-125
 11     # GluGlu*Hto2Mu_*M-125
 12     # WminusH*Hto2Mu_*M-125
@@ -57,6 +57,10 @@
 107    # TTtoLNu2Q
 105    # TWminusto2L2Nu
 106    # TbarWplusto2L2Nu
+109    # DYto2Mu-2Jets*MLL-105*o160
+126    # DYto2Mu_*MLL-50to130
+127    # DYto2Mu_*MLL-130to200
+128    # DYto2Mu_*MLL-200to400
 
 # --- data (4) ---
 -11    # Run2022C/SingleMuon
