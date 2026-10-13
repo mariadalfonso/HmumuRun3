@@ -213,7 +213,7 @@ def get_active_vars(category):
 
     names += [
         "muon1_pt", "muon2_pt", "muon1_eta", "muon2_eta",
-        "dimuon_pt", "dimuon_eta", "dimuon_rapidity",
+        "dimuon_pt", "dimuon_rapidity",
         "muon1_norm_pt", "muon2_norm_pt", "costhetacs", "phistarcs",
     ]
     if category in ("Zinvcat", "VLcat", "TTHcat"):

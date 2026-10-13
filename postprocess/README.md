@@ -75,6 +75,5 @@ groups split by how data is treated:
 
 Use `--groups` to draw a subset.
 
-**Currently skipped.** `mva` and `dimuon_eta` are booked but their branches
-(`discrMVA0`, `HiggsCandCorrEta`) are not in the snapshots, so `makeHistos.py`
-warns and skips them in every category. See `TODO.md`.
+**Currently skipped.** `mva` is booked but its branch (`discrMVA0`) is not in
+the snapshots, so `makeHistos.py` warns and skips it in every category.
