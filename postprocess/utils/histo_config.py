@@ -4,7 +4,7 @@ histo_config.py -- shared configuration for the histogramming + plotting stages.
 """
 
 from .LoadTree import (hmumu, hzgamma, hww, vv, tt2l, ttV2223, ttV24, top,
-                      dyewk, dy_2223, dy_24, dy_pt2223, dy_pt24, dy_minllo,
+                      dyewk, dy_2223, dy_24, dy_pt2223, dy_pt24,
                       dy_j)
 
 
@@ -41,7 +41,7 @@ LEP_CATEGORIES = ["VLcat", "TTLcat", "TTHcat", "VHcat", "Zinvcat"]
 #   hTop = single-top + tt+V + 4-top (everything top-like except tt->2l)
 #   hZg  = H->Zgamma and H->WW
 MC_PROCESSES = {
-    "hDY":   dy_2223 + dy_24 + dy_pt2223 + dy_pt24 + dy_minllo + dy_j,
+    "hDY":   dy_2223 + dy_24 + dy_pt2223 + dy_pt24 + dy_j,
     "hEWK":  dyewk,
     "hTT2L": tt2l,
     "hTop":  top + ttV2223 + ttV24,

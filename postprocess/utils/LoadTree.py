@@ -37,7 +37,7 @@ dy_2223 = ["100"]
 dy_24     = ["103","104"]
 dy_pt2223 = ["114","115","116","117"]
 dy_pt24 = ["122","123","124","125"]
-dy_minllo = ["126","127"]
+dy_minllo = ["126","127"]  # MiNNLO DY->mumu, overlaps dy_24: not loaded (amc@NLO is nominal)
 dy_j    = ["111","112","113"]
 
 def loadTree(mytree, directory_, category, year ):
@@ -100,9 +100,6 @@ def loadTree(mytree, directory_, category, year ):
             for tag in dy_pt24: safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
         else:
             for tag in dy_24: safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
-
-    for tag in dy_minllo:
-        safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")  # DY-EWK
 
     # Add DYEWK
     for tag in dyewk:
