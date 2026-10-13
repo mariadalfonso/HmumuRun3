@@ -39,6 +39,7 @@ dy_pt2223 = ["114","115","116","117"]
 dy_pt24 = ["122","123","124","125"]
 dy_minllo = ["126","127"]  # MiNNLO DY->mumu, overlaps dy_24: not loaded (amc@NLO is nominal)
 dy_j    = ["111","112","113"]
+wjets   = ["129","130"]                         # 129 = v12, 130 = 2024 (mu-only)
 
 def loadTree(mytree, directory_, category, year ):
 
@@ -84,10 +85,12 @@ def loadTree(mytree, directory_, category, year ):
 #        for tag in hww:
 #            safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")  # DY 0j
 
-    # Add W+jets
-#    if category in ["VHcat"]:
-#        for tag in hww:
-#            safe_add_tree(mytree, f"{directory}snapshot_mc_129{year}_{category}.root")
+    # Add W+jets: produced for isGGH only (see datasets.getMCList).
+    # year is already remapped above, so 2025/2026 take the 2024 sample.
+    if category in ["ggHcat"]:
+        wj = ["130"] if year == "_2024" else ["129"]
+        for tag in wj:
+            safe_add_tree(mytree, f"{directory}snapshot_mc_{tag}{year}_{category}.root")
 
     # Special cases
     if year in {"_12022", "_22022", "_12023", "_22023"}:

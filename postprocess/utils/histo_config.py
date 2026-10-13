@@ -5,8 +5,7 @@ histo_config.py -- shared configuration for the histogramming + plotting stages.
 
 from .LoadTree import (hmumu, hzgamma, hww, vv, tt2l, ttV2223, ttV24, top,
                       dyewk, dy_2223, dy_24, dy_pt2223, dy_pt24,
-                      dy_j)
-
+                      dy_j, wjets)
 
 # ===========================================================================
 #  Categories
@@ -46,6 +45,7 @@ MC_PROCESSES = {
     "hTT2L": tt2l,
     "hTop":  top + ttV2223 + ttV24,
     "hVV":   vv,
+    "hWJ":   wjets,
     "hVBFH": ["10"],
     "hggH":  ["11"],
     "hWH":   ["12", "13"],
@@ -58,7 +58,7 @@ DATA_PROCESS = "hData"
 
 # Stacking order for the background stack (bottom -> top), and the signal
 # processes drawn unstacked on top of it.
-BKG_PROCS = ["hTT2L", "hTop", "hZg", "hVV", "hEWK", "hDY"]
+BKG_PROCS = ["hTT2L", "hTop", "hWJ", "hZg", "hVV", "hEWK", "hDY"]
 SIG_PROCS = ["hWH", "hTTH", "hZH", "hVBFH", "hggH"]
 
 # All processes written to / read from the histogram file.
@@ -73,6 +73,7 @@ PROCESS_LABELS = {
     "hTT2L": "t#bar{t} 2l",
     "hTop":  "Top(1l,tW/tZq,ttV/4t)",
     "hZg":   "H#rightarrowZ#gamma+jets",
+    "hWJ":   "W+jets",
     "hTTH":  "ttH",
     "hWH":   "WH",
     "hZH":   "ZH",
@@ -81,7 +82,7 @@ PROCESS_LABELS = {
 }
 
 # Legend order for the stacked plots (process, draw-style).
-LEGEND_BKG_ORDER = ["hData", "hDY", "hEWK", "hVV", "hTT2L", "hTop", "hZg"]
+LEGEND_BKG_ORDER = ["hData", "hDY", "hEWK", "hVV", "hTT2L", "hTop", "hWJ", "hZg"]
 LEGEND_SIG_LEP_ORDER = ["hTTH", "hWH", "hZH"]
 LEGEND_SIG_HAD_ORDER = ["hVBFH", "hggH"]
 
