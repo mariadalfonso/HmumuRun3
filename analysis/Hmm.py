@@ -674,6 +674,12 @@ def objScaleSmear(df, year, mc):
                             )
 
     if year in ["12022", "22022", "12023", "22023", "2024", "2025", "2026"]:
+
+        # recompute MET after JEC corrections, need to run before the Jet_pt redefine so that it picks what stored in nano
+        df = df.Define("METvars",'computeMETforJECcorrection(corr_sf, RawPuppiMET_pt, RawPuppiMET_phi, Jet_chEmEF, Jet_neEmEF, Jet_muonSubtrFactor, Jet_muonSubtrDeltaPhi, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}")'.format(year,mc))
+        df = df.Redefine("PuppiMET_pt","METvars.first")
+        df = df.Redefine("PuppiMET_phi","METvars.second")
+
         # apply JEC AK4 and AK8
         df = df.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}",1)'.format(year,mc))
         df = df.Redefine("FatJet_pt",'computeJECcorrection(corr_sf, FatJet_pt, FatJet_rawFactor, FatJet_eta, FatJet_phi, FatJet_area, rho, run, isData, "{0}","{1}",0)'.format(year,mc))

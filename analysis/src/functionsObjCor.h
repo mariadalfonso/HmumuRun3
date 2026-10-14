@@ -123,12 +123,57 @@ Vec_f computeEleSSCorrection(MyCorrections& corrSFs, const Vec_f& ele_pt, const 
 
 }
 
+// Returns {MET_pt, MET_phi} after applying the JEC to the jets, starting from RAW MET.
+//// need to to this before the JEC redefinition
+std::pair<float, float> computeMETforJECcorrection(MyCorrections& corrSFs,
+						   float RAWMET_pt, float RAWMET_phi,
+						   const Vec_f& Jet_chEmEF, const Vec_f& Jet_neEmEF,
+						   const Vec_f& Jet_muonSubtrFactor, const Vec_f& Jet_muonSubtrDeltaPhi,
+						   const Vec_f& Jet_pt_nano, const Vec_f& Jet_rawFactor,
+						   const Vec_f& Jet_eta, const Vec_f& Jet_phi, const Vec_f& Jet_area,
+						   float rho, float run, bool isData,
+						   const std::string& year, const std::string& mc)
+{
+
+  // Start from RAW MET
+  double metX = RAWMET_pt * std::cos(RAWMET_phi);
+  double metY = RAWMET_pt * std::sin(RAWMET_phi);
+
+  for (unsigned int idx = 0; idx < Jet_pt_nano.size(); ++idx) {
+    if (Jet_chEmEF[idx] + Jet_neEmEF[idx] >= 0.9f) continue;
+
+    const float rawPt = Jet_pt_nano[idx] * (1.0f - Jet_rawFactor[idx]);
+    const float corr  = corrSFs.eval_jetCORR(Jet_area[idx], Jet_eta[idx], Jet_phi[idx],
+                                             rawPt, rho, isData,
+					     run, year, mc);
+    // jets are clamp if negative
+    // https://gitlab.cern.ch/cms-analysis/general/CMSJMECalculators/-/blob/main/src/Type1METVariationsCalculator.cc?ref_type=heads
+    //if (corr <= 0.0f) corr = 1.0f;
+    const float newPt = rawPt * corr;
+
+    const float muFrac = 1.0f - Jet_muonSubtrFactor[idx];
+    if (newPt * muFrac < 15.0f) continue;
+    // Jets that fall out of the standard Jet collection at low pT are stored in NanoAOD's CorrT1METJet collection
+    // ?? check in general jets near the threshould likely need to recove them with CorrT1METJet
+
+    // MET_new = MET_raw - (new - raw) * muFrac, projected onto x and y
+    const float delta = (rawPt - newPt) * muFrac;
+    const float phi   = Jet_phi[idx] + Jet_muonSubtrDeltaPhi[idx];
+    metX += delta * std::cos(phi);
+    metY += delta * std::sin(phi);
+  }
+
+  return {static_cast<float>(std::hypot(metX, metY)),
+        static_cast<float>(std::atan2(metY, metX))};
+
+}
+
 Vec_f computeJECcorrection(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc, int doAk4){
 
   Vec_f new_jet; new_jet.resize(jet_pt.size());
   Vec_f raw_jet; raw_jet.resize(jet_pt.size());
   for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) {                                                                                                                            
-    raw_jet[idx] = jet_pt[idx] * (1.0 - jet_rawFactor[idx]);                                                                                                                       
+    raw_jet[idx] = jet_pt[idx] * (1.0f - jet_rawFactor[idx]);
     if (doAk4) new_jet[idx] = raw_jet[idx] * corrSFs.eval_jetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year, mc );
     else new_jet[idx] = raw_jet[idx] * corrSFs.eval_fatJetCORR(jet_area[idx], jet_eta[idx], jet_phi[idx], raw_jet[idx], rho, isData, run, year, mc );
   }                                                                                                                                                                                   
