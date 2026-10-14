@@ -110,6 +110,7 @@ PROCESS_COLORS = {
     "hZH":    "redLight",
     "hTTH":   "redDark",
     "hZg":    "orangeDark",
+    "hWJ":    "violet",
 }
 
 
