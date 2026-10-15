@@ -124,11 +124,22 @@ def proc_group_expr():
 SR_SIDEBAND_FILTER = ("((HiggsCandCorrMass>=110 && HiggsCandCorrMass<=120) || "
                       "(HiggsCandCorrMass>=130 && HiggsCandCorrMass<=150))")
 
+# Signal region: the snapshot's isH flag, |m_mumu - 125| < 10 (Hmm.py).
+# MC-only (see "mc_only" below).
+SR_FILTER = "isH"
+
 # "filter"      : extra mass restriction, or None to use the full snapshot window
 # "blindable"   : whether the --blind flag applies here. False means data is
 #                 shown unblinded because the region restriction is ITSELF the
 #                 safety mechanism (it already excludes the signal core).
 # "label"       : on-plot mass-range line
+# "mc_only"     : optional, default False. True means data is never booked for
+#                 this region, regardless of --blind/--unblind.
+# "vars"        : optional, default None (= all active vars). Restricts which
+#                 variables are booked and plotted in this region.
+# "show_signal" : optional, default True. False means SummaryPlots.py draws no
+#                 signal curves for this region (SummaryPlotsShapes.py still
+#                 takes its signal shapes from SIGNAL_REGION_FOR).
 #
 # "Unrestricted" exists so SR_sideband plots can show the FULL predicted signal:
 # a narrow resonance concentrates almost entirely in [120,130], the exact core
@@ -144,12 +155,21 @@ REGIONS = {
     "SR_sideband": {
         "filter": SR_SIDEBAND_FILTER,
         "blindable": False,
+        "show_signal": False,   # sidebands: background and data only
         "label": "m_{#mu#mu}#in[110,120]#cup[130,150]GeV",
     },
     "Unrestricted": {
         "filter": None,
         "blindable": False,
         "label": "m_{#mu#mu}#in[70,200]GeV",
+    },
+    # Signal + background MC in the signal region (isH): compares the
+    # background size under the signal, per category. MC-only by construction.
+    "SR": {
+        "filter": SR_FILTER,
+        "blindable": True,
+        "mc_only": True,
+        "label": "m_{#mu#mu}#in[115,135]GeV",
     },
 }
 
@@ -159,7 +179,14 @@ SIGNAL_REGION_FOR = {
     "Inclusive":    "Inclusive",
     "SR_sideband":  "Unrestricted",
     "Unrestricted": "Unrestricted",
+    "SR":           "SR",
 }
+
+
+def region_vars(region_name, variables):
+    """`variables` restricted to the ones booked/plotted in this region."""
+    allowed = REGIONS[region_name].get("vars")
+    return [v for v in variables if allowed is None or v in allowed]
 
 
 # ===========================================================================

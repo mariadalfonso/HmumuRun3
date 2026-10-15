@@ -61,7 +61,8 @@ be written to the snapshot for that category — see `config/branches.yaml` in
 
 **Regions.** Every variable is histogrammed in `Inclusive`, `SR_sideband`, and
 `Unrestricted` (the last supplies the full signal prediction for sideband
-plots).
+plots), and in `SR` (the snapshot's `isH` flag, m in [115,135]), which is
+MC-only: data is never booked there.
 
 **Groups.** `SummaryPlots.py` writes to `<cat>_<year>/<group>/<region>/`, with
 groups split by how data is treated:
