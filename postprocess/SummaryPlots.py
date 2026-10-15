@@ -45,7 +45,7 @@ def parse_args():
                    help="which variable groups to draw (default: all present)")
     p.add_argument("--no-SR-sideband", dest="sr_sideband",
                    action="store_false", default=True,
-                   help="only produce the Inclusive region")
+                   help="only produce the Inclusive region (skips SR_sideband and SR)")
     p.add_argument("--linear", action="store_true",
                    help="linear y-axis (default: log)")
     return p.parse_args()
@@ -101,16 +101,18 @@ class HistoFile:
 def load_processes(hfile, region, varname):
     """Assemble {process: TH1} for one region+variable.
 
-    Signals come from SIGNAL_REGION_FOR[region] -- the full, unrestricted
-    prediction -- because a narrow resonance concentrates in [120,130], the
-    exact core the SR-sideband window excludes. Backgrounds and data come from
-    the region itself.
+    Backgrounds and data come from the region itself. Signals come from
+    SIGNAL_REGION_FOR[region], and are left out entirely for regions with
+    "show_signal": False (the sidebands).
     """
     hists = {}
     for proc in cfg.BKG_PROCS + [cfg.DATA_PROCESS]:
         h = hfile.get(region, varname, proc)
         if h is not None:
             hists[proc] = h
+
+    if not cfg.REGIONS[region].get("show_signal", True):
+        return hists
 
     sig_region = cfg.SIGNAL_REGION_FOR[region]
     for proc in cfg.SIG_PROCS:
@@ -222,9 +224,10 @@ def plot(hfile, category, year, varname, region_name, outdir, doLog=True):
     rangeYax = 10 if doLog else 2
     if hData is not None and hDY is not None:
         BKGstack.SetMaximum(rangeYax * max(hData.GetMaximum(), hDY.GetMaximum()))
-    if hDY is not None:
-        floor = 1e9 if varname == "mva" else 1e6
-        BKGstack.SetMinimum(hDY.GetMaximum() / floor)
+    elif hData is None:
+        BKGstack.SetMaximum(rangeYax * BKGstack.GetMaximum())
+    # Below 0.1 weighted events there is nothing worth showing.
+    BKGstack.SetMinimum(0.1)
 
     # --- upper pad ---
     # Draw order matters and matches the original exactly: data first, then
@@ -272,6 +275,30 @@ def plot(hfile, category, year, varname, region_name, outdir, doLog=True):
         _style_ratio_axis(ratio.GetXaxis(), plot_style.RATIO_X_TITLE_OFFSET)
         _style_ratio_axis(ratio.GetYaxis(), plot_style.RATIO_Y_TITLE_OFFSET)
         ratio.Draw("pe")
+        lineOne = ROOT.TLine(mcTOT.GetXaxis().GetXmin(), 1.,
+                             mcTOT.GetXaxis().GetXmax(), 1.)
+        lineOne.SetLineColor(11)
+        lineOne.Draw("same")
+    else:
+        # MC-only region: no data/MC ratio, so the lower pad shows the relative
+        # MC stat. uncertainty instead (it also carries the x-axis, which the
+        # glued layout hides on the upper pad).
+        pad2.cd()
+        ratio = mcTOT.Clone("mcunc")
+        ratio.SetDirectory(0)
+        for i in range(1, ratio.GetNbinsX() + 1):
+            content = ratio.GetBinContent(i)
+            ratio.SetBinError(i, ratio.GetBinError(i) / content if content > 0 else 0.)
+            ratio.SetBinContent(i, 1.)
+        ratio.SetFillColor(ROOT.kGray + 1)
+        ratio.SetFillStyle(3354)
+        ratio.SetMarkerSize(0)
+        ratio.GetYaxis().SetTitle("MC stat. unc.")
+        ratio.GetYaxis().SetRangeUser(*plot_vars.get_ratio_range(varname))
+        ratio.GetXaxis().SetTitle(titleX)
+        _style_ratio_axis(ratio.GetXaxis(), plot_style.RATIO_X_TITLE_OFFSET)
+        _style_ratio_axis(ratio.GetYaxis(), plot_style.RATIO_Y_TITLE_OFFSET)
+        ratio.Draw("E2")
         lineOne = ROOT.TLine(mcTOT.GetXaxis().GetXmin(), 1.,
                              mcTOT.GetXaxis().GetXmax(), 1.)
         lineOne.SetLineColor(11)
@@ -362,16 +389,20 @@ def main():
         if group in cfg.GROUPS_WITHOUT_REGION_SPLIT:
             regions = ["Inclusive"]
         else:
-            regions = ["Inclusive"] + (["SR_sideband"] if args.sr_sideband else [])
+            regions = ["Inclusive"] + (["SR_sideband", "SR"]
+                                       if args.sr_sideband else [])
 
         for region_name in regions:
+            region_variables = cfg.region_vars(region_name, variables)
+            if not region_variables:
+                continue
             if group in cfg.GROUPS_WITHOUT_REGION_SPLIT:
                 outdir = os.path.join(baseOutDir, f"{category}{year}", group) + "/"
             else:
                 outdir = os.path.join(baseOutDir, f"{category}{year}",
                                       group, region_name) + "/"
             print(f"[plots] group '{group}' region '{region_name}' -> {outdir}")
-            for varname in variables:
+            for varname in region_variables:
                 plot(hfile, category, year, varname, region_name, outdir,
                      doLog=doLog)
 
