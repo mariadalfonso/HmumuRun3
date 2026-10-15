@@ -301,7 +301,7 @@ def doCategories(df,mc,year):
     ]
 
     jet_veto = [
-        ("FILTER", "Sum(goodJetsAll)<2 ? true : (Mjj<400 or dEtaJJ<2.5 or (jetVBF1_Pt < 35 && jetVBF2_Pt < 35))", "M_{jj} < 400 GeV or abs(dEtaJJ)<2.5 or leading jet Pt<35"),
+        ("FILTER", "Sum(goodJetsAll)<2 ? true : (Mjj<400 or dEtaJJ<2.5)", "M_{jj} < 400 GeV or abs(dEtaJJ)<2.5"),
     ]
 
     # --- VBF-specific filters (add the ones you use in doCategories/isVBF) ---
