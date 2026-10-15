@@ -74,6 +74,3 @@ groups split by how data is treated:
 | `objects` | not blinded — muon, jet and MET kinematics | yes |
 
 Use `--groups` to draw a subset.
-
-**Currently skipped.** `mva` is booked but its branch (`discrMVA0`) is not in
-the snapshots, so `makeHistos.py` warns and skips it in every category.
