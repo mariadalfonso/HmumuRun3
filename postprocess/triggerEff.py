@@ -53,9 +53,7 @@ CURVES = [
 # variable -> (expression, nbins, xmin, xmax, axis label)
 VARS = {
     "leadRawPt":  ("leadRawPt", 37, 15., 200., "leading muon p_{T} (raw) [GeV]"),
-    "leadAbsEta": ("leadAbsEta", 12, 0., 2.4, "leading muon |#eta|"),
     "subRawPt":   ("subRawPt", 37, 15., 200., "subleading muon p_{T} (raw) [GeV]"),
-    "nPV":        ("PV_npvsGood", 20, 0., 80., "N_{PV}"),
     "mass":       ("HiggsCandCorrMass", 26, 70., 200., "m_{#mu#mu} [GeV]"),
 }
 
