@@ -44,6 +44,7 @@ base:
   - discrMVA
   - HLT_IsoMu24
   - HLT_Mu50
+  - HLT_Mu17_TrkIsoVVL_Mu8_TrkIsoVVL_DZ_Mass3p8
   - Muon1_rawpt
   - Muon2_rawpt
 

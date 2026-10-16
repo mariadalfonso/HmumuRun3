@@ -1,5 +1,6 @@
 """
-triggerEff.py -- signal trigger efficiency of HLT_IsoMu24 || HLT_Mu50.
+triggerEff.py -- signal trigger efficiency of HLT_IsoMu24 || HLT_Mu50, and what
+adding the Mu17_Mu8 dimuon trigger would gain.
 
 Reads the snapshots made with `Hmm.py --no-trigger` (written to
 <indir>/<category>_notrig/), so the denominator is the full offline selection
@@ -29,12 +30,25 @@ DEFAULT_PLOTDIR = f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/trigg
 SIGNAL = {"10": "VBF", "11": "ggH", "12": "WmH", "13": "WpH",
           "14": "ZH", "15": "ttH", "17": "bbH"}
 
+DOUBLEMU = "HLT_Mu17_TrkIsoVVL_Mu8_TrkIsoVVL_DZ_Mass3p8"
+
 TRIGGERS = {
     "IsoMu24":    "HLT_IsoMu24",
     "Mu50":       "HLT_Mu50",
     "OR":         "HLT_IsoMu24 || HLT_Mu50",
     "Mu50only":   "HLT_Mu50 && !HLT_IsoMu24",   # what Mu50 adds on top of IsoMu24
+    "DoubleMu":   DOUBLEMU,
+    "OR+DMu":     f"HLT_IsoMu24 || HLT_Mu50 || {DOUBLEMU}",
+    "DMuOnly":    f"{DOUBLEMU} && !(HLT_IsoMu24 || HLT_Mu50)",  # what DoubleMu adds on top of the OR
 }
+
+# curves drawn on the efficiency plots: (key in TRIGGERS, color, legend text)
+CURVES = [
+    ("IsoMu24", ROOT.kBlue + 1,    "IsoMu24"),
+    ("OR",      ROOT.kRed + 1,     "IsoMu24 || Mu50"),
+    ("DoubleMu", ROOT.kGreen + 2,  "Mu17_Mu8 (DoubleMu)"),
+    ("OR+DMu",  ROOT.kBlack,       "IsoMu24 || Mu50 || DoubleMu"),
+]
 
 # variable -> (expression, nbins, xmin, xmax, axis label)
 VARS = {
@@ -97,7 +111,7 @@ def book(df, weight, tag):
     for v, (expr, nb, lo, hi, _) in VARS.items():
         model = (f"{v}_den_{tag}", "", nb, lo, hi)
         out["h"][(v, "den")] = df.Histo1D(model, expr, weight)
-        for t in ("IsoMu24", "OR"):
+        for t, _, _ in CURVES:
             model = (f"{v}_{t}_{tag}", "", nb, lo, hi)
             out["h"][(v, t)] = df.Filter(TRIGGERS[t]).Histo1D(model, expr, weight)
     return out
@@ -151,7 +165,7 @@ def main():
     ROOT.gStyle.SetOptStat(0)
     for v, (_, _, _, _, label) in VARS.items():
         summed = {}
-        for key in ("den", "IsoMu24", "OR"):
+        for key in ["den"] + [t for t, _, _ in CURVES]:
             hs = [r["h"][(v, key)].GetValue() for r in booked.values()]
             h = hs[0].Clone(f"{v}_{key}")
             for other in hs[1:]:
@@ -165,10 +179,9 @@ def main():
         frame.GetXaxis().SetTitle(label)
         frame.GetYaxis().SetTitle("trigger efficiency")
         keep = []
-        leg = ROOT.TLegend(0.55, 0.15, 0.88, 0.32)
+        leg = ROOT.TLegend(0.45, 0.15, 0.88, 0.38)
         leg.SetBorderSize(0)
-        for key, color, text in (("IsoMu24", ROOT.kBlue + 1, "IsoMu24"),
-                                 ("OR", ROOT.kRed + 1, "IsoMu24 || Mu50")):
+        for key, color, text in CURVES:
             e = ratio(summed[key], summed["den"], f"eff_{v}_{key}")
             e.SetLineColor(color)
             e.SetMarkerColor(color)
