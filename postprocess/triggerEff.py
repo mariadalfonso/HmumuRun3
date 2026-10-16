@@ -1,6 +1,6 @@
 """
 triggerEff.py -- signal trigger efficiency of HLT_IsoMu24 || HLT_Mu50, and what
-adding the Mu17_Mu8 dimuon trigger would gain.
+adding the Mu17_Mu8 trigger would gain.
 
 Reads the snapshots made with `Hmm.py --no-trigger` (written to
 <indir>/<category>_notrig/), so the denominator is the full offline selection
@@ -30,24 +30,24 @@ DEFAULT_PLOTDIR = f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/trigg
 SIGNAL = {"10": "VBF", "11": "ggH", "12": "WmH", "13": "WpH",
           "14": "ZH", "15": "ttH", "17": "bbH"}
 
-DOUBLEMU = "HLT_Mu17_TrkIsoVVL_Mu8_TrkIsoVVL_DZ_Mass3p8"
+MU17_MU8 = "HLT_Mu17_TrkIsoVVL_Mu8_TrkIsoVVL_DZ_Mass3p8"
 
 TRIGGERS = {
     "IsoMu24":    "HLT_IsoMu24",
     "Mu50":       "HLT_Mu50",
     "OR":         "HLT_IsoMu24 || HLT_Mu50",
     "Mu50only":   "HLT_Mu50 && !HLT_IsoMu24",   # what Mu50 adds on top of IsoMu24
-    "DoubleMu":   DOUBLEMU,
-    "OR+DMu":     f"HLT_IsoMu24 || HLT_Mu50 || {DOUBLEMU}",
-    "DMuOnly":    f"{DOUBLEMU} && !(HLT_IsoMu24 || HLT_Mu50)",  # what DoubleMu adds on top of the OR
+    "Mu17_Mu8":     MU17_MU8,
+    "OR_Mu17_Mu8":  f"HLT_IsoMu24 || HLT_Mu50 || {MU17_MU8}",
+    "Mu17_Mu8only": f"{MU17_MU8} && !(HLT_IsoMu24 || HLT_Mu50)",  # what Mu17_Mu8 adds on top of the OR
 }
 
 # curves drawn on the efficiency plots: (key in TRIGGERS, color, legend text)
 CURVES = [
     ("IsoMu24", ROOT.kBlue + 1,    "IsoMu24"),
     ("OR",      ROOT.kRed + 1,     "IsoMu24 || Mu50"),
-    ("DoubleMu", ROOT.kGreen + 2,  "Mu17_Mu8 (DoubleMu)"),
-    ("OR+DMu",  ROOT.kBlack,       "IsoMu24 || Mu50 || DoubleMu"),
+    ("Mu17_Mu8",    ROOT.kGreen + 2, "Mu17_Mu8"),
+    ("OR_Mu17_Mu8", ROOT.kBlack,     "IsoMu24 || Mu50 || Mu17_Mu8"),
 ]
 
 # variable -> (expression, nbins, xmin, xmax, axis label)
@@ -147,7 +147,7 @@ def main():
     cols = list(TRIGGERS)
     print(f"\nTrigger efficiency  category={args.category}  year={args.year}"
           f"  region={args.region or 'all'}  leadRawPt>{args.lead_pt_cut:g}  weight={args.weight}")
-    print(f"{'sample':<8}{'Nraw':>9}" + "".join(f"{c:>11}" for c in cols))
+    print(f"{'sample':<8}{'Nraw':>9}" + "".join(f"{c:>14}" for c in cols))
     tot_den, tot_num = 0., {c: 0. for c in cols}
     for i, r in booked.items():
         den = r["den"].GetValue()
@@ -158,9 +158,9 @@ def main():
             tot_num[c] += n
             effs.append(n / den if den else float("nan"))
         name = SIGNAL.get(i, i)
-        print(f"{name:<8}{r['nraw'].GetValue():>9}" + "".join(f"{e:>11.4f}" for e in effs))
+        print(f"{name:<8}{r['nraw'].GetValue():>9}" + "".join(f"{e:>14.4f}" for e in effs))
     print(f"{'all':<8}{'':>9}" + "".join(
-        f"{(tot_num[c] / tot_den if tot_den else float('nan')):>11.4f}" for c in cols))
+        f"{(tot_num[c] / tot_den if tot_den else float('nan')):>14.4f}" for c in cols))
 
     # ---- binned efficiencies, all samples summed ---------------------
     os.makedirs(args.outdir, exist_ok=True)
