@@ -52,7 +52,8 @@ def parse_args():
                         help="ROOT implicit-MT threads; 0 means all available cores. "
                              "Set this when running several processes at once.")
     parser.add_argument("--no-trigger", action="store_true",
-                        help="skip the HLT filter (for trigger-efficiency studies). The "
+                        help="skip the HLT filter and the offline leading-muon raw pT>26 "
+                             "cut (for trigger-efficiency studies). The "
                              "HLT bits are still written, and the output goes to "
                              "<outdir>/<category>_notrig/ so nominal snapshots are not overwritten.")
     return parser.parse_args()
@@ -183,6 +184,8 @@ def doCategories(df,mc,year):
     if (mode == "isVlep" or mode == "isTTlep"): eleSel = selections["GOODelectronsTTH24"]
 
     #fix the muonPT it's 25 GeV for the one triggered
+    # --no-trigger drops this offline cut too, so the trigger study sees the turn-on below 26 GeV
+    leadPtCut = "true" if args.no_trigger else "(Muon1_rawpt > 26 || Muon2_rawpt > 26)"
     df = (df.Define("fsrIdx_mu","pickFsrForMuons(Muon_fsrPhotonIdx, Muon_pt, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03)")
           .Redefine("Muon_pfRelIso04_all","isoCorrFSR(Muon_pfRelIso04_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
           .Redefine("Muon_miniPFRelIso_all","isoCorrFSRmini(Muon_miniPFRelIso_all, Muon_pt, fsrIdx_mu, FsrPhoton_pt)")
@@ -196,7 +199,7 @@ def doCategories(df,mc,year):
           .Define("idx_mu2","Nonzero(goodMuons)[index_Mu[1]]")
           .Define("Muon1_rawpt","Muon_pt[idx_mu1]")
           .Define("Muon2_rawpt","Muon_pt[idx_mu2]")
-          .Filter("(Muon1_rawpt > 26 || Muon2_rawpt > 26)","at least one >26 GeV to satisfy the trigger")
+          .Filter(leadPtCut,"at least one >26 GeV to satisfy the trigger")
           .Define("Muon1_bsConstrainedChi2","Muon_bsConstrainedChi2[idx_mu1]")
           .Define("Muon2_bsConstrainedChi2","Muon_bsConstrainedChi2[idx_mu2]")
           .Define("Muon1_eta","Muon_eta[idx_mu1]") # those for SF can stay before fsr

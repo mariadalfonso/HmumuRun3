@@ -52,9 +52,9 @@ CURVES = [
 
 # variable -> (expression, nbins, xmin, xmax, axis label)
 VARS = {
-    "leadRawPt":  ("leadRawPt", 30, 20., 200., "leading muon p_{T} (raw) [GeV]"),
+    "leadRawPt":  ("leadRawPt", 37, 15., 200., "leading muon p_{T} (raw) [GeV]"),
     "leadAbsEta": ("leadAbsEta", 12, 0., 2.4, "leading muon |#eta|"),
-    "subRawPt":   ("subRawPt", 30, 20., 200., "subleading muon p_{T} (raw) [GeV]"),
+    "subRawPt":   ("subRawPt", 37, 15., 200., "subleading muon p_{T} (raw) [GeV]"),
     "nPV":        ("PV_npvsGood", 20, 0., 80., "N_{PV}"),
     "mass":       ("HiggsCandCorrMass", 26, 70., 200., "m_{#mu#mu} [GeV]"),
 }
@@ -72,6 +72,10 @@ def parse_args():
                    help="PNGs go to <plotdir>/<category><year>/ (default: %(default)s)")
     p.add_argument("-s", "--samples", default=",".join(SIGNAL),
                    help="comma-separated MC ids (default: all H->mumu signal)")
+    p.add_argument("--lead-pt-cut", type=float, default=0., metavar="GEV",
+                   help="require leading-muon raw pT > GEV in the denominator. The "
+                        "--no-trigger snapshots have no such cut; 26 reproduces the "
+                        "nominal selection (default: %(default)s)")
     p.add_argument("--region", default=None,
                    help="optional extra filter on the denominator, e.g. isH")
     p.add_argument("--weight", default="w_allSF",
@@ -93,11 +97,13 @@ def load(indir, category, year, ids):
     return chains
 
 
-def define(df, region):
+def define(df, region, lead_pt_cut):
     df = (df.Define("leadIs1", "Muon1_rawpt >= Muon2_rawpt")
             .Define("leadRawPt", "leadIs1 ? Muon1_rawpt : Muon2_rawpt")
             .Define("subRawPt", "leadIs1 ? Muon2_rawpt : Muon1_rawpt")
             .Define("leadAbsEta", "std::abs(leadIs1 ? Muon1_eta : Muon2_eta)"))
+    if lead_pt_cut > 0:
+        df = df.Filter(f"leadRawPt > {lead_pt_cut}", f"leadRawPt>{lead_pt_cut}")
     if region:
         df = df.Filter(region, region)
     return df
@@ -133,14 +139,14 @@ def main():
         sys.exit(f"ERROR: no *_notrig snapshots under {args.indir}{args.category}_notrig/ "
                  f"-- run `python Hmm.py <year> <mode> --no-trigger` first")
 
-    booked = {i: book(define(ROOT.RDataFrame(c), args.region), args.weight, i)
+    booked = {i: book(define(ROOT.RDataFrame(c), args.region, args.lead_pt_cut), args.weight, i)
               for i, c in chains.items()}
     ROOT.RDF.RunGraphs([r["den"] for r in booked.values()])
 
     # ---- integrated table --------------------------------------------
     cols = list(TRIGGERS)
     print(f"\nTrigger efficiency  category={args.category}  year={args.year}"
-          f"  region={args.region or 'all'}  weight={args.weight}")
+          f"  region={args.region or 'all'}  leadRawPt>{args.lead_pt_cut:g}  weight={args.weight}")
     print(f"{'sample':<8}{'Nraw':>9}" + "".join(f"{c:>11}" for c in cols))
     tot_den, tot_num = 0., {c: 0. for c in cols}
     for i, r in booked.items():
@@ -161,6 +167,8 @@ def main():
     plotdir = os.path.join(args.plotdir, f"{args.category}{args.year}")
     os.makedirs(plotdir, exist_ok=True)
     suffix = f"{args.category}_{args.year}" + (f"_{args.region}" if args.region else "")
+    if args.lead_pt_cut > 0:
+        suffix += f"_lead{args.lead_pt_cut:g}"
     fout = ROOT.TFile(os.path.join(args.outdir, f"trigEff_{suffix}.root"), "RECREATE")
     ROOT.gStyle.SetOptStat(0)
     for v, (_, _, _, _, label) in VARS.items():
