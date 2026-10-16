@@ -61,6 +61,7 @@ python Hmm.py <year> <mode> [samplelist] [options]
 | `-s, --samples` | explicit sample selection, overrides the list file |
 | `-j, --ncores` | implicit-MT threads; 0 = all cores |
 | `--maxfiles N` | process only the first N files of each sample |
+| `--no-trigger` | skip the `HLT_IsoMu24 \|\| HLT_Mu50` filter; writes to `<outdir>/<category>_notrig/` (for `postprocess/triggerEff.py`) |
 
 Writes `<outdir>/<category>/snapshot_mc_<mc>_<year>_<category>.root`, one
 file per sample. Prints which selection it used at startup:

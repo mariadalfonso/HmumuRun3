@@ -36,6 +36,7 @@ Add `-i` / `-o` to override input and output directories, `--unblind` on
 | `makeHistos.py` | fills all histograms in one event loop |
 | `SummaryPlots.py` | stacked data/MC plots |
 | `SummaryPlotsShapes.py` | shape-comparison plots |
+| `triggerEff.py` | signal HLT efficiency from `Hmm.py --no-trigger` snapshots |
 | `utils/prepareHisto.py` | RDataFrame booking |
 | `utils/histo_config.py` | regions, process groups, variable lists, plot groups |
 | `utils/plot_vars.py` | per-variable expression, binning, axis label |

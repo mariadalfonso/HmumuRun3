@@ -42,6 +42,10 @@ base:
   - PuppiMET_pt
   - PuppiMET_phi
   - discrMVA
+  - HLT_IsoMu24
+  - HLT_Mu50
+  - Muon1_rawpt
+  - Muon2_rawpt
 
 # ---------------------------------------------------------------------
 #  Written for every category, MC only. These are defined in the common

@@ -51,6 +51,10 @@ def parse_args():
     parser.add_argument("-j", "--ncores", type=int, default=0,
                         help="ROOT implicit-MT threads; 0 means all available cores. "
                              "Set this when running several processes at once.")
+    parser.add_argument("--no-trigger", action="store_true",
+                        help="skip the HLT filter (for trigger-efficiency studies). The "
+                             "HLT bits are still written, and the output goes to "
+                             "<outdir>/<category>_notrig/ so nominal snapshots are not overwritten.")
     return parser.parse_args()
 
 args = parse_args()
@@ -717,8 +721,9 @@ def analysis(files,year,mc,sumW):
               .Define("lumiIntegrated","{}".format(lumiIntegrated))
               .Define("boson_ptWeight","1.0f")
               .Filter("PV_npvsGood>0","one good PV")
-              .Filter("{}".format(selections["TRIGGER"]),"passing trigger")
               )
+    if not args.no_trigger:
+        dfComm = dfComm.Filter("{}".format(selections["TRIGGER"]),"passing trigger")
 
     dfComm = objScaleSmear(dfComm, year, mc)
 
@@ -868,7 +873,8 @@ def analysis(files,year,mc,sumW):
         if mode not in mode_map:
             raise ValueError(f"Unknown mode: {mode}")
 
-        outputFile = f"{myDir}{mode_map[mode]}/snapshot_mc_{mc}_{year}_{mode_map[mode]}.root"
+        outSubdir = mode_map[mode] + ("_notrig" if args.no_trigger else "")
+        outputFile = f"{myDir}{outSubdir}/snapshot_mc_{mc}_{year}_{mode_map[mode]}.root"
         os.makedirs(os.path.dirname(outputFile), exist_ok=True)
 
         snapshotOptions = ROOT.RDF.RSnapshotOptions()
