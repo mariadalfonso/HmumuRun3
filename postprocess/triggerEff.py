@@ -76,6 +76,9 @@ def parse_args():
                    help="require leading-muon raw pT > GEV in the denominator. The "
                         "--no-trigger snapshots have no such cut; 26 reproduces the "
                         "nominal selection (default: %(default)s)")
+    p.add_argument("--from-higgs", action="store_true",
+                   help="keep only events where both selected muons are gen-matched "
+                        "to the Higgs (pairFromHiggs)")
     p.add_argument("--region", default=None,
                    help="optional extra filter on the denominator, e.g. isH")
     p.add_argument("--weight", default="w_allSF",
@@ -97,11 +100,13 @@ def load(indir, category, year, ids):
     return chains
 
 
-def define(df, region, lead_pt_cut):
+def define(df, region, lead_pt_cut, from_higgs):
     df = (df.Define("leadIs1", "Muon1_rawpt >= Muon2_rawpt")
             .Define("leadRawPt", "leadIs1 ? Muon1_rawpt : Muon2_rawpt")
             .Define("subRawPt", "leadIs1 ? Muon2_rawpt : Muon1_rawpt")
             .Define("leadAbsEta", "std::abs(leadIs1 ? Muon1_eta : Muon2_eta)"))
+    if from_higgs:
+        df = df.Filter("pairFromHiggs", "both muons from H")
     if lead_pt_cut > 0:
         df = df.Filter(f"leadRawPt > {lead_pt_cut}", f"leadRawPt>{lead_pt_cut}")
     if region:
@@ -139,28 +144,34 @@ def main():
         sys.exit(f"ERROR: no *_notrig snapshots under {args.indir}{args.category}_notrig/ "
                  f"-- run `python Hmm.py <year> <mode> --no-trigger` first")
 
-    booked = {i: book(define(ROOT.RDataFrame(c), args.region, args.lead_pt_cut), args.weight, i)
+    booked = {i: book(define(ROOT.RDataFrame(c), args.region, args.lead_pt_cut, args.from_higgs), args.weight, i)
               for i, c in chains.items()}
     ROOT.RDF.RunGraphs([r["den"] for r in booked.values()])
 
     # ---- integrated table --------------------------------------------
+    # recovered = Mu17_Mu8only / (1 - OR): of the events IsoMu24||Mu50 misses,
+    # the fraction Mu17_Mu8 brings back
     cols = list(TRIGGERS)
+
+    def row(den, nums):
+        effs = [nums[c] / den if den else float("nan") for c in cols]
+        missed = den - nums["OR"]
+        effs.append(nums["Mu17_Mu8only"] / missed if missed else float("nan"))
+        return "".join(f"{e:>14.4f}" for e in effs)
+
     print(f"\nTrigger efficiency  category={args.category}  year={args.year}"
-          f"  region={args.region or 'all'}  leadRawPt>{args.lead_pt_cut:g}  weight={args.weight}")
-    print(f"{'sample':<8}{'Nraw':>9}" + "".join(f"{c:>14}" for c in cols))
+          f"  region={args.region or 'all'}  leadRawPt>{args.lead_pt_cut:g}"
+          f"  fromHiggs={args.from_higgs}  weight={args.weight}")
+    print(f"{'sample':<8}{'Nraw':>9}" + "".join(f"{c:>14}" for c in cols + ["recovered"]))
     tot_den, tot_num = 0., {c: 0. for c in cols}
     for i, r in booked.items():
         den = r["den"].GetValue()
+        nums = {c: r["num"][c].GetValue() for c in cols}
         tot_den += den
-        effs = []
         for c in cols:
-            n = r["num"][c].GetValue()
-            tot_num[c] += n
-            effs.append(n / den if den else float("nan"))
-        name = SIGNAL.get(i, i)
-        print(f"{name:<8}{r['nraw'].GetValue():>9}" + "".join(f"{e:>14.4f}" for e in effs))
-    print(f"{'all':<8}{'':>9}" + "".join(
-        f"{(tot_num[c] / tot_den if tot_den else float('nan')):>14.4f}" for c in cols))
+            tot_num[c] += nums[c]
+        print(f"{SIGNAL.get(i, i):<8}{r['nraw'].GetValue():>9}" + row(den, nums))
+    print(f"{'all':<8}{'':>9}" + row(tot_den, tot_num))
 
     # ---- binned efficiencies, all samples summed ---------------------
     os.makedirs(args.outdir, exist_ok=True)
@@ -169,6 +180,8 @@ def main():
     suffix = f"{args.category}_{args.year}" + (f"_{args.region}" if args.region else "")
     if args.lead_pt_cut > 0:
         suffix += f"_lead{args.lead_pt_cut:g}"
+    if args.from_higgs:
+        suffix += "_fromH"
     fout = ROOT.TFile(os.path.join(args.outdir, f"trigEff_{suffix}.root"), "RECREATE")
     ROOT.gStyle.SetOptStat(0)
     for v, (_, _, _, _, label) in VARS.items():
