@@ -101,8 +101,7 @@ def load(indir, category, year, ids):
 def define(df, region, lead_pt_cut, from_higgs):
     df = (df.Define("leadIs1", "Muon1_rawpt >= Muon2_rawpt")
             .Define("leadRawPt", "leadIs1 ? Muon1_rawpt : Muon2_rawpt")
-            .Define("subRawPt", "leadIs1 ? Muon2_rawpt : Muon1_rawpt")
-            .Define("leadAbsEta", "std::abs(leadIs1 ? Muon1_eta : Muon2_eta)"))
+            .Define("subRawPt", "leadIs1 ? Muon2_rawpt : Muon1_rawpt"))
     if from_higgs:
         df = df.Filter("pairFromHiggs", "both muons from H")
     if lead_pt_cut > 0:
