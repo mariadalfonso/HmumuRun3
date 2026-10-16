@@ -9,7 +9,8 @@ of the category with no HLT requirement, and the numerators are the HLT bits.
     python triggerEff.py VLcat 2024 --samples 12,13,14 --region isH
 
 Prints the integrated efficiency per sample and for all signal combined, and
-writes efficiency-vs-variable histograms (+ PNGs) to <outdir>.
+writes efficiency-vs-variable histograms to <outdir> (ROOT file) and
+<plotdir>/<category><year>/ (PNGs, public_html by default).
 """
 
 import argparse
@@ -23,6 +24,7 @@ ROOT.gROOT.SetBatch(True)
 
 DEFAULT_INDIR = f"/work/submit/{getpass.getuser()}/HmumuRun3/ROOTFILES/"
 DEFAULT_OUTDIR = f"/work/submit/{getpass.getuser()}/HmumuRun3/TRIGEFF/"
+DEFAULT_PLOTDIR = f"/home/submit/{getpass.getuser()}/public_html/HmumuRun3/triggerEff/"
 
 SIGNAL = {"10": "VBF", "11": "ggH", "12": "WmH", "13": "WpH",
           "14": "ZH", "15": "ttH", "17": "bbH"}
@@ -50,7 +52,10 @@ def parse_args():
     p.add_argument("category", help="e.g. ggHcat, VBFcat, VLcat, ...")
     p.add_argument("year", help="e.g. 2024, 12022, 22023")
     p.add_argument("-i", "--indir", default=DEFAULT_INDIR)
-    p.add_argument("-o", "--outdir", default=DEFAULT_OUTDIR)
+    p.add_argument("-o", "--outdir", default=DEFAULT_OUTDIR,
+                   help="ROOT file with the histograms (default: %(default)s)")
+    p.add_argument("-p", "--plotdir", default=DEFAULT_PLOTDIR,
+                   help="PNGs go to <plotdir>/<category><year>/ (default: %(default)s)")
     p.add_argument("-s", "--samples", default=",".join(SIGNAL),
                    help="comma-separated MC ids (default: all H->mumu signal)")
     p.add_argument("--region", default=None,
@@ -139,6 +144,8 @@ def main():
 
     # ---- binned efficiencies, all samples summed ---------------------
     os.makedirs(args.outdir, exist_ok=True)
+    plotdir = os.path.join(args.plotdir, f"{args.category}{args.year}")
+    os.makedirs(plotdir, exist_ok=True)
     suffix = f"{args.category}_{args.year}" + (f"_{args.region}" if args.region else "")
     fout = ROOT.TFile(os.path.join(args.outdir, f"trigEff_{suffix}.root"), "RECREATE")
     ROOT.gStyle.SetOptStat(0)
@@ -172,9 +179,10 @@ def main():
             leg.AddEntry(e, text, "lp")
         leg.Draw()
         ROOT.SetOwnership(leg, False)
-        c.SaveAs(os.path.join(args.outdir, f"trigEff_{v}_{suffix}.png"))
+        c.SaveAs(os.path.join(plotdir, f"trigEff_{v}_{suffix}.png"))
     fout.Close()
-    print(f"\nwrote {os.path.join(args.outdir, f'trigEff_{suffix}.root')} + PNGs")
+    print(f"\nwrote {os.path.join(args.outdir, f'trigEff_{suffix}.root')}")
+    print(f"PNGs in {plotdir}")
 
 
 if __name__ == "__main__":
