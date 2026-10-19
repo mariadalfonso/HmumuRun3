@@ -9,8 +9,9 @@ of the category with no HLT requirement, and the numerators are the HLT bits.
     python triggerEff.py ggHcat 2024
     python triggerEff.py VLcat 2024 --samples 12,13,14 --region isH
 
-Prints the integrated efficiency per sample and for all signal combined, and
-writes efficiency-vs-variable histograms to <outdir> (ROOT file) and
+Prints the integrated efficiency per sample and for all signal combined, a
+non-overlapping breakdown (single mu only / both / Mu17_Mu8 only / neither),
+plots the leading-muon pT per class, and writes efficiency-vs-variable histograms to <outdir> (ROOT file) and
 <plotdir>/<category><year>/ (PNGs, public_html by default).
 """
 
@@ -49,6 +50,23 @@ CURVES = [
     ("Mu17_Mu8",    ROOT.kGreen + 2, "Mu17_Mu8"),
     ("OR_Mu17_Mu8", ROOT.kBlack,     "IsoMu24 || Mu50 || Mu17_Mu8"),
 ]
+
+# Non-overlapping split of the denominator. SINGLE = IsoMu24 || Mu50.
+SINGLE = "(HLT_IsoMu24 || HLT_Mu50)"
+CLASSES = {
+    "single_only": f"{SINGLE} && !{MU17_MU8}",
+    "both":        f"{SINGLE} && {MU17_MU8}",
+    "Mu17_Mu8only": f"!{SINGLE} && {MU17_MU8}",
+    "neither":     f"!{SINGLE} && !{MU17_MU8}",
+}
+
+# leading-muon pT distributions, overlaid: (selection, color, legend text)
+DISTS = {
+    "OR_Mu17_Mu8":  (TRIGGERS["OR_Mu17_Mu8"], ROOT.kBlack,     "single #mu || Mu17_Mu8"),
+    "single_only":  (CLASSES["single_only"],  ROOT.kRed + 1,   "single #mu only"),
+    "Mu17_Mu8only": (CLASSES["Mu17_Mu8only"], ROOT.kGreen + 2, "Mu17_Mu8 only"),
+}
+DIST_BINNING = (54, 15., 150.)   # 2.5 GeV bins
 
 # variable -> (expression, nbins, xmin, xmax, axis label)
 VARS = {
@@ -116,6 +134,11 @@ def book(df, weight, tag):
     out = {"den": df.Sum(weight), "nraw": df.Count(), "num": {}, "h": {}}
     for t, sel in TRIGGERS.items():
         out["num"][t] = df.Filter(sel).Sum(weight)
+    out["cls_n"] = {k: df.Filter(sel).Count() for k, sel in CLASSES.items()}
+    out["cls_w"] = {k: df.Filter(sel).Sum(weight) for k, sel in CLASSES.items()}
+    out["dist"] = {k: df.Filter(sel).Histo1D((f"leadRawPt_dist_{k}_{tag}", "", *DIST_BINNING),
+                                             "leadRawPt", weight)
+                   for k, (sel, _, _) in DISTS.items()}
     for v, (expr, nb, lo, hi, _) in VARS.items():
         model = (f"{v}_den_{tag}", "", nb, lo, hi)
         out["h"][(v, "den")] = df.Histo1D(model, expr, weight)
@@ -170,6 +193,23 @@ def main():
         print(f"{SIGNAL.get(i, i):<8}{r['nraw'].GetValue():>9}" + row(den, nums))
     print(f"{'all':<8}{'':>9}" + row(tot_den, tot_num))
 
+    # ---- non-overlapping breakdown, all samples summed ----------------
+    n_tot = sum(r["nraw"].GetValue() for r in booked.values())
+    cls_n = {k: sum(r["cls_n"][k].GetValue() for r in booked.values()) for k in CLASSES}
+    cls_w = {k: sum(r["cls_w"][k].GetValue() for r in booked.values()) for k in CLASSES}
+    w_any = tot_den - cls_w["neither"]
+    print(f"\nBreakdown (all samples summed)   single = IsoMu24 || Mu50")
+    print(f"{'class':<14}{'Nraw':>10}{'weighted':>14}{'frac of all':>14}{'frac of any':>14}")
+    for k in CLASSES:
+        f_all = cls_w[k] / tot_den if tot_den else float("nan")
+        f_any = cls_w[k] / w_any if (w_any and k != "neither") else float("nan")
+        print(f"{k:<14}{cls_n[k]:>10}{cls_w[k]:>14.4g}{f_all:>14.4f}{f_any:>14.4f}")
+    print(f"{'total':<14}{n_tot:>10}{tot_den:>14.4g}{1.:>14.4f}")
+    missed = cls_w["Mu17_Mu8only"] + cls_w["neither"]
+    if missed:
+        print(f"Mu17_Mu8 recovers {cls_w['Mu17_Mu8only'] / missed:.4f} of the events single mu misses "
+              f"({cls_n['Mu17_Mu8only']} of {cls_n['Mu17_Mu8only'] + cls_n['neither']} raw)")
+
     # ---- binned efficiencies, all samples summed ---------------------
     os.makedirs(args.outdir, exist_ok=True)
     plotdir = os.path.join(args.plotdir, f"{args.category}{args.year}")
@@ -211,6 +251,36 @@ def main():
         leg.Draw()
         ROOT.SetOwnership(leg, False)
         c.SaveAs(os.path.join(plotdir, f"trigEff_{v}_{suffix}.png"))
+    # ---- leading-pT distributions per trigger class ------------------
+    c = ROOT.TCanvas("c_dist", "", 700, 600)
+    c.SetLogy()
+    keep = []
+    leg = ROOT.TLegend(0.50, 0.70, 0.88, 0.88)
+    leg.SetBorderSize(0)
+    for k, (_, color, text) in DISTS.items():
+        hs = [r["dist"][k].GetValue() for r in booked.values()]
+        h = hs[0].Clone(f"leadRawPt_dist_{k}")
+        for other in hs[1:]:
+            h.Add(other)
+        h.SetLineColor(color)
+        h.SetLineWidth(2)
+        h.GetXaxis().SetTitle("leading muon p_{T} (raw) [GeV]")
+        h.GetYaxis().SetTitle("weighted events / 2.5 GeV")
+        h.Write()
+        keep.append(h)
+        leg.AddEntry(h, text, "l")
+    ymax = max(h.GetMaximum() for h in keep)
+    positive = [h.GetBinContent(b) for h in keep for b in range(1, h.GetNbinsX() + 1)
+                if h.GetBinContent(b) > 0]
+    ymin = min(positive, default=ymax * 1e-4)
+    for n, h in enumerate(keep):
+        h.SetMinimum(ymin * 0.5)
+        h.SetMaximum(ymax * 5)
+        h.Draw("hist" if n == 0 else "hist same")
+    leg.Draw()
+    ROOT.SetOwnership(leg, False)
+    c.SaveAs(os.path.join(plotdir, f"leadRawPt_byTrigger_{suffix}.png"))
+
     fout.Close()
     print(f"\nwrote {os.path.join(args.outdir, f'trigEff_{suffix}.root')}")
     print(f"PNGs in {plotdir}")
