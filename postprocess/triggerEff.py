@@ -139,6 +139,7 @@ def book(df, weight, tag):
     out["dist"] = {k: df.Filter(sel).Histo1D((f"leadRawPt_dist_{k}_{tag}", "", *DIST_BINNING),
                                              "leadRawPt", weight)
                    for k, (sel, _, _) in DISTS.items()}
+    out["dist_n"] = {k: df.Filter(sel).Count() for k, (sel, _, _) in DISTS.items()}
     for v, (expr, nb, lo, hi, _) in VARS.items():
         model = (f"{v}_den_{tag}", "", nb, lo, hi)
         out["h"][(v, "den")] = df.Histo1D(model, expr, weight)
@@ -255,8 +256,9 @@ def main():
     c = ROOT.TCanvas("c_dist", "", 700, 600)
     c.SetLogy()
     keep = []
-    leg = ROOT.TLegend(0.50, 0.70, 0.88, 0.88)
+    leg = ROOT.TLegend(0.38, 0.72, 0.88, 0.88)
     leg.SetBorderSize(0)
+    leg.SetTextSize(0.03)
     for k, (_, color, text) in DISTS.items():
         hs = [r["dist"][k].GetValue() for r in booked.values()]
         h = hs[0].Clone(f"leadRawPt_dist_{k}")
@@ -268,7 +270,10 @@ def main():
         h.GetYaxis().SetTitle("weighted events / 2.5 GeV")
         h.Write()
         keep.append(h)
-        leg.AddEntry(h, text, "l")
+        # N = raw events; fraction = weighted share of all selected events (incl. under/overflow)
+        n_raw = sum(r["dist_n"][k].GetValue() for r in booked.values())
+        frac = h.Integral(0, h.GetNbinsX() + 1) / tot_den if tot_den else float("nan")
+        leg.AddEntry(h, f"{text}: N = {n_raw}, {100 * frac:.2f}%", "l")
     ymax = max(h.GetMaximum() for h in keep)
     positive = [h.GetBinContent(b) for h in keep for b in range(1, h.GetNbinsX() + 1)
                 if h.GetBinContent(b) > 0]
