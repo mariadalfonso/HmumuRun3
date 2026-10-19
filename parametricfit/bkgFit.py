@@ -80,17 +80,13 @@ for _i in range(ROOT.RooMsgService.instance().numStreams()):
 # ---------------------------------------------------------------------------
 # blinding
 # ---------------------------------------------------------------------------
-# Blinded window for the BACKGROUND FIT. Deliberately narrower than the
-# analysis's `isH` definition (115-135): the fit only needs the signal
-# region masked, and a narrower mask leaves 30 of the 40 GeV to constrain
-# the shape instead of 20. Widen to 115-135 if the fit region has to match
-# `isH` exactly. Everything downstream -- the named ranges, the chi2 bin
-# merging and its segments, the shaded box on the plot, f_sb and so the
+# Blinded window for the BACKGROUND FIT (see the module docstring for why
+# it is narrower than `isH`). Everything downstream -- the named ranges,
+# the chi2 bin merging, the shaded box on the plot, f_sb and so the
 # extrapolated norm -- follows from these two numbers.
 SR_LO, SR_HI = 120.0, 130.0        # blinded Higgs signal region
 R_SB_LOW = "sbLow"                 # 110 - 120
 R_SB_HIGH = "sbHigh"               # 130 - 150
-R_SB = "sideband"                  # the union, what the fit uses
 R_FULL = "full"
 R_SR = "sr"
 
@@ -111,9 +107,6 @@ GOF_THRESHOLD = 0.01
 # GOF cut -- is least reliable exactly where the candidates differ most.
 # 0 disables merging.
 CHI2_MIN_BIN_SIGNIFICANCE = 3.0
-# Candidates to consider at all. bern0 is a flat line and bern1 a straight
-# one -- kept because the F-test should be allowed to choose them.
-CANDIDATES = None                  # None -> everything in pdfDefinitions
 
 # normalisation is extrapolated from the sideband, so give it room
 NORM_RANGE = (0.2, 5.0)            # x the extrapolated value
@@ -163,7 +156,8 @@ def load_data(category, binMVA, year, nbins):
 
 
 def setup_ranges(x):
-    """Name the sideband pieces, their union, the SR and the full range."""
+    """Name the sideband pieces, the SR and the full range; return the
+    sideband union as a range list."""
     x.setRange(R_FULL, sf.XLOW, sf.XHIGH)
     x.setRange(R_SB_LOW, sf.XLOW, SR_LO)
     x.setRange(R_SB_HIGH, SR_HI, sf.XHIGH)
@@ -523,7 +517,6 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     frame.SetMaximum(1.35 * frame.GetMaximum())
 
     # ratio of data and of each member to the best-fit model
-    hdat = frame.getHist("dat")
     cbest = frame.getCurve(best)
     rgraphs = []
     g = ROOT.TGraphErrors()
@@ -869,8 +862,8 @@ def main():
         print(f"  datahist_{tag}            full range, "
               f"{n_full:.0f} events")
     else:
-        print(f"\nno workspace written (--multipdf not given): RooMultiPdf "
-              f"needs the Combine container")
+        print("\nno workspace written (--multipdf not given): RooMultiPdf "
+              "needs the Combine container")
 
     # ---- json ----------------------------------------------------------
     rec = {

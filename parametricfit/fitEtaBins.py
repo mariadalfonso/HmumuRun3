@@ -1,6 +1,6 @@
 """
 fitEtaBins.py -- double-sided Crystal Ball fits of HiggsCandCorrMass split by
-dimuon |eta| topology and by dimuon pT, for one signal production mode.
+dimuon |eta| topology and by muon pT, for one signal production mode.
 
 Depends only on sigFit.py and prepareFits.py:
   * sigFit.py supplies the shape, fit range, binning, the two-pass Minuit2
@@ -85,12 +85,7 @@ PALETTE_RGB = [
 # sigFit; 600x600 canvas -> 0.144.
 CMS_EXTRA_OFFSET = 2.4
 
-# z-axis colour palette for the 2D resolution maps. Any ROOT EColorPalette
-# works: kPastel, kBird, kViridis, kCividis, kTemperatureMap, kRainBow, ...
-# A SEQUENTIAL palette (kViridis, kCividis) is the safer choice for a
-# resolution map, since the eye then reads "darker = better"; kPastel and
-# kRainBow are not monotonic in lightness, so nearby cells can look more
-# different than they are.
+# z-axis colour palette for the 2D resolution maps (any ROOT EColorPalette)
 MAP_PALETTE = ROOT.kCandy
 
 # overlay legend
@@ -106,11 +101,6 @@ ETA_EDGES = [0.0, 1.4, 2.4]
 # 2D map of the fitted resolution over the two muon momenta, one map per
 # |eta| topology. Cells are `MU2D_WIDTH` GeV wide in each muon, from
 # MU2D_MIN up to MU2D_MAX, plus one open bin above MU2D_MAX.
-#
-# The axes are LEADING and SUBLEADING pT, not Muon1/Muon2: the pair is
-# unordered, so a Muon1-vs-Muon2 map would be symmetric about the diagonal
-# and half the fits would be redundant. Ordering by pT folds it into the
-# lower triangle, halving the work and making every cell distinct.
 MU2D_MIN = 20.0
 MU2D_MAX = 120.0
 MU2D_WIDTH = 20.0
@@ -162,14 +152,14 @@ def parse_args():
     p.add_argument("-o", "--plotdir",
                    default=f"/home/submit/{getpass.getuser()}/public_html/HmumuFits/EtaBinFits",
                    help="base output dir. Everything is written to a "
-                        "<plotdir>/<year>/ subdirectory, so runs for different "
-                        "years never overwrite each other.")
+                        "<plotdir>/<category>/<year>/ subdirectory, so runs "
+                        "for different years never overwrite each other.")
     p.add_argument("--no-inclusive", action="store_true",
                    help="skip the inclusive fit used as the delta reference")
     p.add_argument("--palette", default=None,
                    help="ROOT palette name for the 2D maps, e.g. kPastel, "
                         "kBird, kViridis, kCividis, kTemperatureMap "
-                        f"(default: whatever MAP_PALETTE is set to)")
+                        "(default: whatever MAP_PALETTE is set to)")
     p.add_argument("--pdf", action="store_true", help="also write .pdf")
     return p.parse_args()
 
@@ -213,8 +203,7 @@ def eta_bins(edges=None):
                         f"({_inside('absEta2', edges, i)}))")
                 label = f"{short}: one {names[i]}, one {names[j]}"
             bins.append({"tag": f"eta_{short}", "short": short,
-                         "label": label, "lo": None, "hi": None,
-                         "filt": filt, "group": "eta"})
+                         "label": label, "filt": filt, "group": "eta"})
     return bins
 
 
@@ -249,8 +238,8 @@ def mu2d_cells(eta_bin):
     out = []
     for il in range(n):                       # leading
         for isub in range(il + 1):            # subleading <= leading
-            lo_l, hi_l, lab_l, _ = _cell_range(edges, il)
-            lo_s, hi_s, lab_s, _ = _cell_range(edges, isub)
+            lo_l, _, lab_l, _ = _cell_range(edges, il)
+            lo_s, _, lab_s, _ = _cell_range(edges, isub)
             filt = (f"({eta_bin['filt']}) && "
                     f"({_cell_cut(MU2D_LEAD, edges, il)}) && "
                     f"({_cell_cut(MU2D_SUB, edges, isub)})")
@@ -358,7 +347,7 @@ def save(c, out, save_pdf):
     c.Close()
 
 
-def overlay_pdfs(x, fits, plotdir, year, group, axis, save_pdf=False):
+def overlay_pdfs(x, fits, plotdir, year, group, save_pdf=False):
     """Every bin's fitted PDF on one frame, each normalised to unity.
 
     All PDFs are built on the same observable x; a PDF plotted on a frame of
@@ -424,53 +413,37 @@ def overlay_pdfs(x, fits, plotdir, year, group, axis, save_pdf=False):
 
 
 def summary_graph(fits, plotdir, year, group, axis, save_pdf=False):
-    """mu and sigma vs bin, the plot that actually answers the question."""
+    """mu and sigma vs category, the plot that actually answers the question."""
     legs = [f for f in fits if f.get("group") == group]
     if len(legs) < 2:
         return
     n = len(legs)
-    # pT bins carry numeric edges; the eta categories do not
-    categorical = legs[0]["lo"] is None
-    ax = axis
 
     for ytit, key in [("fitted #mu (GeV)", "mu"),
                       ("fitted #sigma (GeV)", "sigma")]:
         g = ROOT.TGraphErrors(n)
         for i, f in enumerate(legs):
-            if categorical:
-                xc, xe = i + 0.5, 0.0
-            else:
-                # an open bin has no real upper edge; hi is a drawing value
-                xc = 0.5 * (f["lo"] + f["hi"])
-                xe = 0.5 * (f["hi"] - f["lo"])
-            g.SetPoint(i, xc, f[key])
-            g.SetPointError(i, xe, f[key + "Err"])
-        g.SetTitle(f";{ax};{ytit}")
+            g.SetPoint(i, i + 0.5, f[key])
+            g.SetPointError(i, 0.0, f[key + "Err"])
         g.SetMarkerStyle(SF.DATA_MARKER_STYLE)
         g.SetMarkerSize(SF.DATA_MARKER_SIZE)
         g.SetLineWidth(SF.DATA_LINE_WIDTH)
 
         c = make_canvas(f"c_{key}_{group}")
-        if categorical:
-            # labelled frame: one bin per category
-            lo_y = min(f[key] - f[key + "Err"] for f in legs)
-            hi_y = max(f[key] + f[key + "Err"] for f in legs)
-            pad_y = 0.15 * (hi_y - lo_y) or 0.05 * abs(hi_y) or 1.0
-            frame = ROOT.TH1F(f"frame_{key}_{group}", f";{ax};{ytit}",
-                              n, 0, n)
-            frame.SetDirectory(0)
-            for i, f in enumerate(legs):
-                frame.GetXaxis().SetBinLabel(i + 1, f["short"])
-            frame.GetXaxis().SetLabelSize(
-                0.06 if n <= 6 else 0.035)
-            frame.SetMinimum(lo_y - pad_y)
-            frame.SetMaximum(hi_y + pad_y)
-            frame.GetYaxis().SetTitleOffset(1.5)
-            frame.Draw()
-            g.Draw("P SAME")
-        else:
-            g.GetYaxis().SetTitleOffset(1.5)
-            g.Draw("AP")
+        # labelled frame: one bin per category
+        lo_y = min(f[key] - f[key + "Err"] for f in legs)
+        hi_y = max(f[key] + f[key + "Err"] for f in legs)
+        pad_y = 0.15 * (hi_y - lo_y) or 0.05 * abs(hi_y) or 1.0
+        frame = ROOT.TH1F(f"frame_{key}_{group}", f";{axis};{ytit}", n, 0, n)
+        frame.SetDirectory(0)
+        for i, f in enumerate(legs):
+            frame.GetXaxis().SetBinLabel(i + 1, f["short"])
+        frame.GetXaxis().SetLabelSize(0.06 if n <= 6 else 0.035)
+        frame.SetMinimum(lo_y - pad_y)
+        frame.SetMaximum(hi_y + pad_y)
+        frame.GetYaxis().SetTitleOffset(1.5)
+        frame.Draw()
+        g.Draw("P SAME")
         cms_label(c, year)
         save(c, f"{plotdir}/{key}_vs_{group}_{year}", save_pdf)
 
@@ -580,7 +553,7 @@ def fit_cell(x, hist, tag, min_entries):
     """Fit one map cell WITHOUT writing canvases.
 
     sigFit.fit_one always draws the ratio and pull panels, which is right
-    for a handful of bins and wrong for ~60 map cells per eta region. This
+    for a handful of bins and wrong for ~21 map cells per eta region. This
     does the same two-pass Minuit2 fit with the same pinned nuisances and
     returns just the numbers.
     """
@@ -658,14 +631,13 @@ def main():
     # same sanity cut as prepareFits.getHisto
     df = df.Filter(f"!std::isnan({args.mass})", "valid mass")
 
-    # every output goes under <plotdir>/<year>/, and every fit tag carries the
-    # year too, so runs for different years cannot overwrite one another
+    # every output goes under <plotdir>/<category>/<year>/, and every fit tag
+    # carries the year too, so runs for different years cannot overwrite one
+    # another
     outdir = os.path.join(args.plotdir, args.category, year)
     os.makedirs(outdir, exist_ok=True)
 
-    # eta categories (inclusive in pT), pT bins (inclusive in eta), then a
-    # pT scan inside each eta category
-    eta_shorts = [b["short"] for b in eta_bins()]
+    # eta categories (inclusive in pT); the pT maps are fitted separately
     groups = [("eta", ETA_AXIS)]
 
     print(f"sample  : {args.sig} ({args.category})"
@@ -699,8 +671,7 @@ def main():
     booked = []
     if not args.no_inclusive:
         booked.append({"tag": f"inclusive_{year}", "short": "incl",
-                       "label": "inclusive", "lo": None, "hi": None,
-                       "filt": None, "group": None,
+                       "label": "inclusive", "filt": None, "group": None,
                        "h": histo("inclusive", None)})
 
     all_bins = eta_bins()
@@ -708,7 +679,7 @@ def main():
         tag = f"{b['tag']}_{year}"
         booked.append({**b, "tag": tag, "h": histo(tag, b["filt"])})
 
-    # report what falls outside the edges (pT is unbounded above) instead of
+    # report what falls outside the edges instead of
     # letting the bins silently not add up to the inclusive fit
     n_all = df.Count()
     n_in = {k: df.Filter(v).Count() for k, v in coverage_filters().items()}
@@ -740,7 +711,7 @@ def main():
                      "chi2": record["fit_quality"]["chi2_ndf"]})
         dump[b["tag"]] = {"label": b["label"], "short": b["short"],
                           "group": b["group"], "filter": b["filt"],
-                          "lo": b["lo"], "hi": b["hi"], **record}
+                          **record}
 
     if not fits:
         raise SystemExit("no successful fits")
@@ -777,7 +748,7 @@ def main():
                   f"{k} edges and are in no {k} bin")
 
     for group, axis in groups:
-        overlay_pdfs(x, fits, outdir, year, group, axis, args.pdf)
+        overlay_pdfs(x, fits, outdir, year, group, args.pdf)
         summary_graph(fits, outdir, year, group, axis, args.pdf)
     # --- the 2D resolution maps -------------------------------------
     print(f"\nfitting the leading-vs-subleading pT map "

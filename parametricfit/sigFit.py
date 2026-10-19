@@ -103,7 +103,6 @@ LINE_SPACING = 1.35          # dy = LINE_SPACING * text size
 PARAM_BLOCK_WIDTH = 0.42     # left edge of the right block, from the frame's
                              # right edge. Widen if long lines get clipped.
 
-# Marker style
 DATA_MARKER_STYLE = 24
 DATA_MARKER_SIZE = 0.8
 DATA_LINE_WIDTH = 1
@@ -337,6 +336,7 @@ def _style_lower_marker(obj):
     obj.SetLineColor(ROOT.kBlack)
     obj.SetLineWidth(DATA_LINE_WIDTH)
 
+
 def near_bound(var, tol=0.01):
     """True if a floating parameter ended up parked on a limit."""
     lo, hi = var.getMin(), var.getMax()
@@ -495,7 +495,7 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
     _style_ratio_axis(frame.GetYaxis(), RATIO_Y_TITLE_OFFSET)
     frame.GetXaxis().SetLabelSize(0)      # shared axis: labels on lower pad
     frame.GetXaxis().SetTitleSize(0)
-    frame.SetMaximum(1.1 * frame.GetMaximum())  # headroom
+    frame.SetMaximum(1.1 * frame.GetMaximum())   # headroom
 
     ratio = _make_ratio(hist, pdf, x, norm)
     _style_lower_marker(ratio)

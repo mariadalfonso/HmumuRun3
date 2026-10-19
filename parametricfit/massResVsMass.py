@@ -113,23 +113,12 @@ PALETTE_RGB = [
 
 CMS_EXTRA_OFFSET = 2.4
 
-# cms_label also reports the NDC x just past "Internal", this many
-# CMS-text-widths from the left margin. Not currently used -- the 2D
-# annotation sits inside the frame, because the header line has room only
-# for "CMS Internal" and the luminosity.
-ANN_OFFSET = 6.2
-
 # The header is sized from the pad top margin, and ROOT scales NDC text by
 # the pad's SHORTER side. Every canvas here is square, which makes the
 # header noticeably larger than on sigFit's 600x420 fit pads, so scale it
 # down. Applied to the 1D plots, which keep sigFit's one-line header.
 CMS_SCALE = 0.72
 
-# The 2D map puts EVERYTHING above the frame instead, in two lines with a
-# left- and a right-aligned item each (the ATLAS convention). Nothing then
-# sits on top of the colour map, which is the only reliable way to keep it
-# legible whatever the palette and wherever the events fall. The price is a
-# taller top margin.
 # Mass slices for the sigma_m/m distribution. These need NOT partition the
 # window -- the script reports any gap or overlap rather than silently
 # adjusting them, because a deliberate gap (skipping the peak, say) and an
@@ -156,6 +145,11 @@ MAP_MASS_RANGE = (115.0, 135.0)
 # dominant than it is.
 MAP_LOGZ = False
 
+# The 2D map puts EVERYTHING above the frame instead, in two lines with a
+# left- and a right-aligned item each (the ATLAS convention). Nothing then
+# sits on top of the colour map, which is the only reliable way to keep it
+# legible whatever the palette and wherever the events fall. The price is a
+# taller top margin.
 HDR_TOP_MARGIN = 0.135
 HDR_CMS_SIZE = 0.046
 HDR_SUB_SIZE = 0.032
@@ -180,7 +174,7 @@ def parse_args():
                    help="snapshot category directory (default: %(default)s)")
     p.add_argument("--rootfiles-dir", default=ROOTFILES_DIR)
     p.add_argument("--file", nargs="+", default=None,
-                   help="fit these files instead of the lookup; only valid "
+                   help="use these files instead of the lookup; only valid "
                         "with a single --sig, since the files cannot be "
                         "attributed to a mode")
     p.add_argument("--variant", default="both",
@@ -255,9 +249,8 @@ def make_canvas(name, width=None, right=None):
 def cms_label(pad, year, scale=1.0):
     """sigFit.cms_label with the "Internal" offset scaled to this pad.
 
-    `scale` shrinks the whole header, to free room on the same line for
-    another label. Returns (latex, x_end, y) so the caller can place text
-    just after "Internal" without guessing.
+    `scale` shrinks the whole header. Returns the TLatex so the caller
+    keeps it alive.
     """
     pad.cd()
     t, l, r = pad.GetTopMargin(), pad.GetLeftMargin(), pad.GetRightMargin()
@@ -287,11 +280,7 @@ def cms_label(pad, year, scale=1.0):
     tex.DrawLatex(1 - r, y,
                   ("%.1f fb^{-1} (%.1f TeV)" % (lumi, SF.SQRT_S_TEV))
                   if lumi > 0 else "(%.1f TeV)" % SF.SQRT_S_TEV)
-
-    w = pad.GetWw() * pad.GetAbsWNDC()
-    h = pad.GetWh() * pad.GetAbsHNDC()
-    scl = min(w, h) / w if w > 0 else 1.0
-    return tex, l + ANN_OFFSET * size * scl, y
+    return tex
 
 
 def header_2d(pad, year, left2="", right2=""):
@@ -426,7 +415,7 @@ def median_graph(xs, mids, col, style=None):
 # plots
 # ---------------------------------------------------------------------------
 
-def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
+def plot_2d(entry, plotdir, year, ytit, save_pdf):
     """The 2D map for one sample, with its median and band drawn over."""
     h2 = entry["h2"]
     h2.SetStats(0)
@@ -455,8 +444,6 @@ def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
     keep = []
     xs, los, mids, his, _ = entry["prof"]
     if xs:
-        band = band_graph(xs, los, his, ROOT.kBlack)
-        band.SetFillColorAlpha(ROOT.kBlack, 0.0)   # outline only over COLZ
         med = median_graph(xs, mids, ROOT.kBlack)
         med.SetLineStyle(ROOT.kSolid)
         med.Draw("L SAME")
@@ -467,12 +454,8 @@ def plot_2d(entry, plotdir, year, label, ytit, save_pdf):
             g.SetMarkerSize(0)
             g.Draw("L SAME")
             keep.append(g)
-        keep += [band, med]
+        keep.append(med)
 
-    # The header line only fits "CMS Internal" and the luminosity -- the
-    # gap between them is about 0.19 NDC, not enough for the sample too.
-    # Everything else goes INSIDE the frame, upper left, where the
-    # sigma_m/m distribution is sparse.
     # Sample only: the category is already in the output path, and a
     # shorter caption keeps the whole second line on one row.
     keep.append(header_2d(
@@ -529,11 +512,8 @@ def plot_profile(entries, plotdir, year, label, ytit, save_pdf,
         med = median_graph(xs, mids, col)
         med.Draw("L SAME")
         keep += [band, med]
-        # slope over the window, from the end points of the median
-        slope = (mids[-1] - mids[0]) / (xs[-1] - xs[0]) if len(xs) > 1 else 0.0
         leg.AddEntry(med, f"{e['sig']}  (median "
                           f"{mids[len(mids) // 2]:.4g})", "l")
-        e["slope_per_gev"] = slope
 
     leg.Draw()
     keep.append(leg)
@@ -549,7 +529,7 @@ def plot_profile(entries, plotdir, year, label, ytit, save_pdf,
                   SF.PAD_BOTTOM_MARGIN + 0.02, label)
     keep.append(tex)
 
-    keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+    keep.append(cms_label(c, year, scale=CMS_SCALE))
     save(c, f"{plotdir}/profile{suffix}_{year}", save_pdf)
 
 
@@ -610,7 +590,7 @@ def plot_1d(entries, plotdir, year, label, xtit, save_pdf,
                   "dashed: median")
     keep.append(tex)
 
-    keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+    keep.append(cms_label(c, year, scale=CMS_SCALE))
     save(c, f"{plotdir}/dist{suffix}_{year}", save_pdf)
 
 
@@ -622,7 +602,7 @@ def check_slices(slices, lo=None, hi=None):
     msgs = []
     if ss[0][0] > lo:
         msgs.append(f"{lo:g}-{ss[0][0]:g} not covered")
-    for (a1, b1), (a2, b2) in zip(ss, ss[1:]):
+    for (_, b1), (a2, _) in zip(ss, ss[1:]):
         if a2 > b1:
             msgs.append(f"{b1:g}-{a2:g} not covered")
         elif a2 < b1:
@@ -725,7 +705,7 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
         tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln_)
     keep.append(tex)
 
-    keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+    keep.append(cms_label(c, year, scale=CMS_SCALE))
     save(c, f"{plotdir}/{entry['sig']}_slices_{entry['variant']}"
             f"{esfx}_{year}", save_pdf)
 
@@ -813,7 +793,7 @@ def plot_eta_compare(entries, plotdir, year, label, ytit, save_pdf):
                       SF.PAD_BOTTOM_MARGIN + 0.02, f"{label}, {vkey}")
         keep.append(tex)
 
-        keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+        keep.append(cms_label(c, year, scale=CMS_SCALE))
         save(c, f"{plotdir}/eta_compare_{vkey}_{year}", save_pdf)
 
 
@@ -882,12 +862,6 @@ def plot_fsr_compare(entries, plotdir, year, label, ytit, save_pdf):
             med = mids[len(mids) // 2]
             leg.AddEntry(g, f"{sig}, {e['variant']}  ({med:.4g})", "l")
 
-        # improvement at the peak, from the middle of each profile
-        m_pre = pre["prof"][2][len(pre["prof"][2]) // 2]
-        m_post = post["prof"][2][len(post["prof"][2]) // 2]
-        pre["fsr_gain"] = None
-        post["fsr_gain"] = (m_post - m_pre) / m_pre if m_pre else None
-
     leg.Draw()
     keep.append(leg)
 
@@ -902,7 +876,7 @@ def plot_fsr_compare(entries, plotdir, year, label, ytit, save_pdf):
                   SF.PAD_BOTTOM_MARGIN + 0.02, label)
     keep.append(tex)
 
-    keep.append(cms_label(c, year, scale=CMS_SCALE)[0])
+    keep.append(cms_label(c, year, scale=CMS_SCALE))
     save(c, f"{plotdir}/fsr_compare_{year}", save_pdf)
 
 
@@ -1037,7 +1011,7 @@ def main():
                 entries.append({"sig": sig, "variant": vkey, "desc": vdesc,
                                 "eta": eta_short,
                                 "mass_col": mcol, "relerr_col": ecol,
-                                "files": files, "_h2": h2, "_h1": h1,
+                                "_h2": h2, "_h1": h1,
                                 "_n": df.Count()})
 
     if not entries:
@@ -1108,7 +1082,7 @@ def main():
 
     # ---- plots ---------------------------------------------------------
     for e in entries:
-        plot_2d(e, outdir, year, label, ytit, args.pdf)
+        plot_2d(e, outdir, year, ytit, args.pdf)
         if e.get("slices"):
             plot_mass_slices(e, outdir, year, label, ytit, args.pdf,
                              slices)

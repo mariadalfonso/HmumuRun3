@@ -1,15 +1,10 @@
 """
 pdfDefinitions.py -- the PDF definitions shared by every fit script.
 
-Design rules, all of which the previous version broke somewhere:
+Design rules:
 
   1. NO ROOT CLASSES IMPORTED AT MODULE LEVEL. `import ROOT` only, and
-     classes resolved inside the functions. The old
-     `from ROOT import RooDoubleCBFast` ran at import time, so the class
-     had to exist before this module was imported -- in SIGfits.py the
-     import is five lines BEFORE gSystem.Load, and it worked only because
-     ROOT autoloads from the library's rootmap. Now load order cannot
-     matter.
+     classes resolved inside the functions, so load order cannot matter.
 
   2. NO COMBINE DEPENDENCY. Every background PDF here is plain ROOT. The
      signal shape picks RooCrystalBall (ROOT >= 6.26) when it exists and
@@ -18,11 +13,9 @@ Design rules, all of which the previous version broke somewhere:
      conda environment; only workspace writing (RooMultiPdf) needs the
      container.
 
-  3. EVERY CANDIDATE OWNS ITS PARAMETERS. The old create_bkg_pdfs gave
-     bern2 and bern3 the same bern_c0..c2 objects, and all three
-     exponentials the same exp_p1, so fitting one moved another's
-     starting point and the result depended on fit order. Each candidate
-     is now built by a factory with its own variables.
+  3. EVERY CANDIDATE OWNS ITS PARAMETERS. Each candidate is built by a
+     factory with its own variables, so fitting one cannot move another's
+     starting point and the result does not depend on fit order.
 
   4. ONE SET OF BOUNDS, ONE SET OF NAMES. Defined here and imported, not
      duplicated in each script.
@@ -60,15 +53,6 @@ BOUNDS = {
 # cased at n = 1, so a fit wandering there returns NaN with no warning.
 # RooCrystalBall handles it. Raise the floor when falling back.
 N_FLOOR_NO_SPECIAL_CASE = 1.05
-
-PARAM_LABEL = {
-    "mu":     ("#mu",           "GeV"),
-    "sigma":  ("#sigma",        "GeV"),
-    "alphaL": ("#alpha_{lo}",   ""),
-    "nL":     ("n_{lo}",        ""),
-    "alphaR": ("#alpha_{high}", ""),
-    "nR":     ("n_{high}",      ""),
-}
 
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
               "libHiggsAnalysisCombinedLimit.so"
@@ -229,9 +213,7 @@ def _sum_of(x, tag, kind, nterms):
     RooAddPdf with recursiveFraction=True means coefficient i is the
     fraction of what is left after the first i-1 terms, which removes the
     "fractions must sum to < 1" constraint that trips up the explicit
-    form. The old code emulated this with RooFormulaVars built from
-    exp_c1/exp_c2, which exp2 and exp3 SHARED -- so fitting one moved the
-    other's fractions, on top of the shared slope parameters.
+    form.
     """
     comps, pars = [], []
     for i in range(nterms):
@@ -301,40 +283,3 @@ def create_bkg_pdf(x, tag, name):
     pdf, pars, *extra = BKG_FACTORIES[name](x, tag)   # extra = [comps]
     return pdf, {"params": pars, "pdf": pdf, "extra": extra}
 
-
-def create_bkg_pdfs(x, tag, names=None):
-    """Several candidates at once. Each is independent of the others."""
-    names = sorted(BKG_FACTORIES) if names is None else names
-    pdfs, keep = {}, {}
-    for n in names:
-        pdfs[n], keep[n] = create_bkg_pdf(x, tag, n)
-    return {"pdfs": pdfs, "keep": keep}
-
-
-# ---------------------------------------------------------------------------
-# backwards compatibility
-# ---------------------------------------------------------------------------
-
-class PDFDefinitions:
-    """The old class interface, kept so SIGfits.py still imports.
-
-    create_signal_pdfs returned {'pdf':..., 'params':...} with no nuisance
-    hooks; new code should call create_signal_pdf and use the bundle.
-    """
-
-    @staticmethod
-    def create_signal_pdfs(x, tag, suffix=""):
-        pdf, bundle = create_signal_pdf(
-            x, tag, name=f"crystal_ball{suffix}{tag}")
-        return {"pdf": pdf, "params": bundle["nom"], "bundle": bundle}
-
-    @staticmethod
-    def create_bkg_pdfs(x, tag):
-        out = create_bkg_pdfs(x, tag)
-        # the old code exposed 'chebychev1' etc.
-        pdfs = dict(out["pdfs"])
-        for o in (1, 2, 3):
-            if f"cheb{o}" in pdfs:
-                pdfs[f"chebychev{o}"] = pdfs[f"cheb{o}"]
-        return {"pdfs": pdfs, "params": {}, "components": {},
-                "formulas": {}, "keep": out["keep"]}

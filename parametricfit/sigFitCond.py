@@ -11,7 +11,7 @@ Model
 
     P(r)     = RooKeysPdf, from the MC distribution of r
 
-CONDITIONAL-ONLY (Option A of PLAN_conditional_fit.md): the fit declares
+CONDITIONAL-ONLY: the fit declares
 `r` a conditional observable, so P(r) cancels from the likelihood and
 never enters it. Consequences:
 
@@ -49,13 +49,13 @@ Usage
 import argparse
 import json
 import os
-from array import array
 from datetime import datetime, timezone
 
 import numpy as np
 import ROOT
 
 import sigFit as sf
+from prepareFits import ROOTFILES_DIR, get_selection, get_signal_files
 
 
 ROOT.gROOT.SetBatch(True)
@@ -80,8 +80,8 @@ WEIGHTCOL = "w_allSF"
 # exists because a RooRealVar needs a range and RooKeysPdf is built over
 # it; a very long sparse tail degrades the kernel bandwidth in the
 # populated region. 0.10 is ~8x the median (~0.012), well clear of the
-# bulk. Tighten it only for the kernel estimate, never for the fit, and
-# check with --report-cut what any change actually costs.
+# bulk. Tighten it only for the kernel estimate, never for the fit; the
+# fraction of events the window drops is printed at load time.
 R_LO, R_HI = 1e-4, 0.10
 
 # narrower window used only for DRAWING the resolution distribution
@@ -106,7 +106,7 @@ KAPPA_START, KAPPA_LO, KAPPA_HI = 1.0, 0.3, 3.0
 # Optional intrinsic floor added in quadrature:
 #     sigma_CB = sqrt((kappa * r * MH)^2 + c^2)
 # The plain model forces the width proportional to r through the origin.
-# If the true width has a constant contribution that MinvRelErr does not
+# If the true width has a constant contribution that MinvErr does not
 # propagate -- angular resolution, FSR, the beamspot correlation -- that
 # rigidity makes the conditional fit WORSE than a free single width, even
 # though it has the same number of parameters. A significant c says so.
@@ -114,35 +114,8 @@ OFFSET_START, OFFSET_LO, OFFSET_HI = 0.3, 0.0, 2.0
 
 MODES = sf.MC_LIST
 
-# sigFit sets the ratio panel range inline rather than as a constant, so
-# keep a local one (and pick sigFit's up if it ever gains it).
-RATIO_Y_RANGE = getattr(sf, "RATIO_Y_RANGE", (0.0, 2.0))
-
-# BDT-bin cuts. This mirrors the selMVA* dicts inside
-# prepareFits.getHisto, which are local to that function and so cannot be
-# imported -- the same duplication resolutionScan.py carries. Hoisting
-# them to module scope in prepareFits and importing from there would
-# remove both copies.
-SEL_MVA = {
-    "VBFcat":  {"bdt2": "discrMVA0>=0.92", "bdt1": "discrMVA0>=0.64 && discrMVA0<0.92", "bdt0": "discrMVA0<0.64"},
-    "ggHcat":  {"bdt2": "discrMVA0>=0.76", "bdt1": "discrMVA0>=0.5 && discrMVA0<0.76",  "bdt0": "discrMVA0<0.5"},
-    "VLcat":   {"bdt2": "discrMVA0>=0.78", "bdt1": "discrMVA0>=0.32 && discrMVA0<0.78", "bdt0": "discrMVA0<0.32"},
-    "VHcat":   {"bdt2": "discrMVA0>=0.94", "bdt1": "discrMVA0>=0.86 && discrMVA0<0.94", "bdt0": "discrMVA0<0.86"},
-    "Zinvcat": {"bdt2": "discrMVA0>=0.98", "bdt1": "discrMVA0>=0.78 && discrMVA0<0.98", "bdt0": "discrMVA0<0.78"},
-    "TTHcat":  {"bdt2": "discrMVA0>=0.98", "bdt1": "discrMVA0>=0.8 && discrMVA0<0.98",  "bdt0": "discrMVA0<0.8"},
-    "TTLcat":  {"bdt1": "discrMVA0>=0.54", "bdt0": "discrMVA0<0.54"},
-}
-
-
-def bin_cut(category, binMVA):
-    """RDataFrame cut for a BDT bin, or None for the inclusive bin."""
-    if binMVA in ("incl", "", None):
-        return None
-    try:
-        return SEL_MVA[category][binMVA]
-    except KeyError:
-        raise SystemExit(f"no cut defined for {category} bin {binMVA}; "
-                         f"known: {sorted(SEL_MVA.get(category, {}))}")
+# ratio panel range, as in sigFit
+RATIO_Y_RANGE = (0.0, 2.0)
 
 
 # ---------------------------------------------------------------------------
@@ -156,26 +129,11 @@ def load_dataset(x, r, w, category, binMVA, year, sig, max_events, seed=0):
     not carry over. Values come through numpy rather than a RooFit import
     loop, which is far faster for ~1e6 rows.
     """
-    from prepareFits import getHisto           # noqa: F401  (import check)
-    import prepareFits as pf
-
-    # reuse prepareFits' file lookup if it exposes one, else glob as
-    # resolutionScan does
-    if hasattr(pf, "get_signal_files"):
-        files = pf.get_signal_files(sig, category, year,
-                                    getattr(pf, "ROOTFILES_DIR", ""))
-    else:
-        import glob
-        base = getattr(pf, "ROOTFILES_DIR",
-                       "/work/submit/kbai/HmumuRun3/ROOTFILES")
-        tags = {"ggH": ["11"], "qqH": ["10"],
-                "VH": ["12", "13", "14"], "ttH": ["15"]}[sig]
-        files = []
-        for t in tags:
-            pat = (f"{base}/{category}/snapshot_mc_{t}_*_{category}.root"
-                   if year == "Run3"
-                   else f"{base}/{category}/snapshot_mc_{t}_{year}_{category}.root")
-            files.extend(sorted(glob.glob(pat)))
+    try:
+        files = get_signal_files(sig, category, year, ROOTFILES_DIR)
+        cut = get_selection(category, binMVA or "incl")
+    except (FileNotFoundError, ValueError) as e:
+        raise SystemExit(str(e))
     if not files:
         raise SystemExit(f"no snapshots for {category} {sig} {year}")
     print(f"{len(files)} file(s):")
@@ -191,13 +149,12 @@ def load_dataset(x, r, w, category, binMVA, year, sig, max_events, seed=0):
     if not weighted:
         print(f"warning: no {WEIGHTCOL}, fitting unweighted")
 
-    cut = bin_cut(category, binMVA)
     # exactly the 1D fit's selection ...
     df = (df.Filter("mc >= 10 && mc <= 15", "signal MC")
             .Filter(f"!std::isnan({MASSCOL})", "valid mass")
             .Filter(f"{MASSCOL} >= {sf.XLOW} && {MASSCOL} < {sf.XHIGH}",
                     "fit window"))
-    if cut:
+    if cut != "true":
         df = df.Filter(cut, "bdt bin")
     df_mass_only = df
     # ... plus the r window, which only this fit needs
@@ -218,8 +175,7 @@ def load_dataset(x, r, w, category, binMVA, year, sig, max_events, seed=0):
     # What the r window costs, relative to the mass window alone. The 1D
     # fit applies no r requirement, so this is the size of the only
     # selection difference between the two.
-    n_mass = (df_mass_only.Count().GetValue()
-              if df_mass_only is not None else None)
+    n_mass = df_mass_only.Count().GetValue()
     if n_mass:
         lost = n_mass - n_tot
         print(f"r window ({R_LO:g}, {R_HI:g}) keeps {n_tot} of {n_mass} "
@@ -317,7 +273,7 @@ def make_cond_pdf(x, r, tag, scale_unc=None, res_unc=None,
         mean        = (cb_mu + MH - MH_REF) * (1 + scale_unc * CMS_scale_m)
         sigma_CB(r) = kappa * r * MH * (1 + res_unc * CMS_res_m)
 
-    The width is now a FUNCTION OF THE CONDITIONAL OBSERVABLE, not a fitted
+    The width is a FUNCTION OF THE CONDITIONAL OBSERVABLE, not a fitted
     constant. Note MH and not the observable m: if the width depended on m
     the conditional PDF's normalisation would itself depend on m and the fit
     would be silently wrong.
@@ -793,8 +749,7 @@ def plot_resolution(r, r_values, w_values, keys, label, outbase, year,
     do not, the kernel is not describing the distribution and anything
     later that uses it (toys, a full 2D fit) inherits the discrepancy.
 
-    Two things have to match for the comparison to be meaningful, and both
-    were wrong in the first version of this function:
+    Two things have to match for the comparison to be meaningful:
 
       * The NORMALISATION RANGE. RooKeysPdf is normalised over the whole
         of r's range, so the histogram must be too -- normalising it over
@@ -1056,8 +1011,8 @@ def main():
           f"+/- {nom['mu'].getError():.3f}")
     if "c0" in nom:
         c0, c0e = nom["c0"].getVal(), nom["c0"].getError()
-        sig = f"{c0 / c0e:.1f} sigma from zero" if c0e > 0 else "no error"
-        print(f"  c0     = {c0:7.4f} +/- {c0e:.4f} GeV      <-- {sig}")
+        signif = f"{c0 / c0e:.1f} sigma from zero" if c0e > 0 else "no error"
+        print(f"  c0     = {c0:7.4f} +/- {c0e:.4f} GeV      <-- {signif}")
     for k in ("alphaL", "nL", "alphaR", "nR"):
         print(f"  {k:6s} = {nom[k].getVal():7.3f} "
               f"+/- {nom[k].getError():.3f}")
@@ -1105,10 +1060,10 @@ def main():
     print(f"saved the fit to {jf} (chi2 and the 1D reference follow)")
 
     # ---- resolution kernel --------------------------------------------
-    keys = rset = None
+    keys = None
     if not args.no_keys:
         print()
-        keys, rset = make_keys_pdf(r, r_all, w_all, tag,
+        keys, _ = make_keys_pdf(r, r_all, w_all, tag,
                                    args.keys_max, args.keys_rho, args.seed)
 
     # ---- plots ---------------------------------------------------------
