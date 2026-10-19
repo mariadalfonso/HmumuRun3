@@ -10,7 +10,7 @@ of the category with no HLT requirement, and the numerators are the HLT bits.
     python triggerEff.py VLcat 2024 --samples 12,13,14 --region isH
 
 Prints the integrated efficiency per sample and for all signal combined, a
-non-overlapping breakdown (single mu only / both / Mu17_Mu8 only / neither),
+non-overlapping breakdown (IsoMu24 only / both / Mu17_Mu8 only / neither),
 plots the leading-muon pT per class, and writes efficiency-vs-variable histograms to <outdir> (ROOT file) and
 <plotdir>/<category><year>/ (PNGs, public_html by default).
 """
@@ -51,10 +51,10 @@ CURVES = [
     ("OR_Mu17_Mu8", ROOT.kBlack,     "IsoMu24 || Mu50 || Mu17_Mu8"),
 ]
 
-# Non-overlapping split of the denominator. SINGLE = IsoMu24 || Mu50.
-SINGLE = "(HLT_IsoMu24 || HLT_Mu50)"
+# Non-overlapping split of the denominator: IsoMu24 alone vs Mu17_Mu8 (no Mu50).
+SINGLE = "HLT_IsoMu24"
 CLASSES = {
-    "single_only": f"{SINGLE} && !{MU17_MU8}",
+    "IsoMu24only": f"{SINGLE} && !{MU17_MU8}",
     "both":        f"{SINGLE} && {MU17_MU8}",
     "Mu17_Mu8only": f"!{SINGLE} && {MU17_MU8}",
     "neither":     f"!{SINGLE} && !{MU17_MU8}",
@@ -62,8 +62,8 @@ CLASSES = {
 
 # leading-muon pT distributions, overlaid: (selection, color, legend text)
 DISTS = {
-    "OR_Mu17_Mu8":  (TRIGGERS["OR_Mu17_Mu8"], ROOT.kBlack,     "single #mu || Mu17_Mu8"),
-    "single_only":  (CLASSES["single_only"],  ROOT.kRed + 1,   "single #mu only"),
+    "IsoMu24_or_Mu17_Mu8": (f"{SINGLE} || {MU17_MU8}", ROOT.kBlack, "IsoMu24 || Mu17_Mu8"),
+    "IsoMu24only":  (CLASSES["IsoMu24only"],  ROOT.kRed + 1,   "IsoMu24 only"),
     "Mu17_Mu8only": (CLASSES["Mu17_Mu8only"], ROOT.kGreen + 2, "Mu17_Mu8 only"),
 }
 DIST_BINNING = (54, 15., 150.)   # 2.5 GeV bins
@@ -199,7 +199,7 @@ def main():
     cls_n = {k: sum(r["cls_n"][k].GetValue() for r in booked.values()) for k in CLASSES}
     cls_w = {k: sum(r["cls_w"][k].GetValue() for r in booked.values()) for k in CLASSES}
     w_any = tot_den - cls_w["neither"]
-    print(f"\nBreakdown (all samples summed)   single = IsoMu24 || Mu50")
+    print(f"\nBreakdown (all samples summed)   IsoMu24 vs Mu17_Mu8, Mu50 not used")
     print(f"{'class':<14}{'Nraw':>10}{'weighted':>14}{'frac of all':>14}{'frac of any':>14}")
     for k in CLASSES:
         f_all = cls_w[k] / tot_den if tot_den else float("nan")
@@ -208,7 +208,7 @@ def main():
     print(f"{'total':<14}{n_tot:>10}{tot_den:>14.4g}{1.:>14.4f}")
     missed = cls_w["Mu17_Mu8only"] + cls_w["neither"]
     if missed:
-        print(f"Mu17_Mu8 recovers {cls_w['Mu17_Mu8only'] / missed:.4f} of the events single mu misses "
+        print(f"Mu17_Mu8 recovers {cls_w['Mu17_Mu8only'] / missed:.4f} of the events IsoMu24 misses "
               f"({cls_n['Mu17_Mu8only']} of {cls_n['Mu17_Mu8only'] + cls_n['neither']} raw)")
 
     # ---- binned efficiencies, all samples summed ---------------------
