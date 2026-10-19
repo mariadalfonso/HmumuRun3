@@ -254,9 +254,12 @@ def main():
     # ---- leading-pT distributions per trigger class ------------------
     c = ROOT.TCanvas("c_dist", "", 700, 600)
     c.SetLogy()
+    c.SetLeftMargin(0.13)
     keep = []
     leg = ROOT.TLegend(0.38, 0.72, 0.88, 0.88)
     leg.SetBorderSize(0)
+    leg.SetFillStyle(1001)
+    leg.SetFillColor(ROOT.kWhite)
     leg.SetTextSize(0.03)
     for k, (_, color, text) in DISTS.items():
         hs = [r["dist"][k].GetValue() for r in booked.values()]
@@ -279,7 +282,7 @@ def main():
     ymin = min(positive, default=ymax * 1e-4)
     for n, h in enumerate(keep):
         h.SetMinimum(ymin * 0.5)
-        h.SetMaximum(ymax * 5)
+        h.SetMaximum(ymax * 1000)   # log scale: ~3 decades of headroom keeps the curves below the legend
         h.Draw("hist" if n == 0 else "hist same")
     leg.Draw()
     ROOT.SetOwnership(leg, False)
