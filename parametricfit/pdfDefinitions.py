@@ -265,4 +265,3 @@ def create_bkg_pdf(x, tag, name):
                        f"known: {sorted(BKG_FACTORIES)}")
     pdf, pars, *extra = BKG_FACTORIES[name](x, tag)   # extra = [comps]
     return pdf, {"params": pars, "pdf": pdf, "extra": extra}
-
