@@ -35,9 +35,20 @@ Everything that survives goes into the RooMultiPdf envelope. That is the
 point of discrete profiling -- the envelope covers the ignorance about
 the shape, so picking two models by hand defeats it.
 
-Combine contract
-----------------
-`bwsHrare.py` looks these up by name, with tag = "<cat>_<bin>_<year>":
+Outputs
+-------
+This script FITS; it does not write the Combine workspace. It runs in conda
+(ROOT >= 6.28 is required: older versions normalise each sideband of a
+Range("sbLow,sbHigh") fit separately, which breaks the blinded fit), and
+writes everything the workspace needs as version-independent data:
+
+    Bkg_<tag>_params.json   envelope, fitted parameters of every
+                            candidate, extrapolated norm
+    Bkg_<tag>_data.root     TH1D data_<tag>, the FULL-range data
+
+makeWorkspaces.py then rebuilds the PDFs from these inside the Combine
+container and writes the RooMultiPdf workspace bwsHrare.py reads, with
+tag = "<cat>_<bin>_<year>":
 
     multipdf_<tag>_bkg        RooMultiPdf
     pdfindex_<tag>            RooCategory
@@ -47,18 +58,15 @@ Combine contract
 Note the tag is built exactly as bwsHrare does, so an empty --bin gives
 the double underscore ("VBFcat__Run3") that the existing datacards have.
 
-RooMultiPdf is the only Combine class needed, so everything except
---multipdf runs in the plain conda environment.
-
 Usage
 -----
     # fits, plots, JSON -- conda
     python bkgFit.py -c ggHcat -y Run3 -b incl
 
-    # ...and the workspace -- inside the Combine container
-    python bkgFit.py -c ggHcat -y Run3 -b incl --multipdf
+    # ...then the workspace -- inside the Combine container
+    python makeWorkspaces.py -c ggHcat -y Run3 -b incl
 
-    python bkgFit.py -c ggHcat -y Run3 -b "" --multipdf   # VBFcat__Run3 style
+    python bkgFit.py -c ggHcat -y Run3 -b ""    # VBFcat__Run3 style
 """
 
 import argparse
@@ -219,7 +227,13 @@ def fit_candidate(x, data, name, tag, sb_range):
     itg_sb = pdf.createIntegral(nset, ROOT.RooFit.NormSet(nset),
                                 ROOT.RooFit.Range(sb_range)).getVal()
 
+    # fitted values by parameter name, for makeWorkspaces.py to rebuild from
+    params = {p.GetName(): {"value": p.getVal(), "error": p.getError(),
+                            "min": p.getMin(), "max": p.getMax()}
+              for p in keep["params"]}
+
     return {"name": name, "pdf": pdf, "keep": keep, "npar": npar,
+            "params": params,
             "nll": res.minNll(), "status": res.status(),
             "cov_qual": res.covQual(), "edm": res.edm(),
             "sb_fraction": itg_sb, "result": res}
@@ -687,10 +701,6 @@ def main():
     ap.add_argument("--mh-scan", nargs=3, type=float, default=None,
                     metavar=("LO", "HI", "STEP"),
                     help="m_H scan range (default %s)" % (MH_SCAN,))
-    ap.add_argument("--multipdf", action="store_true",
-                    help="build the RooMultiPdf and write the workspace. "
-                         "Needs the Combine container; everything else "
-                         "runs in conda.")
     ap.add_argument("--wsdir", default="WS_BKG")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
@@ -714,8 +724,7 @@ def main():
           f"\ntag      : {tag}"
           f"\nwindow   : {sf.XLOW:g}-{sf.XHIGH:g} GeV, {nbins} bins"
           f"\nblinded  : {SR_LO:g}-{SR_HI:g} GeV"
-          f"\nsideband : {sf.XLOW:g}-{SR_LO:g} + {SR_HI:g}-{sf.XHIGH:g} GeV"
-          f"\nmultipdf : {args.multipdf}")
+          f"\nsideband : {sf.XLOW:g}-{SR_LO:g} + {SR_HI:g}-{sf.XHIGH:g} GeV")
 
     # ---- data ----------------------------------------------------------
     h = load_data(args.category, args.bin, args.year, nbins)
@@ -863,44 +872,15 @@ def main():
     plot_envelope(x, data, fits, envelope, best, label, outbase,
                   args.year, sb_range, args.pdf, nbins, n_sb)
 
-    # ---- workspace ------------------------------------------------------
+    # ---- data, for makeWorkspaces.py -----------------------------------
+    # A plain TH1D, which every ROOT version reads; a RooDataHist written
+    # here would not be guaranteed to read back in the Combine container.
     os.makedirs(args.wsdir, exist_ok=True)
-    wsfile = os.path.join(args.wsdir, f"Bkg_{tag}_workspace.root")
-    if args.multipdf:
-        if not pdefs.load_combine():
-            raise SystemExit("--multipdf needs libHiggsAnalysisCombinedLimit; "
-                             "run inside the Combine container")
-        if not hasattr(ROOT, "RooMultiPdf"):
-            raise SystemExit("RooMultiPdf not available after loading the "
-                             "Combine library")
-
-        cat = ROOT.RooCategory(f"pdfindex_{tag}", f"pdfindex_{tag}")
-        store = ROOT.RooArgList()
-        for nm in envelope:
-            store.add(fits[nm]["pdf"])
-        multi = ROOT.RooMultiPdf(f"multipdf_{tag}_bkg", "multipdf",
-                                 cat, store)
-        nrm = ROOT.RooRealVar(f"multipdf_{tag}_bkg_norm",
-                              f"multipdf_{tag}_bkg_norm", norm_val,
-                              NORM_RANGE[0] * norm_val,
-                              NORM_RANGE[1] * norm_val)
-        nrm.setConstant(False)          # Combine profiles it
-
-        ws = ROOT.RooWorkspace("w", "w")
-        getattr(ws, "import")(cat)
-        getattr(ws, "import")(multi)
-        getattr(ws, "import")(nrm)
-        getattr(ws, "import")(data)     # FULL range, for data_obs
-        ws.writeToFile(wsfile)
-        print(f"\nwrote {wsfile}")
-        print(f"  multipdf_{tag}_bkg        ({len(envelope)} pdfs)")
-        print(f"  pdfindex_{tag}")
-        print(f"  multipdf_{tag}_bkg_norm   = {norm_val:.1f}, floating")
-        print(f"  datahist_{tag}            full range, "
-              f"{n_full:.0f} events")
-    else:
-        print("\nno workspace written (--multipdf not given): RooMultiPdf "
-              "needs the Combine container")
+    datafile = os.path.join(args.wsdir, f"Bkg_{tag}_data.root")
+    fout = ROOT.TFile(datafile, "RECREATE")
+    h.Write(f"data_{tag}")
+    fout.Close()
+    print(f"\nwrote {datafile}")
 
     # ---- json ----------------------------------------------------------
     rec = {
@@ -913,7 +893,7 @@ def main():
             "window": [sf.XLOW, sf.XHIGH], "n_bins": nbins,
             "blind_region": [SR_LO, SR_HI],
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
-            "multipdf_written": bool(args.multipdf),
+            "observable": x.GetName(), "data_file": os.path.basename(datafile),
         },
         "data": {"n_full": n_full, "n_sideband": n_sb,
                  "n_sideband_bins": len(sb_idx)},
@@ -932,7 +912,7 @@ def main():
             "pairs": {f"{t_}__{f_}": r for (t_, f_), r in ss.items()},
         } if ss else None),
         "normalization": {"value": norm_val, "sideband_count": n_sb,
-                          "sb_fraction": f_sb,
+                          "sb_fraction": f_sb, "norm_range": NORM_RANGE,
                           "envelope_spread": [min(spread), max(spread)]
                           if len(spread) > 1 else None},
     }
@@ -941,6 +921,10 @@ def main():
         json.dump(rec, fh, indent=2, sort_keys=True)
     print(f"wrote {jf}")
     print(f"plots {outbase}_envelope.png")
+    bin_arg = args.bin or '""'
+    print(f"\nnext, inside the Combine container:\n  python makeWorkspaces.py "
+          f"-c {args.category} -b {bin_arg} -y {args.year} "
+          f"--wsdir {args.wsdir}")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ Performing parametric fits in dimuon mass.
 
 ## Signal fit
 
-`sigFit.py` fits a double-sided Crystal Ball to signal MC in each `(category, BDT bin, production mode)`, freezes the shape, and writes a RooFit workspace plus a JSON record for `bwsHrare.py` to consume.
+`sigFit.py` fits a double-sided Crystal Ball to signal MC in each `(category, BDT bin, production mode)`, freezes the shape, and writes a RooFit workspace plus a JSON record. `makeWorkspaces.py` rebuilds the workspace from that JSON for `bwsHrare.py` (see below).
 
 ### To run
 
@@ -34,3 +34,30 @@ python sigFit.py -c ggHcat -y Run3 -b incl -s ggH
 - **`--selftest`** (default off) — CB closure test, then exit
 
 Output directories are created automatically.
+
+## Full chain: fits in conda, workspaces in the Combine container
+
+The fits need ROOT >= 6.28, and the Combine container has ROOT 6.22: it
+normalises each sideband of a blinded `Range("sbLow,sbHigh")` fit separately,
+and has no `RooCrystalBall`. So the fits run in conda and write their results
+as JSON (+ the data as a TH1D), and only the workspace building runs in the
+container, rebuilding the PDFs from those numbers. Nothing is refitted there.
+
+In conda, from `parametricfit/`:
+```bash
+python sigFit.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
+python bkgFit.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
+```
+
+Inside the Combine container (`analysis/FITS/runSing`), from `parametricfit/`:
+```bash
+python makeWorkspaces.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
+```
+This writes `WS_2024/Signal_ggHcat_incl_2024_workspace.root` (replacing the
+conda one) and `WS_2024/Bkg_ggHcat_incl_2024_workspace.root`. Then, still in
+the container, `analysis/FITS/bwsHrare.py` makes the datacard from them, and
+`text2workspace.py` / `combine` take it from there.
+
+Run `sigFit.py` without `-s`, so the signal JSON covers every mode of the
+category under the name `makeWorkspaces.py` expects.
+
