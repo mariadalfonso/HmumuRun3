@@ -43,19 +43,24 @@ LUMIS = {
 # Single source of truth: both getHisto and getHistoSignal read from here.
 # VLcat: 1 W->e; 2 Z->ee; 3 W->mu; 4 Z->mumu
 SELMVA = {
-    "ggHcat":  {"bdt2":"discrMVA0>=0.76", "bdt1":"discrMVA0>=0.5 && discrMVA0<0.76",
-                "bdt0":"discrMVA0<0.5",   "incl":"true", "":"true"},
-    "VBFcat":  {"bdt2":"discrMVA0>=0.92", "bdt1":"discrMVA0>=0.64 && discrMVA0<0.92",
-                "bdt0":"discrMVA0<0.64",  "incl":"true", "":"true"},
-    "VLcat":   {"bdt2":"discrMVA0>=0.78", "bdt1":"discrMVA0>=0.32 && discrMVA0<0.78",
-                "bdt0":"discrMVA0<0.32",  "incl":"true", "":"true"},
-    "Zinvcat": {"bdt2":"discrMVA0>=0.98", "bdt1":"discrMVA0>=0.78 && discrMVA0<0.98",
-                "bdt0":"discrMVA0<0.78",  "incl":"true", "":"true"},
-    "VHcat":   {"bdt2":"discrMVA0>=0.94", "bdt1":"discrMVA0>=0.86 && discrMVA0<0.94",
-                "bdt0":"discrMVA0<0.86",  "incl":"true", "":"true"},
-    "TTHcat":  {"bdt2":"discrMVA0>=0.98", "bdt1":"discrMVA0>=0.8 && discrMVA0<0.98",
-                "bdt0":"discrMVA0<0.8",   "incl":"true", "":"true"},
-    "TTLcat":  {"bdt1":"discrMVA0>=0.54", "bdt0":"discrMVA0<0.54",
+    "ggHcat":  {"bdt2":"discrMVA>=0.78", "bdt1":"discrMVA>=0.5 && discrMVA<0.78",
+                "bdt0":"discrMVA<0.5",   "incl":"true", "":"true"},
+    "VBFcat":  {"bdt3":"discrMVA>=0.96", "bdt2":"discrMVA>=0.90 && discrMVA<0.96",
+                "bdt1":"discrMVA>=0.72 && discrMVA<0.90",
+                "bdt0":"discrMVA<0.72",  "incl":"true", "":"true"},
+    "VLcat":   {"bdt3":"discrMVA>=0.80", "bdt2":"discrMVA>=0.68 && discrMVA<0.80",
+                "bdt1":"discrMVA>=0.34 && discrMVA<0.68",
+                "bdt0":"discrMVA<0.34",  "incl":"true", "":"true"},
+    "Zinvcat": {"bdt2":"discrMVA>=0.98", "bdt1":"discrMVA>=0.72 && discrMVA<0.98",
+                "bdt0":"discrMVA<0.72",  "incl":"true", "":"true"},
+    "VHcat":   {"bdt2":"discrMVA>=0.90", "bdt1":"discrMVA>=0.50 && discrMVA<0.90",
+                "bdt0":"discrMVA<0.50",  "incl":"true", "":"true"},
+    "TTHcat":  {"bdt2":"discrMVA>=0.94", "bdt1":"discrMVA>=0.78 && discrMVA<0.94",
+                "bdt0":"discrMVA<0.78",  "incl":"true", "":"true"},
+    # TODO: thresholds NOT synced. analysis/FITS has bdt2 >= 0.58 and
+    # bdt1 "discrMVA>=0.58 && discrMVA<0.36", which is empty -- keep the old
+    # two-bin split until those are fixed there.
+    "TTLcat":  {"bdt1":"discrMVA>=0.54", "bdt0":"discrMVA<0.54",
                 "incl":"true", "":"true"},
 }
 
