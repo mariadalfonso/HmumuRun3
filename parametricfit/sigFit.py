@@ -2,7 +2,7 @@
 sigFit.py -- standalone H->mumu signal shape fits.
 
 No Combine dependency for the fitting itself: uses ROOT's built-in
-RooCrystalBall (root >= 6.26), so this runs in the plain conda env.
+RooCrystalBall (ROOT >= 6.24), so this runs in the plain conda env.
 
 Signal shape model
 ------------------
@@ -38,6 +38,11 @@ from datetime import datetime, timezone
 
 import ROOT
 
+# The signal model, its bounds and the nuisance sizes are defined once, in
+# pdfDefinitions; re-exported here so sigFitCond/sigFitDCBG can use sf.BOUNDS.
+from pdfDefinitions import (BOUNDS, MH_REF, SCALE_UNC, RES_UNC,  # noqa: F401
+                            create_signal_pdf)
+
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
 # Empty tail bins have zero error, so their pull is undefined
@@ -56,12 +61,6 @@ BINS_PER_GEV = 10         # 0.1 GeV bins, matching SIGfits.py and fitBkg.
                           # unbiased at -0.11% +/- 0.25% on sigma. Anything
                           # from 0.1 to 0.5 GeV is fine; 1.0 GeV biases sigma
                           # by +2%. Override with --bins-per-gev.
-MH_REF = 125.0            # reference mass the shape was fitted at
-
-# TODO: Fractional uncertainties folded into the shape formulas.
-# Replace with Run 3 muon POG numbers or from objScaleSmear().
-SCALE_UNC = 0.002         # 0.2% muon momentum scale
-RES_UNC   = 0.05          # 5% muon momentum resolution
 
 # ---------------------------------------------------------------------------
 # Plot style.
@@ -86,7 +85,7 @@ RATIO_GUIDES = (1.2, 0.8)   # Template/Fit, +/-0.2 around 1
 PULL_GUIDES = (2.0, -2.0)   # +/-2 sigma
 PAD_TOP_MARGIN = 0.08
 PAD_BOTTOM_MARGIN = 0.13
-PAD_LEFT_MARGIN = 0.16
+PAD_LEFT_MARGIN = 0.15
 PAD_RIGHT_MARGIN = 0.05
 
 # Lower-pad text in ABSOLUTE pixel sizes (font code ending in 3), so it
@@ -103,20 +102,12 @@ LINE_SPACING = 1.35          # dy = LINE_SPACING * text size
 PARAM_BLOCK_WIDTH = 0.42     # left edge of the right block, from the frame's
                              # right edge. Widen if long lines get clipped.
 
-DATA_MARKER_STYLE = 20
-DATA_MARKER_SIZE = 1.2
-DATA_LINE_WIDTH = 2
+DATA_MARKER_STYLE = 24
+DATA_MARKER_SIZE = 0.8
+DATA_LINE_WIDTH = 1
 
 FIT_COLOR_RGB = (237, 41, 57)     # plot_style "redMed"
 
-BOUNDS = {
-    "mu":     (MH_REF, 120.0, 130.0),
-    "sigma":  (2.0,      0.5,   6.0),
-    "alphaL": (1.5,      0.1,   3.0),
-    "nL":     (5.0,      0.1,  50.0),
-    "alphaR": (1.5,      0.1,   3.0),
-    "nR":     (5.0,      0.1,  50.0),
-}
 MC_LIST = {
     "ggHcat":  ["ggH", "qqH", "VH", "ttH"],
     "VBFcat":  ["ggH", "qqH", "VH", "ttH"],
@@ -170,57 +161,18 @@ def header_lines(label):
 
 def make_signal_pdf(x, tag, scale_unc=SCALE_UNC, res_unc=RES_UNC,
                     correlated=True):
-    """Build the CB with MH hypothesis + scale/resolution nuisance hooks.
+    """The DSCB with MH hypothesis + scale/resolution nuisance hooks, from
+    pdfDefinitions.create_signal_pdf -- the same model makeWorkspaces.py
+    rebuilds in the Combine container.
 
-    Returns (pdf, bundle). Everything is kept in the bundle because PyROOT
-    will garbage-collect any RooFit object you do not hold a reference to.
+    Kept as a module-level name because fit_one calls it through this
+    module: fitEtaBins/fitMVABins use it, and sigFitDCBG swaps in its own
+    model by assigning sf.make_signal_pdf.
+
+    Returns (pdf, bundle).
     """
-    # --- shape parameters measured from MC ---
-    nom = {}
-    for k, (start, lo, hi) in BOUNDS.items():
-        nom[k] = ROOT.RooRealVar(f"cb_{k}_{tag}", f"cb_{k}", start, lo, hi)
-
-    # --- mass hypothesis: shared across every category and bin ---
-    # Named MH because that is what Combine's -m option looks for.
-    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", MH_REF, 120.0, 130.0)
-    mh.setConstant(True)
-
-    # --- nuisance parameters: unit Gaussians, constrained by Combine ---
-    # correlated=True -> one shared parameter across all categories, which
-    # is right for muon scale/resolution: it is the same detector effect.
-    nsuf = "" if correlated else f"_{tag}"
-    nuis = {
-        "scale": ROOT.RooRealVar(f"CMS_scale_m{nsuf}", "muon scale",      0.0, -5.0, 5.0),
-        "res":   ROOT.RooRealVar(f"CMS_res_m{nsuf}",   "muon resolution", 0.0, -5.0, 5.0),
-    }
-
-    # --- the shape the PDF actually uses ---
-    mean = ROOT.RooFormulaVar(
-        f"cb_mean_{tag}", "mean",
-        f"(@0 + @1 - {MH_REF})*(1 + {scale_unc}*@2)",
-        ROOT.RooArgList(nom["mu"], mh, nuis["scale"]),
-    )
-    sigma = ROOT.RooFormulaVar(
-        f"cb_sigmaEff_{tag}", "sigmaEff",
-        f"@0*(1 + {res_unc}*@1)",
-        ROOT.RooArgList(nom["sigma"], nuis["res"]),
-    )
-
-    pdf = ROOT.RooCrystalBall(
-        f"crystal_ball_{tag}", "crystal_ball",
-        x, mean, sigma,
-        nom["alphaL"], nom["nL"], nom["alphaR"], nom["nR"],
-    )
-
-    bundle = {
-        "nom": nom,
-        "nuis": nuis,
-        "mh": mh,
-        "func": {"mean": mean, "sigma": sigma},
-        "cfg": {"scale_unc": scale_unc, "res_unc": res_unc,
-                "correlated": correlated, "mh_ref": MH_REF},
-    }
-    return pdf, bundle
+    return create_signal_pdf(x, tag, scale_unc=scale_unc, res_unc=res_unc,
+                             correlated=correlated)
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +286,7 @@ def _style_lower_marker(obj):
     obj.SetMarkerSize(DATA_MARKER_SIZE)
     obj.SetMarkerColor(ROOT.kBlack)
     obj.SetLineColor(ROOT.kBlack)
+    obj.SetLineWidth(DATA_LINE_WIDTH)
 
 
 def near_bound(var, tol=0.01):
@@ -440,6 +393,34 @@ def _annotate(nom, chi2_ndf, norm, n_eff, label):
 
     return latex
 
+def fit_legend(frame, x1=None, y1=None, x2=None, y2=None,
+               model="DSCB model", data="Simulation"):
+    """Legend for a mass-fit panel: the points, then the curve.
+
+    Takes the drawn objects off the RooPlot by the names given to
+    plotOn ("dat", "fit"), so the marker and line styles in the legend are
+    whatever was actually drawn rather than a second set that can drift.
+    """
+    x1 = PAD_LEFT_MARGIN + 0.03 if x1 is None else x1
+    x2 = PAD_LEFT_MARGIN + 0.25 if x2 is None else x2
+    y2 = 0.65 if y2 is None else y2
+    y1 = 0.5 if y1 is None else y1
+
+    leg = ROOT.TLegend(x1, y1, x2, y2)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(42)
+    leg.SetTextSize(0.034)
+    d = frame.findObject("dat")
+    f = frame.findObject("fit")
+    if d:
+        leg.AddEntry(d, data, "pe")
+    if f:
+        leg.AddEntry(f, model, "l")
+    leg.Draw()
+    return leg
+
+
 def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
              year=None, save_pdf=False):
     """Write two 2-panel canvases and return chi2/ndf.
@@ -470,7 +451,6 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
 
     ratio = _make_ratio(hist, pdf, x, norm)
     _style_lower_marker(ratio)
-    ratio.SetLineWidth(DATA_LINE_WIDTH)
     ratio.GetYaxis().SetTitle("Template/Fit")
     ratio.GetXaxis().SetTitle("m_{#mu#mu} [GeV]")
     ratio.GetYaxis().SetRangeUser(0.0, 2.0)
@@ -509,6 +489,7 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
         frame.Draw()
         keep_txt = _annotate(nom, chi2_ndf, norm, n_eff, label)
         keep_cms = cms_label(pad1, year)
+        keep_leg = fit_legend(frame)
 
         pad2.cd()
         lower.Draw(draw)
@@ -531,7 +512,7 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
         canvas.SaveAs(f"{outbase}_{kind}.png")
         if save_pdf:
             canvas.SaveAs(f"{outbase}_{kind}.pdf")
-        del keep_txt, keep_cms, pad1, pad2, outer, canvas
+        del keep_txt, keep_cms, keep_leg, pad1, pad2, outer, canvas
 
     return chi2_ndf
 

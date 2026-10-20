@@ -26,7 +26,6 @@ Usage
     python fitMVABins.py -c ggHcat -y 2024 -s ggH
     python fitMVABins.py -c ggHcat -y 2024 -s ggH --fix-tails
     python fitMVABins.py -c VBFcat -y Run3 -s qqH --edges 0 0.3 0.6 0.8 1.0
-    python fitMVABins.py -c ggHcat -y 2024 -s ggH --mvavar discrMVA0
 """
 
 import argparse
@@ -767,9 +766,8 @@ def main():
                          "the category")
     ap.add_argument("-y", "--year", default="Run3")
     ap.add_argument("--mvavar", default="discrMVA",
-                    help="MVA branch name (prepareFits.py uses discrMVA0 "
-                         "for its own binning -- check which your snapshots "
-                         "carry)")
+                    help="MVA branch name (default: %(default)s, as in "
+                         "prepareFits.SELMVA)")
     ap.add_argument("--edges", nargs="+", type=float, default=None,
                     help="bin edges; default 0, 0.1, ... 1.0")
     ap.add_argument("--fix-tails", action="store_true",
