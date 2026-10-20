@@ -3,44 +3,29 @@ bkgFit.py -- blinded background fit, with an F-test-selected envelope.
 
 Blinding
 --------
-    Higgs SR   120 - 130 GeV        BLINDED: never fitted, never plotted
+    Higgs SR   120 - 130 GeV        blinded
     sideband   110-120 + 130-150    what the fit sees
 
-This is NARROWER than the analysis's `isH` region (115-135) on purpose:
-the fit only needs the signal region masked, and a narrower mask leaves
-30 of the 40 GeV to constrain the shape instead of 20. SR_LO/SR_HI at the
-top of the file set it; widen them to 115-135 if the fit region has to
-match `isH` exactly.
+The normalisation is extrapolated from the sideband.
 
-Even so the normalisation is EXTRAPOLATED rather than counted, since the
-fit never sees the masked bins.
-
-The full-range data DOES go into the workspace, as `datahist_<tag>`,
-because the datacard's `observation -1` needs it and an observed result
-would otherwise be impossible. The blinding is procedural: the fit uses
-only the sideband and the plots omit the SR points, but anyone opening
-the file can look.
+The full-range data is saved in the workspace as `datahist_<tag>` for the observed results.
 
 Model selection
 ---------------
-Not a hardcoded pair. Two stages, both on the MASKED likelihood:
 
-  1. F-test WITHIN each nested family (bernstein, chebychev,
+  1. F-test within each nested family (bernstein, chebychev,
      exponential, power): take the lowest order where adding the next
      parameter is not justified at p < F_THRESHOLD.
-  2. Goodness-of-fit ACROSS families: keep every family's choice whose
+  2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.
 
-Everything that survives goes into the RooMultiPdf envelope. That is the
-point of discrete profiling -- the envelope covers the ignorance about
-the shape, so picking two models by hand defeats it.
+Everything that survives goes into the RooMultiPdf envelope, which covers
+the ignorance about the shape.
 
 Outputs
 -------
-This script FITS; it does not write the Combine workspace. It runs in conda
-(ROOT >= 6.28 is required: older versions normalise each sideband of a
-Range("sbLow,sbHigh") fit separately, which breaks the blinded fit), and
-writes everything the workspace needs as version-independent data:
+This script performs fits, but it does not write the Combine workspace.
+It runs in conda (ROOT >= 6.28) and writes everything the workspace needs:
 
     Bkg_<tag>_params.json   envelope, fitted parameters of every
                             candidate, extrapolated norm
@@ -108,11 +93,10 @@ F_THRESHOLD = 0.05
 GOF_THRESHOLD = 0.01
 
 # Minimum significance data/sqrt(sum err^2) a chi2 bin must reach; bins
-# below it are merged with their neighbours first. Ported from ATLAS
-# BkgParam (Chi2MinBinSignificance in its config). Without this, the
+# below it are merged with their neighbours first. Without this, the
 # sparse 130-150 tail contributes bins of a handful of events whose
-# residuals are not chi2-distributed, so the p-value -- and therefore the
-# GOF cut -- is least reliable exactly where the candidates differ most.
+# residuals are not chi2-distributed, so the p-value, and therefore the
+# GOF cut, is least reliable exactly where the candidates differ most.
 # 0 disables merging.
 CHI2_MIN_BIN_SIGNIFICANCE = 3.0
 
@@ -223,9 +207,6 @@ def fit_candidate(x, data, name, tag, sb_range):
 
 def merge_chi2_bins(h_data, h_pdf, blind_lo, blind_hi, threshold):
     """Merge low-significance bins, then chi2 over what is left.
-
-    Port of ATLAS BkgParam's Parameterization::calcChi2. Three behaviours
-    matter and none is obvious:
 
       * Bins are accumulated until data/sqrt(sum err^2) reaches
         `threshold`, then emitted as one merged bin, so no chi2 bin is
