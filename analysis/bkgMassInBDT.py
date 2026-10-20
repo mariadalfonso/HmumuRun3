@@ -1,39 +1,55 @@
 #!/usr/bin/env python3
 """
 bkgMassInBDT.py -- background dimuon mass in slices of the BDT discriminant,
-with the control that tests whether the muon pairing sculpts the mass.
+for any category, with the controls that say WHY the mass shape moves.
 
-    python bkgMassInBDT.py 2024 -d /work/submit/kbai/HmumuRun3/bkg
-    python bkgMassInBDT.py 2024 -d ... --mass-range 70 200 --cat VLcat
-    python bkgMassInBDT.py 2024 -d ... -s 204,205 -o ~/public_html/HmumuRun3/bkgshape
+    python bkgMassInBDT.py 2024 --cat VLcat -d /work/submit/kbai/HmumuRun3/bkg
+    python bkgMassInBDT.py 2024 --cat ggHcat -d ... --mass-range 70 200
+    python bkgMassInBDT.py 2024 --cat VLcat -d ... -s 204,205 -o ~/public_html/HmumuRun3/bkgshape
 
-Samples are summed with w_allSF, so the yields are expected events.
+Samples are summed with w_allSF (times boson_ptWeight for the DY samples, as
+in MACRO/prepareHisto.py), so the yields are expected events. Plots go to
+<plotdir>/<cat>/.
 
-Why the n==2 / n>=3 split
--------------------------
 Slicing the background mass in BDT bins shows whether the BDT shapes the mass,
-which it does by construction -- the two are correlated. It cannot by itself
-show whether the PAIRING shapes the mass, because both effects act at once.
+which it does by construction -- the two are correlated. On its own it cannot
+say why. Two controls separate the causes.
 
-The control is the good-muon multiplicity. With exactly two good muons the
-category vetoes leave no pairing freedom at all: the pair is both muons, and
-no criterion can change that. With three or more the algorithm chooses. Both
+Control 1, every category: the process composition
+--------------------------------------------------
+The summed shape can move with the BDT score because the BDT reshapes the mass
+within one process, through inputs correlated with m_mumu, or because it
+changes the mix of processes, whose mass shapes differ (DY falls steeply,
+ttbar is broad and flat). Each process group is sliced on its own: if a
+group's shape is the same in every BDT slice and only the composition moves,
+the summed shape changes because the mix changes. If the group's shape itself
+moves, the BDT is sculpting that background.
+
+Control 2, VLcat and TTLcat only: the good-muon multiplicity
+------------------------------------------------------------
+Whether the PAIRING shapes the mass. With exactly two good muons the category
+vetoes leave no pairing freedom at all: the pair is both muons, and no
+criterion can change that. With three or more the algorithm chooses. Both
 populations sit in the same category and the same BDT bin and differ only in
 whether a choice was made, so any excess near m_H in the n>=3 shape relative
 to n==2 is the sculpting, directly.
 
-The script reports, per BDT bin and per multiplicity:
+The other categories veto extra muons (exactly two loose and two good), so
+every event has n==2 and this control does not exist there; it is switched
+off by default and --mult forces it on.
+
+The script reports, per BDT bin and per process group or multiplicity:
 
     yield, entries, and the fraction of the mass range inside 120-130 GeV
 
 If the 120-130 fraction agrees between n==2 and n>=3 within its uncertainty,
 the pairing is not building structure under the peak. If n>=3 is high, it is.
 
-Statistics are the limiting factor: category 3 needs three tight muons above
-20 GeV, so a VV sample may leave only a handful of events in the fit range.
-The yields are printed first for that reason, and --no-cat drops the category
-requirement (keeping nGoodMuons) to recover events when the test would
-otherwise be unanswerable.
+Statistics are the limiting factor for control 2: category 3 needs three tight
+muons above 20 GeV, so a VV sample may leave only a handful of events in the
+fit range. The yields are printed first for that reason, and --no-cat drops
+the category requirement (keeping nGoodMuons) to recover events when the test
+would otherwise be unanswerable.
 """
 
 import argparse
@@ -49,11 +65,69 @@ ROOT.gStyle.SetOptStat(0)
 ROOT.gStyle.SetOptTitle(0)
 
 TREE = "events"
-DEFAULT_SAMPLES = [201, 202, 203, 204, 205, 206, 213, 214, 215, 216]
-SAMPLE_LABEL = {201: "WZto2L2Q", 202: "ZZto2L2Nu", 203: "ZZto2L2Q",
-                204: "WZto3LNu", 205: "ZZto4L", 206: "WWto2L2Nu",
-                213: "WZZ", 214: "ZZZ", 215: "WWW", 216: "WWZ"}
 PEAK = (120.0, 130.0)
+
+SAMPLE_LABEL = {100: "DYto2L", 103: "DYto2Mu", 104: "DYto2Tau",
+                109: "DYto2Mu_105-160", 126: "DYto2Mu_50-130",
+                127: "DYto2Mu_130-200", 128: "DYto2Mu_200-400",
+                101: "EWK_Z2J", 140: "TTto2L2Nu",
+                105: "TWminus", 106: "TbarWplus", 107: "TTtoLNu2Q",
+                201: "WZto2L2Q", 202: "ZZto2L2Nu", 203: "ZZto2L2Q",
+                204: "WZto3LNu", 205: "ZZto4L", 206: "WWto2L2Nu",
+                213: "WZZ", 214: "ZZZ", 215: "WWW", 216: "WWZ",
+                221: "TTLNu-1J", 222: "TTLNu-EWK", 223: "TTLL_4-50",
+                224: "TTLL_50", 225: "TTZ-QQ", 226: "TZQB", 230: "TTTT",
+                249: "TTG-1J"}
+
+# sample lists, the same groups as MACRO/LoadTree.py
+EARLY_YEARS = {"12022", "22022", "12023", "22023"}
+VV = [201, 202, 203, 204, 205, 206]
+VVV = [213, 214, 215, 216]
+TOP = [140, 105, 106, 107]
+EWK = [101]
+TTV = {"early": [*range(221, 235), *range(236, 240), 246, 247, 248],
+       "late": [*range(221, 238), 249]}
+# Categories whose muon selection leaves room for a third good muon, so the
+# multiplicity control (control 2) can be formed. The others apply mu_veto.
+MULT_CATS = {"VLcat", "TTLcat"}
+CATS = ["ggHcat", "VBFcat", "Zinvcat", "VLcat", "VHcat", "TTLcat", "TTHcat"]
+
+
+def default_samples(cat, year):
+    """The background a category's study sums by default.
+
+    One DY QCD set only: 103 (2Jets, MLL>50) overlaps in mass with the minnlo
+    (126-128) and MLL-105to160 (109) samples, so adding them all would double
+    count. Pass -s to use another set.
+    """
+    early = year in EARLY_YEARS
+    if cat == "VLcat":
+        return VV + VVV
+    dy = [100] if early else [103, 104]
+    return dy + EWK + TOP + TTV["early" if early else "late"] + VV + VVV
+
+
+# process groups, in drawing order; a sample in no group falls into "other"
+GROUPS = [("DY", {100, 103, 104, 109, 126, 127, 128}),
+          ("EWK Z", {98, 99, 101}),
+          ("ttbar", {140}),
+          ("single top", {105, 106, 107}),
+          ("ttV", {*range(221, 240), *range(246, 250)}),
+          ("VV/VVV", set(VV + VVV))]
+# DY pT reweighting, applied to the same ids as MACRO/prepareHisto.py
+DY_PTWEIGHT = {100, 103, 104, 109}
+
+
+def group_of(sid):
+    for name, ids in GROUPS:
+        if sid in ids:
+            return name
+    return "other"
+
+
+def tag_of(name):
+    return name.replace(" ", "").replace("/", "")
+
 
 LAB, TIT, HDR = 20, 23, 26
 
@@ -67,132 +141,237 @@ def find_mva(cols):
 
 
 def collect(paths, args):
-    """Sum the histograms over samples, per BDT bin and multiplicity class.
+    """Book and fill every histogram, so each file is read once.
 
-    Returns hists[(bin index, class)] -> TH1D and a per-cell yield table.
-    Everything is booked before the first GetValue, so each file is read once.
+    Always, for control 1:
+        incl[sid], slice[(sid, k)]   mass per sample, no BDT cut and per BDT bin
+    With args.mult, for control 2:
+        hists[(k, class)], table      summed over samples, per BDT bin
+        cls_incl[class], hsamp[(sid, class)], hmult[(sid, exact n)]
+    Returns None when no sample could be used.
     """
     lo, hi = args.mass_range
     edges = args.bdt_bins
     classes = [("n=2", "nGoodMuons == 2"), ("n>=3", "nGoodMuons >= 3")]
-
-    hists, booked, used, persample = {}, [], [], []
-    for k in range(len(edges) - 1):
-        for cname, _ in classes:
-            h = ROOT.TH1D(f"h_{k}_{cname}", "", args.nbins, lo, hi)
-            h.Sumw2()
-            hists[(k, cname)] = h
-    # BDT-inclusive: the pairing acting on its own, with no BDT selection to
-    # confound it. Summed over samples, and kept per sample as well.
-    hincl, hsamp, booked_x = {}, {}, []
     # exact multiplicities per sample, for the dominant-sample plot: the two
     # classes above lump n=3 with n=4, and in ZZ->4l those are different
     # topologies rather than different amounts of the same one
     MULT = [("n=2", "nGoodMuons == 2"), ("n=3", "nGoodMuons == 3"),
             ("n=4", "nGoodMuons == 4"), ("n>=5", "nGoodMuons >= 5")]
-    hmult, booked_m = {}, []
-    for cname, _ in classes:
-        h = ROOT.TH1D(f"hincl_{cname}", "", args.nbins, lo, hi)
-        h.Sumw2()
-        hincl[cname] = h
 
+    def book(node, name):
+        return node.Histo1D((name, "", args.nbins, lo, hi),
+                            "HiggsCandCorrMass", "wgt")
+
+    b_incl, b_slice, b_cls, b_x, b_m = [], [], [], [], []
+    persample, used = [], []
     for sid, path in paths:
+        label = SAMPLE_LABEL.get(sid, sid)
         df = ROOT.RDataFrame(TREE, path)
         cols = {str(c) for c in df.GetColumnNames()}
         mva = args.mva or find_mva(cols)
         if mva is None:
-            print(f"  {SAMPLE_LABEL.get(sid, sid)}: no discrMVA branch, skipped")
+            print(f"  {label}: no discrMVA branch, skipped")
             continue
-        for need in ("HiggsCandCorrMass", "w_allSF", "nGoodMuons"):
-            if need not in cols:
-                print(f"  {SAMPLE_LABEL.get(sid, sid)}: no {need}, skipped")
-                break
-        else:
-            sel = df
-            if args.cat_filter and "category" in cols:
-                sel = sel.Filter(args.cat_filter, "category")
-            # per-sample totals inside the mass range, so the contribution of
-            # each sample to the sum is visible rather than assumed
-            inr = sel.Filter(f"HiggsCandCorrMass > {lo} && "
-                             f"HiggsCandCorrMass < {hi}", "mass range")
-            persample.append((
-                sid, df.Count(), inr.Count(), inr.Sum("w_allSF"),
-                inr.Filter("nGoodMuons == 2").Count(),
-                inr.Filter("nGoodMuons >= 3").Count(),
-                inr.Filter("nGoodMuons >= 3").Sum("w_allSF")))
-            for cname, cut in classes:
-                hh = inr.Filter(cut).Histo1D(
-                    (f"x_{sid}_{cname}", "", args.nbins, lo, hi),
-                    "HiggsCandCorrMass", "w_allSF")
-                booked_x.append((sid, cname, hh))
-            for mname, cut in MULT:
-                hh = inr.Filter(cut).Histo1D(
-                    (f"m_{sid}_{mname}", "", args.nbins, lo, hi),
-                    "HiggsCandCorrMass", "w_allSF")
-                booked_m.append((sid, mname, hh))
-            for k in range(len(edges) - 1):
-                a, b = edges[k], edges[k + 1]
-                inbin = sel.Filter(f"{mva} >= {a} && {mva} < {b}", f"bdt{k}")
+        missing = [c for c in ("HiggsCandCorrMass", "w_allSF", "nGoodMuons")
+                   if c not in cols]
+        if missing:
+            print(f"  {label}: no {missing[0]}, skipped")
+            continue
+        wexpr = "w_allSF"
+        if (sid in DY_PTWEIGHT and "boson_ptWeight" in cols
+                and not args.no_ptweight):
+            wexpr = "w_allSF * boson_ptWeight"
+        sel = df.Define("wgt", wexpr)
+        if args.cat_filter and "category" in cols:
+            sel = sel.Filter(args.cat_filter, "category")
+        if args.filter:
+            sel = sel.Filter(args.filter, "extra filter")
+        # per-sample totals inside the mass range, so the contribution of
+        # each sample to the sum is visible rather than assumed
+        inr = sel.Filter(f"HiggsCandCorrMass > {lo} && "
+                         f"HiggsCandCorrMass < {hi}", "mass range")
+        persample.append((
+            sid, df.Count(), inr.Count(), inr.Sum("wgt"),
+            inr.Filter("nGoodMuons == 2").Count(),
+            inr.Filter("nGoodMuons >= 3").Count(),
+            inr.Filter("nGoodMuons >= 3").Sum("wgt")))
+        b_incl.append((sid, book(inr, f"x_{sid}")))
+        for k in range(len(edges) - 1):
+            a, b = edges[k], edges[k + 1]
+            inbin = inr.Filter(f"{mva} >= {a} && {mva} < {b}", f"bdt{k}")
+            b_slice.append((sid, k, book(inbin, f"t_{sid}_{k}")))
+            if args.mult:
                 for cname, cut in classes:
-                    hh = inbin.Filter(cut).Histo1D(
-                        (f"t_{sid}_{k}_{cname}", "", args.nbins, lo, hi),
-                        "HiggsCandCorrMass", "w_allSF")
-                    booked.append((k, cname, hh))
-            used.append((sid, mva))
+                    b_cls.append((k, cname, book(inbin.Filter(cut),
+                                                 f"t_{sid}_{k}_{cname}")))
+        if args.mult:
+            # BDT-inclusive: the pairing acting on its own, with no BDT
+            # selection to confound it. Kept per sample as well.
+            for cname, cut in classes:
+                b_x.append((sid, cname, book(inr.Filter(cut),
+                                             f"x_{sid}_{cname}")))
+            for mname, cut in MULT:
+                b_m.append((sid, mname, book(inr.Filter(cut),
+                                             f"m_{sid}_{mname}")))
+        used.append((sid, mva))
 
-    if not booked:
-        return None, None, None, None, None, None, None
+    if not b_incl:
+        return None
 
-    for k, cname, hh in booked:            # triggers one loop per file
+    res = dict(used=used)
+    res["incl"] = {sid: hh.GetPtr().Clone(f"incl_{sid}")   # triggers the loops
+                   for sid, hh in b_incl}
+    res["slice"] = {(sid, k): hh.GetPtr().Clone(f"sl_{sid}_{k}")
+                    for sid, k, hh in b_slice}
+    res["rows"] = [dict(sid=sid, n_tot=a.GetValue(), n=b.GetValue(),
+                        y=c.GetValue(), n2=d.GetValue(), n3=e.GetValue(),
+                        y3=f.GetValue())
+                   for sid, a, b, c, d, e, f in persample]
+    if not args.mult:
+        return res
+
+    hists = {}
+    for k in range(len(edges) - 1):
+        for cname, _ in classes:
+            hists[(k, cname)] = summed({}, [], f"h_{k}_{cname}", args)
+    for k, cname, hh in b_cls:
         hists[(k, cname)].Add(hh.GetPtr())
-    for sid, cname, hh in booked_x:
+    cls_incl = {cname: summed({}, [], f"hincl_{cname}", args)
+                for cname, _ in classes}
+    hsamp = {}
+    for sid, cname, hh in b_x:
         h = hh.GetPtr().Clone(f"s_{sid}_{cname}")
         hsamp[(sid, cname)] = h
-        hincl[cname].Add(h)
-    for sid, mname, hh in booked_m:
-        hmult[(sid, mname)] = hh.GetPtr().Clone(f"mm_{sid}_{mname}")
-
-    rows = [dict(sid=sid, n_tot=a.GetValue(), n=b.GetValue(),
-                 y=c.GetValue(), n2=d.GetValue(), n3=e.GetValue(),
-                 y3=f.GetValue())
-            for sid, a, b, c, d, e, f in persample]
+        cls_incl[cname].Add(h)
+    hmult = {(sid, mname): hh.GetPtr().Clone(f"mm_{sid}_{mname}")
+             for sid, mname, hh in b_m}
 
     table = {}
     for (k, cname), h in hists.items():
-        n = h.GetEntries()
         y = h.Integral()
         b1 = h.FindFixBin(PEAK[0] + 1e-6)
         b2 = h.FindFixBin(PEAK[1] - 1e-6)
         ypk = h.Integral(b1, b2)
-        err = ROOT.Double_t(0) if hasattr(ROOT, "Double_t") else 0.0
-        table[(k, cname)] = dict(entries=n, yield_=y, peak=ypk,
+        table[(k, cname)] = dict(entries=h.GetEntries(), yield_=y, peak=ypk,
                                  frac=(ypk / y if y else 0.0))
-    return hists, table, used, rows, hincl, hsamp, hmult
+    res.update(hists=hists, table=table, cls_incl=cls_incl, hsamp=hsamp,
+               hmult=hmult)
+    return res
+
+
+def summed(hmap, keys, name, args):
+    """Sum hmap[key] over keys into a fresh histogram (empty for no keys)."""
+    lo, hi = args.mass_range
+    h = ROOT.TH1D(name, "", args.nbins, lo, hi)
+    h.Sumw2()
+    for key in keys:
+        if key in hmap:
+            h.Add(hmap[key])
+    return h
+
+
+def build_groups(res, args):
+    """Group-level and total histograms, inclusive and per BDT bin."""
+    hincl, hslice = res["incl"], res["slice"]
+    nk = len(args.bdt_bins) - 1
+    sids = sorted(hincl)
+    names = [g for g, _ in GROUPS] + ["other"]
+    members = {g: [s for s in sids if group_of(s) == g] for g in names}
+    members = {g: m for g, m in members.items() if m}
+
+    gincl = {g: summed(hincl, m, f"gi_{tag_of(g)}", args)
+             for g, m in members.items()}
+    gslice = {(g, k): summed(hslice, [(s, k) for s in m],
+                             f"gs_{tag_of(g)}_{k}", args)
+              for g, m in members.items() for k in range(nk)}
+    tincl = summed(hincl, sids, "tot_incl", args)
+    tslice = {k: summed(hslice, [(s, k) for s in sids], f"tot_{k}", args)
+              for k in range(nk)}
+    return members, gincl, gslice, tincl, tslice
 
 
 def report_samples(rows, args):
     lo, hi = args.mass_range
     print(f"\nper-sample contribution to the sum   "
-          f"(mass {lo:.0f}-{hi:.0f} GeV)")
-    print(f"  {'sample':<12}{'snapshot':>12}{'in range':>11}{'yield':>12}"
-          f"{'n=2':>9}{'n>=3':>9}{'yield n>=3':>12}")
-    print("  " + "-" * 75)
+          f"(mass {lo:.0f}-{hi:.0f} GeV, no BDT cut)")
+    print(f"  {'sample':<17}{'group':<12}{'snapshot':>11}{'in range':>10}"
+          f"{'yield':>11}{'share':>8}{'n=2':>9}{'n>=3':>8}{'yield n>=3':>12}")
+    print("  " + "-" * 98)
     tot = dict(n_tot=0, n=0, y=0.0, n2=0, n3=0, y3=0.0)
-    for r in sorted(rows, key=lambda r: -r["n3"]):
-        print(f"  {SAMPLE_LABEL.get(r['sid'], r['sid']):<12}"
-              f"{r['n_tot']:>12,}{r['n']:>11,}{r['y']:>12.4g}"
-              f"{r['n2']:>9,}{r['n3']:>9,}{r['y3']:>12.4g}")
+    for r in rows:
         for k in tot:
             tot[k] += r[k]
-    print("  " + "-" * 75)
-    print(f"  {'SUM':<12}{tot['n_tot']:>12,}{tot['n']:>11,}{tot['y']:>12.4g}"
-          f"{tot['n2']:>9,}{tot['n3']:>9,}{tot['y3']:>12.4g}")
+    for r in sorted(rows, key=lambda r: -r["y"]):
+        share = r["y"] / tot["y"] if tot["y"] else 0.0
+        print(f"  {str(SAMPLE_LABEL.get(r['sid'], r['sid'])):<17}"
+              f"{group_of(r['sid']):<12}{r['n_tot']:>11,}{r['n']:>10,}"
+              f"{r['y']:>11.4g}{100*share:>7.1f}%"
+              f"{r['n2']:>9,}{r['n3']:>8,}{r['y3']:>12.4g}")
+    print("  " + "-" * 98)
+    print(f"  {'SUM':<29}{tot['n_tot']:>11,}{tot['n']:>10,}{tot['y']:>11.4g}"
+          f"{'':>8}{tot['n2']:>9,}{tot['n3']:>8,}{tot['y3']:>12.4g}")
     print("  all samples above are added into one histogram, weighted by "
           "w_allSF")
-    if tot["n3"] == 0:
+    if args.mult and tot["n3"] == 0:
         print("  WARNING: no event has three or more good muons, so the "
               "pairing control\n           cannot be formed at all")
+    if not args.mult and tot["n3"] > 0:
+        print(f"  WARNING: {tot['n3']} events with nGoodMuons >= 3; the muon "
+              f"veto of {args.cat}\n           should leave none (--mult "
+              "runs the pairing control on them)")
     return tot
+
+
+def report_composition(members, gslice, tslice, args):
+    edges = args.bdt_bins
+    groups = list(members)
+    print("\ncomposition per BDT bin   (share of the summed yield)")
+    print(f"  {'BDT bin':<12}{'yield':>11}"
+          + "".join(f"{g:>12}" for g in groups))
+    print("  " + "-" * (23 + 12 * len(groups)))
+    for k in range(len(edges) - 1):
+        y = tslice[k].Integral()
+        if tslice[k].GetEntries() == 0:
+            continue
+        cells = "".join(
+            f"{100 * gslice[(g, k)].Integral() / y if y else 0:>11.1f}%"
+            for g in groups)
+        print(f"  {edges[k]:.2f}-{edges[k+1]:<7.2f}{y:>11.4g}{cells}")
+
+
+def report_peak(members, gincl, gslice, tincl, tslice, args):
+    edges = args.bdt_bins
+    nk = len(edges) - 1
+    print(f"\nfraction of the {args.mass_range[0]:.0f}-"
+          f"{args.mass_range[1]:.0f} range inside {PEAK[0]:.0f}-{PEAK[1]:.0f} GeV,"
+          " per BDT bin,\ncompared with the same sample with no BDT cut")
+    rows = [("all background", tincl, tslice)]
+    if len(members) > 1:
+        rows += [(g, gincl[g], {k: gslice[(g, k)] for k in range(nk)})
+                 for g in members]
+    for name, hi, hs in rows:
+        f0, e0 = peak_frac(hi)
+        print(f"\n  {name}: no BDT cut {100*f0:.1f}% +-{100*e0:.1f}  "
+              f"({hi.GetEntries():.0f} entries)")
+        print(f"    {'BDT bin':<12}{'entries':>10}{'yield':>12}{'fraction':>14}"
+              f"{'minus no-BDT':>18}")
+        print("    " + "-" * 66)
+        for k in range(nk):
+            h = hs[k]
+            if h.GetEntries() < args.min_entries:
+                continue
+            f, ef = peak_frac(h)
+            # the slice is a subset of the inclusive sample, so the two errors
+            # are correlated; the slice error alone is the honest one to quote
+            d = f - f0
+            sig = abs(d) / ef if ef else 0.0
+            print(f"    {edges[k]:.2f}-{edges[k+1]:<7.2f}{h.GetEntries():>10.0f}"
+                  f"{h.Integral():>12.4g}{100*f:>9.1f}% +-{100*ef:.1f}"
+                  f"{100*d:>+10.1f}  ({sig:.1f} sigma)")
+    print(f"\n  (BDT bins with fewer than {args.min_entries} entries omitted)")
+    print("  A process whose fraction is flat in BDT is not being sculpted;")
+    print("  if only the summed fraction moves, the BDT is changing the mix.")
 
 
 def report(table, args):
@@ -250,7 +429,7 @@ def peak_frac(h):
 
 
 def overlay(entries, xtitle, header, stem, args, legend_right=True,
-            normalize=True, logy=False):
+            normalize=True, logy=False, legend_x0=None):
     """entries: list of (TH1D, legend label).
 
     normalize=True compares shapes, each scaled to unit area. False keeps the
@@ -271,7 +450,7 @@ def overlay(entries, xtitle, header, stem, args, legend_right=True,
     cols = [ROOT.kAzure + 2, ROOT.kRed + 1, ROOT.kGreen + 3, ROOT.kOrange + 7,
             ROOT.kViolet + 6, ROOT.kTeal + 3, ROOT.kMagenta + 2,
             ROOT.kSpring - 1, ROOT.kGray + 2, ROOT.kPink + 7]
-    x0 = 0.60 if legend_right else 0.17
+    x0 = legend_x0 if legend_x0 is not None else (0.60 if legend_right else 0.17)
     leg = ROOT.TLegend(x0, 0.88 - 0.055 * len(live), x0 + 0.34, 0.88)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
@@ -739,6 +918,110 @@ def draw(hists, args, outdir, nmva):
     return keep
 
 
+def draw_composition(members, gslice, tslice, args, outdir):
+    """Stacked share of each process group per BDT bin."""
+    edges = args.bdt_bins
+    nk = len(edges) - 1
+    cols = [ROOT.kAzure + 1, ROOT.kOrange - 2, ROOT.kGreen - 6,
+            ROOT.kGreen + 3, ROOT.kViolet - 4, ROOT.kOrange + 7,
+            ROOT.kGray + 1]
+    c = ROOT.TCanvas("c_comp", "", 880, 650)
+    c.SetLeftMargin(0.12)
+    c.SetRightMargin(0.24)
+    c.SetBottomMargin(0.16)
+    c.SetTopMargin(0.09)
+    stack = ROOT.THStack("st_comp", "")
+    leg = ROOT.TLegend(0.77, 0.50, 0.99, 0.90)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(43)
+    leg.SetTextSize(LAB)
+    hs = []
+    for i, g in enumerate(members):
+        h = ROOT.TH1D(f"comp_{tag_of(g)}", "", nk, 0, nk)
+        for k in range(nk):
+            y = tslice[k].Integral()
+            h.SetBinContent(k + 1, gslice[(g, k)].Integral() / y if y > 0 else 0)
+        h.SetFillColor(cols[i % len(cols)])
+        h.SetLineColor(ROOT.kBlack)
+        h.SetLineWidth(1)
+        stack.Add(h)
+        hs.append(h)
+    for h, g in reversed(list(zip(hs, members))):
+        leg.AddEntry(h, g, "f")
+    stack.Draw("HIST")
+    stack.SetMaximum(1.0)
+    stack.SetMinimum(0.0)
+    ax = stack.GetXaxis()
+    for k in range(nk):
+        ax.SetBinLabel(k + 1, f"{edges[k]:.1f}-{edges[k+1]:.1f}")
+    ax.SetTitle("BDT bin")
+    stack.GetYaxis().SetTitle("Fraction of background")
+    for a in (ax, stack.GetYaxis()):
+        a.SetTitleFont(43)
+        a.SetTitleSize(TIT)
+        a.SetLabelFont(43)
+        a.SetLabelSize(LAB)
+    ax.SetTitleOffset(1.7)
+    stack.GetYaxis().SetTitleOffset(1.3)
+    c.Modified()
+    leg.Draw()
+    lat = ROOT.TLatex()
+    lat.SetNDC()
+    lat.SetTextFont(43)
+    lat.SetTextSize(HDR)
+    lat.SetTextAlign(12)
+    lat.DrawLatex(0.12, 0.955, f"{args.cat} background composition, "
+                               f"{args.mass_range[0]:.0f}-"
+                               f"{args.mass_range[1]:.0f} GeV")
+    stem = os.path.join(outdir, "bkgMass_composition")
+    c.SaveAs(f"{stem}.png")
+    print(f"    wrote {stem}.png")
+    return c, stack, hs, leg, lat
+
+
+def draw_processes(members, gincl, gslice, tslice, args, outdir):
+    """Control 1: the mass in BDT slices, summed and per process group."""
+    edges = args.bdt_bins
+    nk = len(edges) - 1
+    keep = []
+
+    def slices(hs):
+        return [(hs[k], f"{edges[k]:.1f}-{edges[k+1]:.1f}")
+                for k in range(nk) if hs[k].GetEntries() >= args.min_entries]
+
+    # 1. the processes with no BDT cut, as yields, so their size is visible
+    keep.append(overlay(
+        [(gincl[g], g) for g in members], "m_{#mu#mu} [GeV]",
+        f"{args.cat} background, NO BDT cut, by process (yields, log scale)",
+        os.path.join(outdir, "bkgMass_noBDT_byProcess"), args,
+        normalize=False, logy=True))
+
+    # 2. all background summed, shape per BDT slice
+    keep.append(overlay(
+        slices(tslice), "m_{#mu#mu} [GeV]",
+        f"{args.cat} background, {nk} BDT slices, all processes",
+        os.path.join(outdir, "bkgMass_BDTslices_all"), args,
+        legend_x0=0.52))
+
+    # 3. the same, one process group at a time: the composition is fixed
+    #    inside each plot, so any change left is the BDT shaping that process
+    if len(members) > 1:
+        for g in members:
+            ents = slices({k: gslice[(g, k)] for k in range(nk)})
+            if len(ents) < 2:
+                print(f"    {g}: fewer than two populated BDT slices, skipped")
+                continue
+            keep.append(overlay(
+                ents, "m_{#mu#mu} [GeV]",
+                f"{args.cat} {g}, in {nk} BDT slices",
+                os.path.join(outdir, f"bkgMass_BDTslices_{tag_of(g)}"), args,
+                legend_x0=0.52))
+
+        keep.append(draw_composition(members, gslice, tslice, args, outdir))
+    return keep
+
+
 def main():
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -746,9 +1029,11 @@ def main():
     p.add_argument("year")
     p.add_argument("-d", "--indir",
                    default=f"/work/submit/{getpass.getuser()}/HmumuRun3/bkg")
-    p.add_argument("--cat", default="VLcat", help="category dir (default: %(default)s)")
+    p.add_argument("--cat", default="VLcat", choices=CATS,
+                   help="category dir (default: %(default)s)")
     p.add_argument("-s", "--samples", default=None,
-                   help="comma-separated sample ids (default: the vv and vvv groups)")
+                   help="comma-separated sample ids (default: vv and vvv for "
+                        "VLcat; DY, EWK Z, top, ttV, vv and vvv otherwise)")
     p.add_argument("--bdt-bins", default="0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
                    help="slice edges (default: %(default)s)")
     p.add_argument("--mass-range", nargs=2, type=float, default=[110.0, 150.0],
@@ -760,17 +1045,26 @@ def main():
     p.add_argument("--mva", default=None,
                    help="discriminant branch; autodetected as discrMVA or discrMVA0")
     p.add_argument("--cat-filter", default="category>0",
-                   help="extra filter on the category column (default: %(default)s)")
+                   help="filter on the category column, applied only where the "
+                        "snapshot has one (default: %(default)s)")
     p.add_argument("--no-cat", action="store_true",
                    help="drop the category filter entirely, to recover statistics: "
                         "the pairing does not care about the lepton counting")
+    p.add_argument("--filter", default=None,
+                   help="extra RDataFrame filter applied to every sample")
+    p.add_argument("--mult", action=argparse.BooleanOptionalAction, default=None,
+                   help="run the good-muon multiplicity control (default: on "
+                        f"for {', '.join(sorted(MULT_CATS))}, off elsewhere)")
+    p.add_argument("--no-ptweight", action="store_true",
+                   help="do not apply boson_ptWeight to the DY samples")
     p.add_argument("-o", "--plotdir",
                    default=f"/home/submit/{getpass.getuser()}/public_html/"
-                           f"HmumuRun3/bkgshape")
+                           f"HmumuRun3/bkgshape",
+                   help="plots go to <plotdir>/<cat> (default: %(default)s)")
     p.add_argument("--min-entries", type=int, default=20,
-                   help="omit a sample from the per-sample plots and table "
-                        "when it has fewer n>=3 entries than this "
-                        "(default: %(default)s)")
+                   help="omit a BDT slice, or a sample from the per-sample "
+                        "multiplicity plots, when it has fewer entries than "
+                        "this (default: %(default)s)")
     p.add_argument("--dom-rebin", type=int, default=2,
                    help="merge this many mass bins in the dominant-sample "
                         "plot only, where n=4 is sparse (default: %(default)s)")
@@ -785,11 +1079,13 @@ def main():
         sys.exit("need at least two BDT edges")
     if args.no_cat:
         args.cat_filter = None
+    if args.mult is None:
+        args.mult = args.cat in MULT_CATS
     if args.ncores != 1:
         ROOT.ROOT.EnableImplicitMT(args.ncores)
 
     ids = ([int(x) for x in args.samples.split(",")] if args.samples
-           else DEFAULT_SAMPLES)
+           else default_samples(args.cat, args.year))
     paths = []
     for sid in ids:
         pth = os.path.join(args.indir, args.cat,
@@ -804,25 +1100,37 @@ def main():
     print(f"{args.cat}, {len(paths)} sample(s), "
           f"mass {args.mass_range[0]:.0f}-{args.mass_range[1]:.0f} GeV, "
           f"{len(args.bdt_bins)-1} BDT slices")
-    print("samples: " + ", ".join(SAMPLE_LABEL.get(s, str(s)) for s, _ in paths))
+    print("samples: " + ", ".join(str(SAMPLE_LABEL.get(s, s)) for s, _ in paths))
     if args.cat_filter:
         print(f"category filter: {args.cat_filter}")
     else:
         print("category filter: none (--no-cat)")
+    if args.filter:
+        print(f"extra filter: {args.filter}")
+    print("multiplicity control: " + ("on" if args.mult else "off"))
 
-    hists, table, used, rows, hincl, hsamp, hmult = collect(paths, args)
-    if hists is None:
+    res = collect(paths, args)
+    if res is None:
         sys.exit("nothing to plot")
-    mvas = sorted({m for _, m in used})
+    mvas = sorted({m for _, m in res["used"]})
     print(f"discriminant: {', '.join(mvas)}")
 
-    report_samples(rows, args)
-    report_nobdt(hincl, hsamp, args)
-    report(table, args)
+    members, gincl, gslice, tincl, tslice = build_groups(res, args)
+    report_samples(res["rows"], args)
+    if len(members) > 1:
+        report_composition(members, gslice, tslice, args)
+    report_peak(members, gincl, gslice, tincl, tslice, args)
+    if args.mult:
+        report_nobdt(res["cls_incl"], res["hsamp"], args)
+        report(res["table"], args)
     print()
-    _keep = draw_nobdt(hincl, hsamp, args, args.plotdir)
-    _keepd = draw_dominant(hmult, args, args.plotdir)
-    _keep2 = draw(hists, args, args.plotdir, len(args.bdt_bins) - 1)
+    outdir = os.path.join(args.plotdir, args.cat)
+    os.makedirs(outdir, exist_ok=True)
+    _keep = draw_processes(members, gincl, gslice, tslice, args, outdir)
+    if args.mult:
+        _keep1 = draw_nobdt(res["cls_incl"], res["hsamp"], args, outdir)
+        _keepd = draw_dominant(res["hmult"], args, outdir)
+        _keep2 = draw(res["hists"], args, outdir, len(args.bdt_bins) - 1)
 
 
 if __name__ == "__main__":
