@@ -373,29 +373,60 @@ def ftest(fits, family):
     return chosen, steps
 
 
-def load_signal_shape(x, sigjson, tag):
+def _record_yield(rec):
+    nrm = rec.get("normalization", {})
+    return nrm.get("integral", nrm.get("sum_weights"))
+
+
+def load_signal_shape(x, sigjson, tag, mode=None):
     """Signal PDF for the spurious-signal scan, from a sigFit JSON.
 
     Rebuilt from the parameter JSON rather than read out of the signal
     workspace: no second RooWorkspace in the session, and it does not
     matter which PDF class the workspace was written with. Every shape
     parameter is held constant, as in the analysis.
+
+    sigFit writes one record per production mode under "fits". The shape
+    is taken from `mode`, by default the mode with the largest yield, and
+    S_ref is the SUM over all fitted modes: the spurious signal is judged
+    against the total expected signal in the category. A flat single
+    record (parameters/normalization at the top level) is used as is.
+
+    Returns (pdf, bundle, sref, mode).
     """
     with open(sigjson) as fh:
         rec = json.load(fh)
+
+    if "fits" in rec:
+        fits = {m: r for m, r in rec["fits"].items()
+                if "parameters" in r and _record_yield(r) is not None}
+        if not fits:
+            raise SystemExit(f"{sigjson} has no fitted signal modes")
+        if mode is None:
+            mode = max(fits, key=lambda m: _record_yield(fits[m]))
+        elif mode not in fits:
+            raise SystemExit(f"--sig-mode {mode} not in {sigjson}; "
+                             f"fitted modes: {sorted(fits)}")
+        shape = fits[mode]
+        sref = sum(_record_yield(r) for r in fits.values())
+    else:
+        shape = rec
+        sref = _record_yield(rec)
+        mode = mode or "(single record)"
+    if sref is None:
+        raise SystemExit(f"{sigjson} has no normalization to use as S_ref")
+
     pdf, bundle = pdefs.create_signal_pdf(x, f"{tag}_ss")
+    missing = [k for k in bundle["nom"] if k not in shape.get("parameters", {})]
+    if missing:
+        raise SystemExit(f"{sigjson} [{mode}] has no {', '.join(missing)}")
     for k, v in bundle["nom"].items():
-        if k in rec.get("parameters", {}):
-            v.setVal(rec["parameters"][k]["value"])
+        v.setVal(shape["parameters"][k]["value"])
         v.setConstant(True)
     for v in bundle["nuis"].values():
         v.setVal(0.0)
         v.setConstant(True)
-    nrm = rec.get("normalization", {})
-    sref = nrm.get("integral", nrm.get("sum_weights"))
-    if sref is None:
-        raise SystemExit(f"{sigjson} has no normalization to use as S_ref")
-    return pdf, bundle, float(sref)
+    return pdf, bundle, float(sref), mode
 
 
 def spurious_signal_scan(x, fits, envelope, sig_pdf, sref, norm_by_model,
@@ -649,6 +680,10 @@ def main():
     ap.add_argument("--sigjson", default=None,
                     help="sigFit *_params.json, for the signal shape and "
                          "the S_ref used by --scan-mh")
+    ap.add_argument("--sig-mode", default=None,
+                    help="production mode in --sigjson whose shape is used "
+                         "for --scan-mh (default: the one with the largest "
+                         "yield). S_ref is always the sum over all modes.")
     ap.add_argument("--mh-scan", nargs=3, type=float, default=None,
                     metavar=("LO", "HI", "STEP"),
                     help="m_H scan range (default %s)" % (MH_SCAN,))
@@ -776,17 +811,19 @@ def main():
               "and pdfindex")
 
     # ---- spurious-signal scan ------------------------------------------
-    ss = sref = None
+    ss = sref = sig_mode = None
     if args.scan_mh:
         if not args.sigjson or not os.path.isfile(args.sigjson):
             raise SystemExit("--scan-mh needs --sigjson pointing at a "
                              "sigFit *_params.json")
         scan = tuple(args.mh_scan) if args.mh_scan else MH_SCAN
-        sig_pdf, sig_bundle, sref = load_signal_shape(x, args.sigjson, tag)
+        sig_pdf, sig_bundle, sref, sig_mode = load_signal_shape(
+            x, args.sigjson, tag, args.sig_mode)
         norm_by_model = {nm: full_yield(n_sb, fits[nm]) for nm in envelope}
 
         print(f"\nspurious-signal scan: m_H {scan[0]:g}-{scan[1]:g} GeV "
-              f"step {scan[2]:g}, S_ref = {sref:.1f}")
+              f"step {scan[2]:g}, shape from {sig_mode}, "
+              f"S_ref = {sref:.1f} (all modes)")
         print(f"criteria |S|/dS < {SS_MAX_Z} and |S|/S_ref < {SS_MAX_MU}, "
               f"at the WORST point of the scan")
         ss = spurious_signal_scan(x, fits, envelope, sig_pdf, sref,
@@ -891,6 +928,7 @@ def main():
         "spurious_signal": ({
             "scan": list(args.mh_scan or MH_SCAN),
             "max_Z": SS_MAX_Z, "max_mu": SS_MAX_MU, "sref": sref,
+            "sig_mode": sig_mode,
             "pairs": {f"{t_}__{f_}": r for (t_, f_), r in ss.items()},
         } if ss else None),
         "normalization": {"value": norm_val, "sideband_count": n_sb,
