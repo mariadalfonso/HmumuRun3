@@ -7,9 +7,10 @@ Design rules:
      classes resolved inside the functions, so load order cannot matter.
 
   2. NO COMBINE DEPENDENCY. Every background PDF here is plain ROOT. The
-     signal shape picks RooCrystalBall (ROOT >= 6.26) when it exists and
+     signal shape picks RooCrystalBall (ROOT >= 6.24) when it exists and
      falls back to Combine's RooDoubleCBFast otherwise -- identical
-     function, identical arguments. So this module imports in the plain
+     function, identical arguments, so a shape fitted with one is
+     evaluated unchanged by the other. So this module imports in the plain
      conda environment; only workspace writing (RooMultiPdf) needs the
      container.
 
@@ -49,11 +50,6 @@ BOUNDS = {
     "nR":     (5.0,      0.1,  50.0),
 }
 
-# With RooDoubleCBFast the tail integral's 1/(n-1) factor is NOT special-
-# cased at n = 1, so a fit wandering there returns NaN with no warning.
-# RooCrystalBall handles it. Raise the floor when falling back.
-N_FLOOR_NO_SPECIAL_CASE = 1.05
-
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
               "libHiggsAnalysisCombinedLimit.so"
 
@@ -91,22 +87,9 @@ def dscb_class():
     if cls is None:
         raise RuntimeError(
             "no double-sided Crystal Ball available: this ROOT has no "
-            "RooCrystalBall (needs >= 6.26) and Combine's RooDoubleCBFast "
+            "RooCrystalBall (needs >= 6.24) and Combine's RooDoubleCBFast "
             f"could not be loaded from {COMBINE_LIB}")
     return cls, "RooDoubleCBFast"
-
-
-def signal_bounds(cls_name=None):
-    """BOUNDS, with the n floor raised if the class has no n = 1 case."""
-    if cls_name is None:
-        cls_name = dscb_class()[1]
-    b = {k: tuple(v) for k, v in BOUNDS.items()}
-    if cls_name != "RooCrystalBall":
-        for k in ("nL", "nR"):
-            start, lo, hi = b[k]
-            b[k] = (max(start, N_FLOOR_NO_SPECIAL_CASE),
-                    max(lo, N_FLOOR_NO_SPECIAL_CASE), hi)
-    return b
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +117,7 @@ def create_signal_pdf(x, tag, scale_unc=None, res_unc=None,
     scale_unc = SCALE_UNC if scale_unc is None else scale_unc
     res_unc = RES_UNC if res_unc is None else res_unc
     cls, cls_name = dscb_class()
-    bounds = signal_bounds(cls_name) if bounds is None else bounds
+    bounds = BOUNDS if bounds is None else bounds
 
     nom = {k: ROOT.RooRealVar(f"cb_{k}_{tag}", f"cb_{k}", *v)
            for k, v in bounds.items()}

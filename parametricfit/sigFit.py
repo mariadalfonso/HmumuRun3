@@ -2,7 +2,7 @@
 sigFit.py -- standalone H->mumu signal shape fits.
 
 No Combine dependency for the fitting itself: uses ROOT's built-in
-RooCrystalBall (root >= 6.26), so this runs in the plain conda env.
+RooCrystalBall (ROOT >= 6.24), so this runs in the plain conda env.
 
 Signal shape model
 ------------------
@@ -38,6 +38,11 @@ from datetime import datetime, timezone
 
 import ROOT
 
+# The signal model, its bounds and the nuisance sizes are defined once, in
+# pdfDefinitions; re-exported here so sigFitCond/sigFitDCBG can use sf.BOUNDS.
+from pdfDefinitions import (BOUNDS, MH_REF, SCALE_UNC, RES_UNC,  # noqa: F401
+                            create_signal_pdf)
+
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
 # Empty tail bins have zero error, so their pull is undefined
@@ -56,12 +61,6 @@ BINS_PER_GEV = 10         # 0.1 GeV bins, matching SIGfits.py and fitBkg.
                           # unbiased at -0.11% +/- 0.25% on sigma. Anything
                           # from 0.1 to 0.5 GeV is fine; 1.0 GeV biases sigma
                           # by +2%. Override with --bins-per-gev.
-MH_REF = 125.0            # reference mass the shape was fitted at
-
-# TODO: Fractional uncertainties folded into the shape formulas.
-# Replace with Run 3 muon POG numbers or from objScaleSmear().
-SCALE_UNC = 0.002         # 0.2% muon momentum scale
-RES_UNC   = 0.05          # 5% muon momentum resolution
 
 # ---------------------------------------------------------------------------
 # Plot style.
@@ -109,14 +108,6 @@ DATA_LINE_WIDTH = 1
 
 FIT_COLOR_RGB = (237, 41, 57)     # plot_style "redMed"
 
-BOUNDS = {
-    "mu":     (MH_REF, 120.0, 130.0),
-    "sigma":  (2.0,      0.5,   6.0),
-    "alphaL": (1.5,      0.1,   3.0),
-    "nL":     (5.0,      0.1,  50.0),
-    "alphaR": (1.5,      0.1,   3.0),
-    "nR":     (5.0,      0.1,  50.0),
-}
 MC_LIST = {
     "ggHcat":  ["ggH", "qqH", "VH", "ttH"],
     "VBFcat":  ["ggH", "qqH", "VH", "ttH"],
@@ -170,57 +161,18 @@ def header_lines(label):
 
 def make_signal_pdf(x, tag, scale_unc=SCALE_UNC, res_unc=RES_UNC,
                     correlated=True):
-    """Build the CB with MH hypothesis + scale/resolution nuisance hooks.
+    """The DSCB with MH hypothesis + scale/resolution nuisance hooks, from
+    pdfDefinitions.create_signal_pdf -- the same model makeWorkspaces.py
+    rebuilds in the Combine container.
 
-    Returns (pdf, bundle). Everything is kept in the bundle because PyROOT
-    will garbage-collect any RooFit object you do not hold a reference to.
+    Kept as a module-level name because fit_one calls it through this
+    module: fitEtaBins/fitMVABins use it, and sigFitDCBG swaps in its own
+    model by assigning sf.make_signal_pdf.
+
+    Returns (pdf, bundle).
     """
-    # --- shape parameters measured from MC ---
-    nom = {}
-    for k, (start, lo, hi) in BOUNDS.items():
-        nom[k] = ROOT.RooRealVar(f"cb_{k}_{tag}", f"cb_{k}", start, lo, hi)
-
-    # --- mass hypothesis: shared across every category and bin ---
-    # Named MH because that is what Combine's -m option looks for.
-    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", MH_REF, 120.0, 130.0)
-    mh.setConstant(True)
-
-    # --- nuisance parameters: unit Gaussians, constrained by Combine ---
-    # correlated=True -> one shared parameter across all categories, which
-    # is right for muon scale/resolution: it is the same detector effect.
-    nsuf = "" if correlated else f"_{tag}"
-    nuis = {
-        "scale": ROOT.RooRealVar(f"CMS_scale_m{nsuf}", "muon scale",      0.0, -5.0, 5.0),
-        "res":   ROOT.RooRealVar(f"CMS_res_m{nsuf}",   "muon resolution", 0.0, -5.0, 5.0),
-    }
-
-    # --- the shape the PDF actually uses ---
-    mean = ROOT.RooFormulaVar(
-        f"cb_mean_{tag}", "mean",
-        f"(@0 + @1 - {MH_REF})*(1 + {scale_unc}*@2)",
-        ROOT.RooArgList(nom["mu"], mh, nuis["scale"]),
-    )
-    sigma = ROOT.RooFormulaVar(
-        f"cb_sigmaEff_{tag}", "sigmaEff",
-        f"@0*(1 + {res_unc}*@1)",
-        ROOT.RooArgList(nom["sigma"], nuis["res"]),
-    )
-
-    pdf = ROOT.RooCrystalBall(
-        f"crystal_ball_{tag}", "crystal_ball",
-        x, mean, sigma,
-        nom["alphaL"], nom["nL"], nom["alphaR"], nom["nR"],
-    )
-
-    bundle = {
-        "nom": nom,
-        "nuis": nuis,
-        "mh": mh,
-        "func": {"mean": mean, "sigma": sigma},
-        "cfg": {"scale_unc": scale_unc, "res_unc": res_unc,
-                "correlated": correlated, "mh_ref": MH_REF},
-    }
-    return pdf, bundle
+    return create_signal_pdf(x, tag, scale_unc=scale_unc, res_unc=res_unc,
+                             correlated=correlated)
 
 
 # ---------------------------------------------------------------------------

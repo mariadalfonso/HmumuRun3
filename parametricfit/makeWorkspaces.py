@@ -55,8 +55,8 @@ def observable(category, window):
 
 def pin(var, value, const=True):
     """Set a parameter to its fitted value. setVal clamps silently to the
-    range, and the container's bounds can be tighter (the RooDoubleCBFast
-    n floor), so widen the range rather than move the value."""
+    range, so if a value sits outside the rebuilt bounds (they should
+    match the fit's), widen the range rather than move the value."""
     lo, hi = var.getMin(), var.getMax()
     if not lo <= value <= hi:
         print(f"  note: {var.GetName()} = {value:.4g} outside "
