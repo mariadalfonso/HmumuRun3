@@ -105,8 +105,7 @@ once its `wsDIR`, `years`, `cases` and `cats` are edited.
   not yet excluded from the envelope. Fix these before quoting limits.
 - In `--algo singles`, the low-side errors of `r` and the nuisances are not
   found (reported to the range edge); use `--algo grid` scans for those.
-- Not wired into this chain: `bkgFit.py --scan-mh` (spurious-signal scan,
-  needs `--sigjson`) and the studies `sigFitCond.py`, `sigFitDCBG.py`,
+- Not wired into this chain: the studies `sigFitCond.py`, `sigFitDCBG.py`,
   `fitEtaBins.py`, `fitMVABins.py`, `massResVsMass.py`.
 
 ## Signal fit options

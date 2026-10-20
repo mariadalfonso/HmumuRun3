@@ -125,24 +125,6 @@ NORM_RANGE = (0.2, 5.0)            # x the extrapolated value
 DATA_MARKER_STYLE = 20
 
 # ---------------------------------------------------------------------------
-# spurious-signal scan (ATLAS BkgParam recipe, adapted)
-# ---------------------------------------------------------------------------
-# ATLAS scans the mass hypothesis, does an S+B fit at every point to a
-# background-only template, and requires the fitted signal to be small --
-# both against its own error (Z = S/dS) and against the expected signal
-# (mu = S/S_ref) -- taking the WORST point, because a function can be
-# unbiased at 125 and badly biased at 122.
-#
-# Adaptation: with blinded data there is no signal-free dataset to fit, so
-# the truth is an Asimov generated from each envelope member in turn.
-# Fitting member B to an Asimov from member A measures how much fake
-# signal the envelope's own spread can produce -- precisely the quantity
-# discrete profiling claims to cover but never checks.
-MH_SCAN = (120.0, 130.0, 1.0)      # low, high, step
-SS_MAX_Z = 0.5                     # |S| / dS
-SS_MAX_MU = 0.20                   # |S| / S_ref
-
-# ---------------------------------------------------------------------------
 # plotting
 # ---------------------------------------------------------------------------
 # y-title offset for the TALL upper pad; the ratio-pad offset is too small
@@ -387,120 +369,6 @@ def ftest(fits, family):
     return chosen, steps
 
 
-def _record_yield(rec):
-    nrm = rec.get("normalization", {})
-    return nrm.get("integral", nrm.get("sum_weights"))
-
-
-def load_signal_shape(x, sigjson, tag, mode=None):
-    """Signal PDF for the spurious-signal scan, from a sigFit JSON.
-
-    Rebuilt from the parameter JSON rather than read out of the signal
-    workspace: no second RooWorkspace in the session, and it does not
-    matter which PDF class the workspace was written with. Every shape
-    parameter is held constant, as in the analysis.
-
-    sigFit writes one record per production mode under "fits". The shape
-    is taken from `mode`, by default the mode with the largest yield, and
-    S_ref is the SUM over all fitted modes: the spurious signal is judged
-    against the total expected signal in the category. A flat single
-    record (parameters/normalization at the top level) is used as is.
-
-    Returns (pdf, bundle, sref, mode).
-    """
-    with open(sigjson) as fh:
-        rec = json.load(fh)
-
-    if "fits" in rec:
-        fits = {m: r for m, r in rec["fits"].items()
-                if "parameters" in r and _record_yield(r) is not None}
-        if not fits:
-            raise SystemExit(f"{sigjson} has no fitted signal modes")
-        if mode is None:
-            mode = max(fits, key=lambda m: _record_yield(fits[m]))
-        elif mode not in fits:
-            raise SystemExit(f"--sig-mode {mode} not in {sigjson}; "
-                             f"fitted modes: {sorted(fits)}")
-        shape = fits[mode]
-        sref = sum(_record_yield(r) for r in fits.values())
-    else:
-        shape = rec
-        sref = _record_yield(rec)
-        mode = mode or "(single record)"
-    if sref is None:
-        raise SystemExit(f"{sigjson} has no normalization to use as S_ref")
-
-    pdf, bundle = pdefs.create_signal_pdf(x, f"{tag}_ss")
-    missing = [k for k in bundle["nom"] if k not in shape.get("parameters", {})]
-    if missing:
-        raise SystemExit(f"{sigjson} [{mode}] has no {', '.join(missing)}")
-    for k, v in bundle["nom"].items():
-        v.setVal(shape["parameters"][k]["value"])
-        v.setConstant(True)
-    for v in bundle["nuis"].values():
-        v.setVal(0.0)
-        v.setConstant(True)
-    return pdf, bundle, float(sref), mode
-
-
-def spurious_signal_scan(x, fits, envelope, sig_pdf, sref, norm_by_model,
-                         mh_var, scan=None):
-    """For each (truth, fitter) pair, scan m_H and keep the worst bias.
-
-    The Asimov is generated from the truth model at ITS OWN extrapolated
-    full-window yield, so each pair is tested at the yield that model
-    actually implies -- the envelope's yield spread is part of what is
-    being probed, not something to normalise away.
-
-    Returns {(truth, fitter): worst point}.
-    """
-    scan = MH_SCAN if scan is None else scan
-    lo, hi, step = scan
-    masses, m = [], lo
-    while m <= hi + 1e-9:
-        masses.append(m)
-        m += step
-
-    out = {}
-    for truth in envelope:
-        n_truth = norm_by_model[truth]
-        # signal-free Asimov from the truth model, over the FULL window
-        asimov = fits[truth]["pdf"].generateBinned(
-            ROOT.RooArgSet(x), n_truth, ROOT.RooFit.ExpectedData(True))
-        asimov.SetName(f"asimov_{truth}")
-
-        for fitter in envelope:
-            worst = None
-            for mh in masses:
-                mh_var.setVal(mh)
-                nsig = ROOT.RooRealVar(f"nsig_{truth}_{fitter}", "nsig",
-                                       0.0, -5.0 * sref, 5.0 * sref)
-                nbkg = ROOT.RooRealVar(f"nbkg_{truth}_{fitter}", "nbkg",
-                                       n_truth, 0.2 * n_truth, 5.0 * n_truth)
-                model = ROOT.RooAddPdf(
-                    f"sb_{truth}_{fitter}", "s+b",
-                    ROOT.RooArgList(sig_pdf, fits[fitter]["pdf"]),
-                    ROOT.RooArgList(nsig, nbkg))
-                res = model.fitTo(
-                    asimov, ROOT.RooFit.Minimizer("Minuit2"),
-                    ROOT.RooFit.Strategy(1), ROOT.RooFit.Save(True),
-                    ROOT.RooFit.Extended(True),
-                    ROOT.RooFit.SumW2Error(False),
-                    ROOT.RooFit.PrintLevel(-1))
-                s_, ds = nsig.getVal(), nsig.getError()
-                z = abs(s_) / ds if ds > 0 else float("inf")
-                mu = abs(s_) / sref if sref > 0 else float("inf")
-                if worst is None or z > worst["Z"]:
-                    worst = {"mh": mh, "S": s_, "dS": ds, "Z": z, "mu": mu,
-                             "status": res.status()}
-                del res, model, nsig, nbkg
-            worst["passes"] = (worst["Z"] < SS_MAX_Z
-                               and worst["mu"] < SS_MAX_MU)
-            out[(truth, fitter)] = worst
-        del asimov
-    return out
-
-
 # ---------------------------------------------------------------------------
 # plots
 # ---------------------------------------------------------------------------
@@ -687,20 +555,6 @@ def main():
     ap.add_argument("--candidates", nargs="+", default=None,
                     help="restrict the candidate list (default: all in "
                          "pdfDefinitions)")
-    ap.add_argument("--scan-mh", action="store_true",
-                    help="spurious-signal scan: for every (truth, fitter) "
-                         "pair in the envelope, scan m_H and report the "
-                         "worst bias. Needs --sigjson.")
-    ap.add_argument("--sigjson", default=None,
-                    help="sigFit *_params.json, for the signal shape and "
-                         "the S_ref used by --scan-mh")
-    ap.add_argument("--sig-mode", default=None,
-                    help="production mode in --sigjson whose shape is used "
-                         "for --scan-mh (default: the one with the largest "
-                         "yield). S_ref is always the sum over all modes.")
-    ap.add_argument("--mh-scan", nargs=3, type=float, default=None,
-                    metavar=("LO", "HI", "STEP"),
-                    help="m_H scan range (default %s)" % (MH_SCAN,))
     ap.add_argument("--wsdir", default="WS_BKG")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
@@ -819,53 +673,6 @@ def main():
               "Combine\n           profiles it through the floating norm "
               "and pdfindex")
 
-    # ---- spurious-signal scan ------------------------------------------
-    ss = sref = sig_mode = None
-    if args.scan_mh:
-        if not args.sigjson or not os.path.isfile(args.sigjson):
-            raise SystemExit("--scan-mh needs --sigjson pointing at a "
-                             "sigFit *_params.json")
-        scan = tuple(args.mh_scan) if args.mh_scan else MH_SCAN
-        sig_pdf, sig_bundle, sref, sig_mode = load_signal_shape(
-            x, args.sigjson, tag, args.sig_mode)
-        norm_by_model = {nm: full_yield(n_sb, fits[nm]) for nm in envelope}
-
-        print(f"\nspurious-signal scan: m_H {scan[0]:g}-{scan[1]:g} GeV "
-              f"step {scan[2]:g}, shape from {sig_mode}, "
-              f"S_ref = {sref:.1f} (all modes)")
-        print(f"criteria |S|/dS < {SS_MAX_Z} and |S|/S_ref < {SS_MAX_MU}, "
-              f"at the WORST point of the scan")
-        ss = spurious_signal_scan(x, fits, envelope, sig_pdf, sref,
-                                  norm_by_model, sig_bundle["mh"], scan)
-
-        print(f"\n{'truth':<9}{'fitted':<9}{'m_H':>7}{'S':>11}{'dS':>9}"
-              f"{'|S|/dS':>9}{'|S|/Sref':>10}")
-        for (t_, f_), r in sorted(ss.items()):
-            mark = "" if r["passes"] else "   FAIL"
-            print(f"{t_:<9}{f_:<9}{r['mh']:>7.1f}{r['S']:>11.2f}"
-                  f"{r['dS']:>9.2f}{r['Z']:>9.3f}{r['mu']:>10.3f}{mark}")
-
-        cross = [f"{t_}->{f_}" for (t_, f_), r in ss.items()
-                 if not r["passes"] and t_ != f_]
-        same = [t_ for (t_, f_), r in ss.items()
-                if not r["passes"] and t_ == f_]
-        if same:
-            print(f"\nWARNING: {', '.join(same)} fails against its OWN "
-                  f"Asimov. That is a closure failure, not a model-choice\n"
-                  f"effect -- check the fit before reading anything else "
-                  f"from this table.")
-        if cross:
-            print(f"\n{len(cross)} cross-model pair(s) fail: "
-                  f"{', '.join(cross)}")
-            print("With discrete profiling this is information, not a veto: "
-                  "Combine\nprofiles the envelope, so a biased member "
-                  "widens the interval rather\nthan biasing the result. A "
-                  "large bias means the envelope is too loose --\n"
-                  "consider dropping that member or tightening the GOF cut.")
-        elif not same:
-            print("\nall pairs pass: no choice within the envelope can "
-                  "fake a signal\nlarger than the stated criteria")
-
     # ---- plots ---------------------------------------------------------
     plotdir = os.path.join(args.plotdir, args.category)
     outbase = os.path.join(plotdir, f"bkg_{tag}")
@@ -905,12 +712,6 @@ def main():
         "envelope": envelope,
         "rejected_by_gof": rejected,
         "best": best,
-        "spurious_signal": ({
-            "scan": list(args.mh_scan or MH_SCAN),
-            "max_Z": SS_MAX_Z, "max_mu": SS_MAX_MU, "sref": sref,
-            "sig_mode": sig_mode,
-            "pairs": {f"{t_}__{f_}": r for (t_, f_), r in ss.items()},
-        } if ss else None),
         "normalization": {"value": norm_val, "sideband_count": n_sb,
                           "sb_fraction": f_sb, "norm_range": NORM_RANGE,
                           "envelope_spread": [min(spread), max(spread)]
