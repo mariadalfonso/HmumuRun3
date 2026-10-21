@@ -54,15 +54,21 @@ directly and writes PNGs, with no histogram file in between. It checks whether
 the BDT sculpts the background m_mumu, and why.
 
 ```bash
-python bkgMassInBDT.py 2024 --cat ggHcat                    # default samples
+python bkgMassInBDT.py 2024 --cat ggHcat                    # whatever has been run
 python bkgMassInBDT.py 2024 --cat ggHcat -s 103,104,101     # chosen samples
 python bkgMassInBDT.py 2024 --cat VLcat --mass-range 70 200
 ```
 
-Input `/work/submit/$USER/HmumuRun3/bkg/<cat>/` (`-d`), output
-`~/public_html/HmumuRun3/bkgshape/<cat>/` (`-o`). The snapshots have to be
-written there, e.g. `run_all.py ... -o /work/submit/$USER/HmumuRun3/bkg/`.
-MC only, weighted with `w_allSF` (times `boson_ptWeight` for DY).
+Snapshots from `/work/submit/$USER/HmumuRun3/ROOTFILES/<cat>/` (`-d`), the
+`Hmm.py` default output, so `run_all.py` needs no `-o`; `--sig-indir` if the
+signal is somewhere else. Plots to `~/public_html/HmumuRun3/bkgshape/<cat>/`
+(`-o`). MC only, weighted with `w_allSF` (times `boson_ptWeight` for DY).
+
+The samples are whatever snapshots are there, so a partial set is fine: the
+`signal_hmm` ids are signal, and every other MC snapshot is background except the
+alternatives to a nominal sample (DY 109/126-128, amcatnlo VV 207-212, ttbar
+and ttW systematics), which are left out so they are not added on top of the
+nominal and listed at startup. `-s` and `--sig` take explicit id lists instead.
 
 Two controls, both printed as tables and drawn:
 
@@ -70,6 +76,12 @@ Two controls, both printed as tables and drawn:
 |---|---|---|
 | process composition: is the mix changing, or one process's shape? | all | `bkgMass_BDTslices_all`, `bkgMass_BDTbins`, `bkgMass_BDTslices_<group>`, `bkgMass_composition`, `bkgMass_noBDT_byProcess` |
 | good-muon multiplicity: does the muon pairing sculpt the mass? | `VLcat`, `TTLcat` (`--mult` elsewhere) | `bkgMass_pairingControl`, `bkgMass_noBDT_pairing`, `bkgMass_noBDT_bySample_*`, `bkgMass_noBDT_dominant`, `bkgMass_BDTslices_n2`/`_n3ormore` |
+
+It also draws the signal against the background BDT score inside the mass
+window, `bkgMass_BDTscore` (linear and `_log`, both scaled to unit area), and
+prints S, B, S/B and S/sqrt(B) per BDT bin and for a cut at each bin's lower
+edge. The signal is the `signal_hmm` ids (10-15, 17) found; `--sig ''` turns it
+off. The plot is skipped when no signal snapshot is found.
 
 The multiplicity control is off where the category vetoes extra muons, since
 every event there has exactly two. The per-group plots and the composition

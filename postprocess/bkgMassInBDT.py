@@ -3,10 +3,13 @@
 bkgMassInBDT.py -- background dimuon mass in slices of the BDT discriminant,
 for any category, with the controls that say WHY the mass shape moves.
 
-    python bkgMassInBDT.py 2024 --cat VLcat -d /work/submit/kbai/HmumuRun3/bkg
+    python bkgMassInBDT.py 2024 --cat VLcat
     python bkgMassInBDT.py 2024 --cat ggHcat -d ... --mass-range 70 200
     python bkgMassInBDT.py 2024 --cat VLcat -d ... -s 204,205 -o ~/public_html/HmumuRun3/bkgshape
 
+The samples are whatever snapshots are in <indir>/<cat>/: the signal_hmm ids
+are signal (or from --sig-indir), every other MC snapshot is background, so
+the plots use whatever has been run; -s and --sig give explicit lists instead.
 Samples are summed with w_allSF (times boson_ptWeight for the DY samples, as
 in MACRO/prepareHisto.py), so the yields are expected events. Plots go to
 <plotdir>/<cat>/.
@@ -54,6 +57,7 @@ would otherwise be unanswerable.
 
 import argparse
 import getpass
+import glob
 import os
 import sys
 
@@ -67,7 +71,12 @@ ROOT.gStyle.SetOptTitle(0)
 TREE = "events"
 PEAK = (120.0, 130.0)
 
-SAMPLE_LABEL = {100: "DYto2L", 103: "DYto2Mu", 104: "DYto2Tau",
+SAMPLE_LABEL = {10: "VBFH", 11: "ggH", 12: "WminusH", 13: "WplusH",
+                14: "ZH", 15: "ttH", 17: "bbH",
+                20: "VBFH_Zg", 21: "ggH_Zg", 22: "WminusH_Zg", 23: "WplusH_Zg",
+                24: "ZH_Zg", 25: "ttH_Zg", 26: "ttH_Zg",
+                130: "WtoMuNu",
+                100: "DYto2L", 103: "DYto2Mu", 104: "DYto2Tau",
                 109: "DYto2Mu_105-160", 126: "DYto2Mu_50-130",
                 127: "DYto2Mu_130-200", 128: "DYto2Mu_200-400",
                 101: "EWK_Z2J", 140: "TTto2L2Nu",
@@ -76,35 +85,50 @@ SAMPLE_LABEL = {100: "DYto2L", 103: "DYto2Mu", 104: "DYto2Tau",
                 204: "WZto3LNu", 205: "ZZto4L", 206: "WWto2L2Nu",
                 213: "WZZ", 214: "ZZZ", 215: "WWW", 216: "WWZ",
                 221: "TTLNu-1J", 222: "TTLNu-EWK", 223: "TTLL_4-50",
-                224: "TTLL_50", 225: "TTZ-QQ", 226: "TZQB", 230: "TTTT",
+                224: "TTLL_50", 225: "TTZ-QQ", 226: "TZQB",
+                227: "TWZ_T2Q", 228: "TWZ_W2Q", 229: "TWZ_3L", 230: "TTTT",
+                231: "TTWZ", 232: "TTWW", 233: "TTZZ", 234: "TTW-QQ",
+                235: "TTTWminus", 236: "TTTWplus", 237: "TTNuNu",
                 249: "TTG-1J"}
 
-# sample lists, the same groups as MACRO/LoadTree.py
-EARLY_YEARS = {"12022", "22022", "12023", "22023"}
+SIGNAL = [10, 11, 12, 13, 14, 15, 17]          # signal_hmm in samples.yaml
 VV = [201, 202, 203, 204, 205, 206]
 VVV = [213, 214, 215, 216]
-TOP = [140, 105, 106, 107]
-EWK = [101]
-TTV = {"early": [*range(221, 235), *range(236, 240), 246, 247, 248],
-       "late": [*range(221, 238), 249]}
 # Categories whose muon selection leaves room for a third good muon, so the
 # multiplicity control (control 2) can be formed. The others apply mu_veto.
 MULT_CATS = {"VLcat", "TTLcat"}
 CATS = ["ggHcat", "VBFcat", "Zinvcat", "VLcat", "VHcat", "TTLcat", "TTHcat"]
 
 
-def default_samples(cat, year):
-    """The background a category's study sums by default.
+# Alternatives to a nominal sample: other DY QCD generators and mass bins
+# (overlapping 100/103), the amcatnlo VV set, and systematic variations.
+# Left out of a discovered set so they are not added on top of the nominal;
+# -s still picks them deliberately.
+ALTERNATIVES = {109, 126, 127, 128, *range(141, 150), *range(207, 213),
+                *range(242, 246)}
 
-    One DY QCD set only: 103 (2Jets, MLL>50) overlaps in mass with the minnlo
-    (126-128) and MLL-105to160 (109) samples, so adding them all would double
-    count. Pass -s to use another set.
-    """
-    early = year in EARLY_YEARS
-    if cat == "VLcat":
-        return VV + VVV
-    dy = [100] if early else [103, 104]
-    return dy + EWK + TOP + TTV["early" if early else "late"] + VV + VVV
+
+def discover(indir, cat, year):
+    """(id, path) of every MC snapshot in <indir>/<cat>/ for this year."""
+    pre, post = "snapshot_mc_", f"_{year}_{cat}.root"
+    out = []
+    for path in glob.glob(os.path.join(indir, cat, f"{pre}*{post}")):
+        sid = os.path.basename(path)[len(pre):-len(post)]
+        if sid.isdigit():                  # data snapshots carry negative ids
+            out.append((int(sid), path))
+    return sorted(out)
+
+
+def explicit(ids, indir, cat, year, what):
+    """(id, path) for a given id list, reporting the ones not on disk."""
+    out = []
+    for sid in ids:
+        pth = os.path.join(indir, cat, f"snapshot_mc_{sid}_{year}_{cat}.root")
+        if os.path.exists(pth):
+            out.append((sid, pth))
+        else:
+            print(f"  missing {what}: {pth}")
+    return out
 
 
 # process groups, in drawing order; a sample in no group falls into "other"
@@ -113,7 +137,9 @@ GROUPS = [("DY", {100, 103, 104, 109, 126, 127, 128}),
           ("ttbar", {140}),
           ("single top", {105, 106, 107}),
           ("ttV", {*range(221, 240), *range(246, 250)}),
-          ("VV/VVV", set(VV + VVV))]
+          ("VV/VVV", set(VV + VVV)),
+          ("W+jets", {129, 130}),
+          ("H to Zgamma", set(range(20, 27)))]
 # DY pT reweighting, applied to the same ids as MACRO/prepareHisto.py
 DY_PTWEIGHT = {100, 103, 104, 109}
 
@@ -140,7 +166,40 @@ def find_mva(cols):
     return None
 
 
-def collect(paths, args):
+def open_sample(sid, path, args, need=("HiggsCandCorrMass", "w_allSF")):
+    """RDataFrame for one snapshot, weighted and cut to the mass range.
+
+    Returns (df, inr, mva): the raw frame, the frame after the category,
+    extra and mass-range filters with the weight defined as wgt, and the
+    discriminant branch. None when the snapshot lacks a needed column.
+    """
+    lo, hi = args.mass_range
+    label = SAMPLE_LABEL.get(sid, sid)
+    df = ROOT.RDataFrame(TREE, path)
+    cols = {str(c) for c in df.GetColumnNames()}
+    mva = args.mva or find_mva(cols)
+    if mva is None:
+        print(f"  {label}: no discrMVA branch, skipped")
+        return None
+    missing = [c for c in need if c not in cols]
+    if missing:
+        print(f"  {label}: no {missing[0]}, skipped")
+        return None
+    wexpr = "w_allSF"
+    if (sid in DY_PTWEIGHT and "boson_ptWeight" in cols
+            and not args.no_ptweight):
+        wexpr = "w_allSF * boson_ptWeight"
+    sel = df.Define("wgt", wexpr)
+    if args.cat_filter and "category" in cols:
+        sel = sel.Filter(args.cat_filter, "category")
+    if args.filter:
+        sel = sel.Filter(args.filter, "extra filter")
+    inr = sel.Filter(f"HiggsCandCorrMass > {lo} && "
+                     f"HiggsCandCorrMass < {hi}", "mass range")
+    return df, inr, mva
+
+
+def collect(paths, args, sig_paths=()):
     """Book and fill every histogram, so each file is read once.
 
     Always, for control 1:
@@ -148,6 +207,9 @@ def collect(paths, args):
     With args.mult, for control 2:
         hists[(k, class)], table      summed over samples, per BDT bin
         cls_incl[class], hsamp[(sid, class)], hmult[(sid, exact n)]
+    For the score plot, inside the mass range:
+        score_bkg[sid], score_sig[sid]   BDT score per sample
+        sig_slice[k]                     signal yield per BDT bin
     Returns None when no sample could be used.
     """
     lo, hi = args.mass_range
@@ -163,40 +225,28 @@ def collect(paths, args):
         return node.Histo1D((name, "", args.nbins, lo, hi),
                             "HiggsCandCorrMass", "wgt")
 
+    def book_score(node, mva, name):
+        return node.Histo1D((name, "", args.score_bins, edges[0], edges[-1]),
+                            mva, "wgt")
+
     b_incl, b_slice, b_cls, b_x, b_m = [], [], [], [], []
+    b_sbkg, b_ssig, b_sslice = [], [], []
     persample, used = [], []
     for sid, path in paths:
-        label = SAMPLE_LABEL.get(sid, sid)
-        df = ROOT.RDataFrame(TREE, path)
-        cols = {str(c) for c in df.GetColumnNames()}
-        mva = args.mva or find_mva(cols)
-        if mva is None:
-            print(f"  {label}: no discrMVA branch, skipped")
+        opened = open_sample(sid, path, args,
+                             ("HiggsCandCorrMass", "w_allSF", "nGoodMuons"))
+        if opened is None:
             continue
-        missing = [c for c in ("HiggsCandCorrMass", "w_allSF", "nGoodMuons")
-                   if c not in cols]
-        if missing:
-            print(f"  {label}: no {missing[0]}, skipped")
-            continue
-        wexpr = "w_allSF"
-        if (sid in DY_PTWEIGHT and "boson_ptWeight" in cols
-                and not args.no_ptweight):
-            wexpr = "w_allSF * boson_ptWeight"
-        sel = df.Define("wgt", wexpr)
-        if args.cat_filter and "category" in cols:
-            sel = sel.Filter(args.cat_filter, "category")
-        if args.filter:
-            sel = sel.Filter(args.filter, "extra filter")
+        df, inr, mva = opened
         # per-sample totals inside the mass range, so the contribution of
         # each sample to the sum is visible rather than assumed
-        inr = sel.Filter(f"HiggsCandCorrMass > {lo} && "
-                         f"HiggsCandCorrMass < {hi}", "mass range")
         persample.append((
             sid, df.Count(), inr.Count(), inr.Sum("wgt"),
             inr.Filter("nGoodMuons == 2").Count(),
             inr.Filter("nGoodMuons >= 3").Count(),
             inr.Filter("nGoodMuons >= 3").Sum("wgt")))
         b_incl.append((sid, book(inr, f"x_{sid}")))
+        b_sbkg.append((sid, book_score(inr, mva, f"sb_{sid}")))
         for k in range(len(edges) - 1):
             a, b = edges[k], edges[k + 1]
             inbin = inr.Filter(f"{mva} >= {a} && {mva} < {b}", f"bdt{k}")
@@ -216,6 +266,17 @@ def collect(paths, args):
                                              f"m_{sid}_{mname}")))
         used.append((sid, mva))
 
+    for sid, path in sig_paths:
+        opened = open_sample(sid, path, args)
+        if opened is None:
+            continue
+        _, inr, mva = opened
+        b_ssig.append((sid, book_score(inr, mva, f"ss_{sid}")))
+        for k in range(len(edges) - 1):
+            a, b = edges[k], edges[k + 1]
+            b_sslice.append((k, inr.Filter(f"{mva} >= {a} && {mva} < {b}")
+                                   .Sum("wgt")))
+
     if not b_incl:
         return None
 
@@ -224,6 +285,13 @@ def collect(paths, args):
                    for sid, hh in b_incl}
     res["slice"] = {(sid, k): hh.GetPtr().Clone(f"sl_{sid}_{k}")
                     for sid, k, hh in b_slice}
+    res["score_bkg"] = {sid: hh.GetPtr().Clone(f"scb_{sid}")
+                        for sid, hh in b_sbkg}
+    res["score_sig"] = {sid: hh.GetPtr().Clone(f"scs_{sid}")
+                        for sid, hh in b_ssig}
+    res["sig_slice"] = {k: 0.0 for k in range(len(edges) - 1)}
+    for k, v in b_sslice:
+        res["sig_slice"][k] += v.GetValue()
     res["rows"] = [dict(sid=sid, n_tot=a.GetValue(), n=b.GetValue(),
                         y=c.GetValue(), n2=d.GetValue(), n3=e.GetValue(),
                         y3=f.GetValue())
@@ -327,15 +395,16 @@ def report_composition(members, gslice, tslice, args):
     edges = args.bdt_bins
     groups = list(members)
     print("\ncomposition per BDT bin   (share of the summed yield)")
+    wd = max(12, max(len(g) for g in groups) + 2)
     print(f"  {'BDT bin':<12}{'yield':>11}"
-          + "".join(f"{g:>12}" for g in groups))
-    print("  " + "-" * (23 + 12 * len(groups)))
+          + "".join(f"{g:>{wd}}" for g in groups))
+    print("  " + "-" * (23 + wd * len(groups)))
     for k in range(len(edges) - 1):
         y = tslice[k].Integral()
         if tslice[k].GetEntries() == 0:
             continue
         cells = "".join(
-            f"{100 * gslice[(g, k)].Integral() / y if y else 0:>11.1f}%"
+            f"{100 * gslice[(g, k)].Integral() / y if y else 0:>{wd - 1}.1f}%"
             for g in groups)
         print(f"  {edges[k]:.2f}-{edges[k+1]:<7.2f}{y:>11.4g}{cells}")
 
@@ -448,7 +517,7 @@ def overlay(entries, xtitle, header, stem, args, legend_right=True,
     c.SetBottomMargin(0.14)
     c.SetTopMargin(0.09)
     cols = [ROOT.kAzure + 2, ROOT.kRed + 1, ROOT.kGreen + 3, ROOT.kOrange + 7,
-            ROOT.kViolet + 6, ROOT.kTeal + 3, ROOT.kMagenta + 2,
+            ROOT.kViolet + 6, ROOT.kCyan + 2, ROOT.kMagenta + 2,
             ROOT.kSpring - 1, ROOT.kGray + 2, ROOT.kPink + 7]
     x0 = legend_x0 if legend_x0 is not None else (0.60 if legend_right else 0.17)
     leg = ROOT.TLegend(x0, 0.88 - 0.055 * len(live), x0 + 0.34, 0.88)
@@ -481,7 +550,11 @@ def overlay(entries, xtitle, header, stem, args, legend_right=True,
                for b in range(1, h.GetNbinsX() + 1)
                if h.GetBinContent(b) > 0]
         ylo = 0.5 * min(pos) if pos else 1e-6
-        ytop = 20.0 * ymax
+        # headroom for the legend, which grows by one row per entry: the
+        # curves sit below it as long as the axis spans enough decades
+        rows = 0.055 * len(live) + 0.05
+        ytop = ymax * (ymax / ylo) ** (rows / (1.0 - rows)) if ymax > ylo else 20 * ymax
+        ytop = max(ytop, 20.0 * ymax)
     else:
         ylo, ytop = 0.0, 1.45 * ymax
     for k, h in enumerate(hs):
@@ -938,26 +1011,145 @@ def draw_grid(panels, stem, cname):
     return keep
 
 
+def score_sum(hmap, name, args):
+    edges = args.bdt_bins
+    h = ROOT.TH1D(name, "", args.score_bins, edges[0], edges[-1])
+    h.Sumw2()
+    for hh in hmap.values():
+        h.Add(hh)
+    return h
+
+
+def report_score(res, tslice, args):
+    """Signal and background yield per BDT bin, inside the mass range."""
+    edges = args.bdt_bins
+    nk = len(edges) - 1
+    lo, hi = args.mass_range
+    print(f"\nsignal and background per BDT bin   (MC, mass {lo:.0f}-{hi:.0f} GeV)")
+    print(f"  {'BDT bin':<12}{'S':>11}{'B':>12}{'S/B':>10}{'S/sqrt(B)':>11}"
+          f"{'above: S':>11}{'B':>12}{'S/sqrt(B)':>11}")
+    print("  " + "-" * 88)
+    for k in range(nk):
+        S, B = res["sig_slice"][k], tslice[k].Integral()
+        # cumulative from the top: what a cut at this bin's lower edge keeps
+        Sa = sum(res["sig_slice"][j] for j in range(k, nk))
+        Ba = sum(tslice[j].Integral() for j in range(k, nk))
+        print(f"  {edges[k]:.2f}-{edges[k+1]:<7.2f}{S:>11.4g}{B:>12.4g}"
+              f"{(S / B if B > 0 else 0):>10.3g}"
+              f"{(S / np.sqrt(B) if B > 0 else 0):>11.3g}"
+              f"{Sa:>11.4g}{Ba:>12.4g}"
+              f"{(Sa / np.sqrt(Ba) if Ba > 0 else 0):>11.3g}")
+    print("  'above' columns: everything with a score at or above the bin's "
+          "lower edge")
+
+
+def draw_score(res, args, outdir):
+    """Signal against background BDT score, both scaled to unit area."""
+    edges = args.bdt_bins
+    lo, hi = args.mass_range
+    hb0 = score_sum(res["score_bkg"], "score_bkg", args)
+    hs0 = score_sum(res["score_sig"], "score_sig", args)
+    if hb0.Integral() <= 0 or hs0.Integral() <= 0:
+        print("    signal or background has no events in the mass range, "
+              "so the score plot is skipped")
+        return None
+    keep = []
+    for logy in (False, True):
+        tag = "_log" if logy else ""
+        c = ROOT.TCanvas(f"c_score{tag}", "", 880, 650)
+        c.SetLeftMargin(0.14)
+        c.SetRightMargin(0.04)
+        c.SetBottomMargin(0.14)
+        c.SetTopMargin(0.09)
+        c.SetLogy(logy)
+        hb = hb0.Clone(f"score_bkg_n{tag}")
+        hs = hs0.Clone(f"score_sig_n{tag}")
+        hb.Scale(1.0 / hb.Integral())
+        hs.Scale(1.0 / hs.Integral())
+        hb.SetFillColorAlpha(ROOT.kAzure - 9, 0.7)
+        hb.SetLineColor(ROOT.kAzure + 2)
+        hb.SetLineWidth(2)
+        hs.SetLineColor(ROOT.kRed + 1)
+        hs.SetLineWidth(3)
+        hs.SetMarkerSize(0)
+        ymax = max(hb.GetMaximum(), hs.GetMaximum())
+        if logy:
+            pos = [h.GetBinContent(b) for h in (hb, hs)
+                   for b in range(1, h.GetNbinsX() + 1) if h.GetBinContent(b) > 0]
+            ylo, ytop = 0.5 * min(pos), 30.0 * ymax
+        else:
+            ylo, ytop = 0.0, 1.45 * ymax
+        hb.SetMinimum(ylo)
+        hb.SetMaximum(ytop)
+        for ax, t in ((hb.GetXaxis(), "BDT score"),
+                      (hb.GetYaxis(), "Normalized Events")):
+            ax.SetTitle(t)
+            ax.SetTitleFont(43)
+            ax.SetTitleSize(TIT)
+            ax.SetLabelFont(43)
+            ax.SetLabelSize(LAB)
+        hb.GetXaxis().SetTitleOffset(1.4)
+        hb.GetYaxis().SetTitleOffset(1.6)
+        hb.Draw("HIST")
+        hs.Draw("HIST E SAME")
+        # the slice edges used by every other plot, so the two can be read
+        # against each other
+        lines = []
+        for x in edges[1:-1]:
+            ln = ROOT.TLine(x, ylo, x, ytop if not logy else ymax * 3)
+            ln.SetLineColor(ROOT.kGray + 1)
+            ln.SetLineStyle(3)
+            ln.Draw()
+            lines.append(ln)
+        leg = ROOT.TLegend(0.40, 0.76, 0.96, 0.88)
+        leg.SetBorderSize(0)
+        leg.SetFillStyle(0)
+        leg.SetTextFont(43)
+        leg.SetTextSize(LAB)
+        leg.AddEntry(hs, f"signal H#rightarrow#mu#mu  ({hs0.Integral():.3g} exp, "
+                         f"{hs0.GetEntries():.0f} MC)", "l")
+        leg.AddEntry(hb, f"background  ({hb0.Integral():.4g} exp, "
+                         f"{hb0.GetEntries():.0f} MC)", "f")
+        leg.Draw()
+        c.RedrawAxis()
+        lat = ROOT.TLatex()
+        lat.SetNDC()
+        lat.SetTextFont(43)
+        lat.SetTextSize(HDR)
+        lat.SetTextAlign(12)
+        lat.DrawLatex(0.14, 0.955, f"{args.cat}, MC, "
+                                   f"{lo:.0f} < m_{{#mu#mu}} < {hi:.0f} GeV")
+        stem = os.path.join(outdir, f"bkgMass_BDTscore{tag}")
+        c.SaveAs(f"{stem}.png")
+        print(f"    wrote {stem}.png")
+        keep.append((c, hb, hs, leg, lat, lines))
+    return keep
+
+
 def draw_composition(members, gslice, tslice, args, outdir):
     """Stacked share of each process group per BDT bin."""
     edges = args.bdt_bins
     nk = len(edges) - 1
     cols = [ROOT.kAzure + 1, ROOT.kOrange - 2, ROOT.kGreen - 6,
             ROOT.kGreen + 3, ROOT.kViolet - 4, ROOT.kOrange + 7,
-            ROOT.kGray + 1]
+            ROOT.kYellow - 7, ROOT.kRed - 7, ROOT.kGray + 1]
     c = ROOT.TCanvas("c_comp", "", 880, 650)
     c.SetLeftMargin(0.12)
     c.SetRightMargin(0.24)
     c.SetBottomMargin(0.16)
     c.SetTopMargin(0.09)
     stack = ROOT.THStack("st_comp", "")
-    leg = ROOT.TLegend(0.77, 0.50, 0.99, 0.90)
+    leg = ROOT.TLegend(0.77, 0.90 - 0.06 * len(members), 0.99, 0.90)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(43)
     leg.SetTextSize(LAB)
     hs = []
-    for i, g in enumerate(members):
+    # colour by the group's place in GROUPS, so a group keeps its colour
+    # whichever others are present
+    order = [g for g, _ in GROUPS] + ["other"]
+    for g in members:
+        i = order.index(g)
         h = ROOT.TH1D(f"comp_{tag_of(g)}", "", nk, 0, nk)
         for k in range(nk):
             y = tslice[k].Integral()
@@ -1015,7 +1207,7 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
         [(gincl[g], g) for g in members], "m_{#mu#mu} [GeV]",
         f"{args.cat} background, NO BDT cut, by process (yields, log scale)",
         os.path.join(outdir, "bkgMass_noBDT_byProcess"), args,
-        normalize=False, logy=True))
+        normalize=False, logy=True, legend_x0=0.48))
 
     # 2. all background summed, shape per BDT slice
     keep.append(overlay(
@@ -1060,12 +1252,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("year")
     p.add_argument("-d", "--indir",
-                   default=f"/work/submit/{getpass.getuser()}/HmumuRun3/bkg")
+                   default=f"/work/submit/{getpass.getuser()}/HmumuRun3/ROOTFILES",
+                   help="snapshot directory, <dir>/<cat>/ (default: %(default)s, "
+                        "the Hmm.py output)")
     p.add_argument("--cat", default="VLcat", choices=CATS,
                    help="category dir (default: %(default)s)")
     p.add_argument("-s", "--samples", default=None,
-                   help="comma-separated sample ids (default: vv and vvv for "
-                        "VLcat; DY, EWK Z, top, ttV, vv and vvv otherwise)")
+                   help="comma-separated background ids (default: every MC "
+                        "snapshot in <indir>/<cat>/ except signal and the "
+                        "alternative samples)")
+    p.add_argument("--sig", default=None,
+                   help="signal ids for the score plot, '' for none (default: "
+                        "every signal_hmm snapshot in <sig-indir>/<cat>/)")
+    p.add_argument("--sig-indir", default=None,
+                   help="signal snapshot directory, <dir>/<cat>/, when it is "
+                        "not -d (default: the same as -d)")
+    p.add_argument("--score-bins", type=int, default=50,
+                   help="bins of the BDT score plot (default: %(default)s)")
     p.add_argument("--bdt-bins", default="0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
                    help="slice edges (default: %(default)s)")
     p.add_argument("--mass-range", nargs=2, type=float, default=[110.0, 150.0],
@@ -1116,23 +1319,40 @@ def main():
     if args.ncores != 1:
         ROOT.ROOT.EnableImplicitMT(args.ncores)
 
-    ids = ([int(x) for x in args.samples.split(",")] if args.samples
-           else default_samples(args.cat, args.year))
-    paths = []
-    for sid in ids:
-        pth = os.path.join(args.indir, args.cat,
-                           f"snapshot_mc_{sid}_{args.year}_{args.cat}.root")
-        if os.path.exists(pth):
-            paths.append((sid, pth))
-        else:
-            print(f"  missing: {pth}")
+    if args.samples:
+        paths = explicit([int(x) for x in args.samples.split(",")],
+                         args.indir, args.cat, args.year, "background")
+    else:
+        found = discover(args.indir, args.cat, args.year)
+        paths = [(sid, p) for sid, p in found
+                 if sid not in SIGNAL and sid not in ALTERNATIVES]
+        left = [sid for sid, _ in found if sid in ALTERNATIVES]
+        if left:
+            print("  left out as alternatives to a nominal sample (-s to use): "
+                  + ", ".join(str(SAMPLE_LABEL.get(x, x)) for x in left))
     if not paths:
-        sys.exit("no snapshots found")
+        sys.exit(f"no background snapshots in {os.path.join(args.indir, args.cat)}")
+
+    if args.sig == "":
+        sig_paths = []
+    elif args.sig:
+        sig_paths = explicit([int(x) for x in args.sig.split(",")],
+                             args.sig_indir or args.indir, args.cat, args.year,
+                             "signal")
+    else:
+        sig_paths = [(sid, p) for sid, p in
+                     discover(args.sig_indir or args.indir, args.cat, args.year)
+                     if sid in SIGNAL]
 
     print(f"{args.cat}, {len(paths)} sample(s), "
           f"mass {args.mass_range[0]:.0f}-{args.mass_range[1]:.0f} GeV, "
           f"{len(args.bdt_bins)-1} BDT slices")
     print("samples: " + ", ".join(str(SAMPLE_LABEL.get(s, s)) for s, _ in paths))
+    print("signal:  " + (", ".join(str(SAMPLE_LABEL.get(s, s)) for s, _ in sig_paths)
+                         + f"  ({os.path.dirname(sig_paths[0][1])})"
+                         if sig_paths else
+                         "off (--sig '')" if args.sig == "" else
+                         "none found, so no score plot"))
     if args.cat_filter:
         print(f"category filter: {args.cat_filter}")
     else:
@@ -1141,7 +1361,7 @@ def main():
         print(f"extra filter: {args.filter}")
     print("multiplicity control: " + ("on" if args.mult else "off"))
 
-    res = collect(paths, args)
+    res = collect(paths, args, sig_paths)
     if res is None:
         sys.exit("nothing to plot")
     mvas = sorted({m for _, m in res["used"]})
@@ -1152,12 +1372,15 @@ def main():
     if len(members) > 1:
         report_composition(members, gslice, tslice, args)
     report_peak(members, gincl, gslice, tincl, tslice, args)
+    if res["score_sig"]:
+        report_score(res, tslice, args)
     if args.mult:
         report_nobdt(res["cls_incl"], res["hsamp"], args)
         report(res["table"], args)
     print()
     outdir = os.path.join(args.plotdir, args.cat)
     os.makedirs(outdir, exist_ok=True)
+    _keeps = draw_score(res, args, outdir) if res["score_sig"] else None
     _keep = draw_processes(members, gincl, gslice, tincl, tslice, args,
                            outdir)
     if args.mult:
