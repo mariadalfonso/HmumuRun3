@@ -834,8 +834,25 @@ def draw(hists, args, outdir, nmva):
               "so the control plot is skipped")
         return keep
 
-    nx = min(4, len(live))
-    ny = int(np.ceil(len(live) / nx))
+    panels = [(f"BDT {edges[k]:.1f}-{edges[k+1]:.1f}",
+               [(hists[(k, "n=2")],
+                 f"n=2 ({hists[(k, 'n=2')].GetEntries():.0f})", ROOT.kAzure + 2),
+                (hists[(k, "n>=3")],
+                 f"n#geq3 ({hists[(k, 'n>=3')].GetEntries():.0f})", ROOT.kRed + 1)])
+              for k in live]
+    keep.append(draw_grid(panels, os.path.join(outdir, "bkgMass_pairingControl"),
+                          "c_ctrl"))
+    return keep
+
+
+def draw_grid(panels, stem, cname):
+    """One pad per BDT bin, the shapes in it overlaid, each scaled to unit area.
+
+    panels: list of (pad title, [(TH1D, legend label, colour), ...]); the
+    first histogram of a pad sets its axes.
+    """
+    nx = min(4, len(panels))
+    ny = int(np.ceil(len(panels) / nx))
 
     # Divided pads are small, and TitleOffset with pixel fonts (font 43) puts
     # the axis titles a fixed number of pixels from the axis regardless of pad
@@ -846,17 +863,18 @@ def draw(hists, args, outdir, nmva):
     lab_px, tit_px, leg_px = 15, 17, 14
     mL, mR, mB, mT = 0.20, 0.05, 0.19, 0.13
 
-    c = ROOT.TCanvas("c_ctrl", "", PW * nx, PH * ny)
+    keep = []
+    c = ROOT.TCanvas(cname, "", PW * nx, PH * ny)
     c.Divide(nx, ny, 0.004, 0.004)
-    for p, k in enumerate(live, 1):
+    for p, (title, entries) in enumerate(panels, 1):
         c.cd(p)
         ROOT.gPad.SetLeftMargin(mL)
         ROOT.gPad.SetRightMargin(mR)
         ROOT.gPad.SetBottomMargin(mB)
         ROOT.gPad.SetTopMargin(mT)
-        h2 = hists[(k, "n=2")].Clone(f"c2_{k}")
-        h3 = hists[(k, "n>=3")].Clone(f"c3_{k}")
-        for h, col in ((h2, ROOT.kAzure + 2), (h3, ROOT.kRed + 1)):
+        hs = []
+        for i, (h0, _, col) in enumerate(entries):
+            h = h0.Clone(f"{cname}_{p}_{i}")
             if h.Integral() > 0:
                 h.Scale(1.0 / h.Integral())
             h.SetLineColor(col)
@@ -864,20 +882,22 @@ def draw(hists, args, outdir, nmva):
             h.SetMarkerColor(col)
             h.SetMarkerStyle(20)
             h.SetMarkerSize(0.6)
-        ymax = max(h2.GetMaximum() + h2.GetBinError(h2.GetMaximumBin()),
-                   h3.GetMaximum() + h3.GetBinError(h3.GetMaximumBin()))
-        h2.SetMaximum(1.45 * ymax)
-        h2.SetMinimum(0.0)
+            hs.append(h)
+        ymax = max(h.GetMaximum() + h.GetBinError(h.GetMaximumBin())
+                   for h in hs)
+        h1 = hs[0]
+        h1.SetMaximum(1.45 * ymax)
+        h1.SetMinimum(0.0)
         # titles are hand-drawn below, so the axes carry labels only
-        h2.GetXaxis().SetTitle("")
-        h2.GetYaxis().SetTitle("")
-        for ax in (h2.GetXaxis(), h2.GetYaxis()):
+        h1.GetXaxis().SetTitle("")
+        h1.GetYaxis().SetTitle("")
+        for ax in (h1.GetXaxis(), h1.GetYaxis()):
             ax.SetLabelFont(43)
             ax.SetLabelSize(lab_px)
-        h2.GetXaxis().SetNdivisions(505)   # fewer labels, they crowd at this size
-        h2.GetYaxis().SetNdivisions(505)
-        h2.Draw("HIST E")
-        h3.Draw("HIST E SAME")
+        h1.GetXaxis().SetNdivisions(505)   # fewer labels, they crowd at this size
+        h1.GetYaxis().SetNdivisions(505)
+        for i, h in enumerate(hs):
+            h.Draw("HIST E" if i == 0 else "HIST E SAME")
 
         span_x, span_y = 1.0 - mL - mR, 1.0 - mB - mT
         xt = ROOT.TLatex()
@@ -894,14 +914,15 @@ def draw(hists, args, outdir, nmva):
         yt.SetTextAngle(90)
         yt.DrawLatex(0.7 * tit_px / PW, mB + 0.5 * span_y, "Normalized Events")
 
-        lg = ROOT.TLegend(mL + 0.42 * span_x, 1.0 - mT - 0.20 * span_y,
+        lg = ROOT.TLegend(mL + 0.42 * span_x,
+                          1.0 - mT - 0.10 * len(hs) * span_y,
                           1.0 - mR - 0.01, 1.0 - mT - 0.01)
         lg.SetBorderSize(0)
         lg.SetFillStyle(0)
         lg.SetTextFont(43)
         lg.SetTextSize(leg_px)
-        lg.AddEntry(h2, f"n=2 ({hists[(k,'n=2')].GetEntries():.0f})", "lep")
-        lg.AddEntry(h3, f"n#geq3 ({hists[(k,'n>=3')].GetEntries():.0f})", "lep")
+        for h, (_, label, _) in zip(hs, entries):
+            lg.AddEntry(h, label, "lep")
         lg.Draw()
 
         tx = ROOT.TLatex()
@@ -909,9 +930,8 @@ def draw(hists, args, outdir, nmva):
         tx.SetTextFont(43)
         tx.SetTextSize(tit_px)
         tx.SetTextAlign(12)
-        tx.DrawLatex(mL, 1.0 - 0.5 * mT, f"BDT {edges[k]:.1f}-{edges[k+1]:.1f}")
-        keep.append((h2, h3, lg, tx, xt, yt))
-    stem = os.path.join(outdir, "bkgMass_pairingControl")
+        tx.DrawLatex(mL, 1.0 - 0.5 * mT, title)
+        keep.append((hs, lg, tx, xt, yt))
     c.SaveAs(f"{stem}.png")
     print(f"    wrote {stem}.png")
     keep.append(c)
@@ -980,7 +1000,7 @@ def draw_composition(members, gslice, tslice, args, outdir):
     return c, stack, hs, leg, lat
 
 
-def draw_processes(members, gincl, gslice, tslice, args, outdir):
+def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
     """Control 1: the mass in BDT slices, summed and per process group."""
     edges = args.bdt_bins
     nk = len(edges) - 1
@@ -1003,6 +1023,18 @@ def draw_processes(members, gincl, gslice, tslice, args, outdir):
         f"{args.cat} background, {nk} BDT slices, all processes",
         os.path.join(outdir, "bkgMass_BDTslices_all"), args,
         legend_x0=0.52))
+
+    # 2b. the same, one pad per BDT bin against the shape with no BDT cut,
+    #     the pairing-control layout without the multiplicity split
+    live = [k for k in range(nk) if tslice[k].GetEntries() >= args.min_entries]
+    if live:
+        panels = [(f"BDT {edges[k]:.1f}-{edges[k+1]:.1f}",
+                   [(tincl, "no BDT cut", ROOT.kAzure + 2),
+                    (tslice[k], f"this bin ({tslice[k].GetEntries():.0f})",
+                     ROOT.kRed + 1)])
+                  for k in live]
+        keep.append(draw_grid(panels, os.path.join(outdir, "bkgMass_BDTbins"),
+                              "c_bins"))
 
     # 3. the same, one process group at a time: the composition is fixed
     #    inside each plot, so any change left is the BDT shaping that process
@@ -1126,7 +1158,8 @@ def main():
     print()
     outdir = os.path.join(args.plotdir, args.cat)
     os.makedirs(outdir, exist_ok=True)
-    _keep = draw_processes(members, gincl, gslice, tslice, args, outdir)
+    _keep = draw_processes(members, gincl, gslice, tincl, tslice, args,
+                           outdir)
     if args.mult:
         _keep1 = draw_nobdt(res["cls_incl"], res["hsamp"], args, outdir)
         _keepd = draw_dominant(res["hmult"], args, outdir)
