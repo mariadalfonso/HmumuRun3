@@ -66,9 +66,9 @@ signal is somewhere else. Plots to `~/public_html/HmumuRun3/bkgshape/<cat>/`
 
 The samples are whatever snapshots are there, so a partial set is fine: the
 `signal_hmm` ids are signal, and every other MC snapshot is background except the
-alternatives to a nominal sample (DY 109/126-128, amcatnlo VV 207-212, ttbar
-and ttW systematics), which are left out so they are not added on top of the
-nominal and listed at startup. `-s` and `--sig` take explicit id lists instead.
+alternatives to a nominal sample (DY 109/126-128, EWK Z 98/99, amcatnlo VV
+207-212, ttbar and ttW systematics), which are left out so they are not added
+on top of the nominal and listed at startup. `-s` and `--sig` take explicit id lists instead.
 
 Two controls, both printed as tables and drawn:
 

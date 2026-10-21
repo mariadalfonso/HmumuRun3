@@ -79,7 +79,8 @@ SAMPLE_LABEL = {10: "VBFH", 11: "ggH", 12: "WminusH", 13: "WplusH",
                 100: "DYto2L", 103: "DYto2Mu", 104: "DYto2Tau",
                 109: "DYto2Mu_105-160", 126: "DYto2Mu_50-130",
                 127: "DYto2Mu_130-200", 128: "DYto2Mu_200-400",
-                101: "EWK_Z2J", 140: "TTto2L2Nu",
+                101: "EWK_Z2J", 98: "EWK_Z2J_105-160_hw", 99: "EWK_Z2J_105-160_py",
+                140: "TTto2L2Nu",
                 105: "TWminus", 106: "TbarWplus", 107: "TTtoLNu2Q",
                 201: "WZto2L2Q", 202: "ZZto2L2Nu", 203: "ZZto2L2Q",
                 204: "WZto3LNu", 205: "ZZto4L", 206: "WWto2L2Nu",
@@ -101,10 +102,11 @@ CATS = ["ggHcat", "VBFcat", "Zinvcat", "VLcat", "VHcat", "TTLcat", "TTHcat"]
 
 
 # Alternatives to a nominal sample: other DY QCD generators and mass bins
-# (overlapping 100/103), the amcatnlo VV set, and systematic variations.
+# (overlapping 100/103), the EWK Z samples generated in 105-160 GeV only
+# (overlapping 101), the amcatnlo VV set, and systematic variations.
 # Left out of a discovered set so they are not added on top of the nominal;
 # -s still picks them deliberately.
-ALTERNATIVES = {109, 126, 127, 128, *range(141, 150), *range(207, 213),
+ALTERNATIVES = {98, 99, 109, 126, 127, 128, *range(141, 150), *range(207, 213),
                 *range(242, 246)}
 
 
