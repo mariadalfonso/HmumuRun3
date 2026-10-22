@@ -1296,7 +1296,7 @@ def draw_score(res, args, outdir):
     return keep
 
 
-def draw_grid_tight(panels, stem, cname, header, nx=4):
+def draw_grid_tight(panels, stem, cname, header, nx=None):
     """One pad per BDT bin with no gaps between pads: one shared y range,
     y labels on the first column only, x labels only on the pads with no
     pad below, axis titles once for the whole canvas.
@@ -1305,6 +1305,10 @@ def draw_grid_tight(panels, stem, cname, header, nx=4):
     each histogram scaled to unit area.
     """
     n = len(panels)
+    if nx is None:
+        # 3 to 5 columns, whichever leaves the fewest empty slots in the last
+        # row (ties: more columns, so the canvas stays wide rather than tall)
+        nx = min(range(3, 6), key=lambda c: ((-n) % c, -c)) if n > 3 else n
     nx = min(nx, n)
     ny = int(np.ceil(n / nx))
     FW, FH = 330, 240                  # frame size of every pad, pixels
@@ -1406,8 +1410,10 @@ def draw_grid_tight(panels, stem, cname, header, nx=4):
     lat.SetNDC()
     lat.SetTextFont(43)
     lat.SetTextSize(tit_px)
-    lat.SetTextAlign(31)
-    lat.DrawLatex((L + nx * FW) / W, 0.12 * B / H, "m_{#mu#mu} [GeV]")
+    lat.SetTextAlign(21)
+    # centred under the pads of the bottom row, which may not be full
+    nlast = n - (ny - 1) * nx
+    lat.DrawLatex((L + 0.5 * nlast * FW) / W, 0.1 * B / H, "m_{#mu#mu} [GeV]")
     lat.SetTextAngle(90)
     lat.SetTextAlign(23)
     lat.DrawLatex(0.12 * L / W, 1 - (T + 0.5 * ny * FH) / H, "Normalized Events")
