@@ -374,8 +374,10 @@ def collect(paths, args, sig_paths=(), data_paths=()):
         b1 = h.FindFixBin(PEAK[0] + 1e-6)
         b2 = h.FindFixBin(PEAK[1] - 1e-6)
         ypk = h.Integral(b1, b2)
-        table[(k, cname)] = dict(entries=h.GetEntries(), yield_=y, peak=ypk,
-                                 frac=(ypk / y if y else 0.0))
+        table[(k, cname)] = dict(entries=h.GetEntries(), neff=n_eff(h),
+                                 yield_=y, peak=ypk,
+                                 frac=(ypk / y if y else 0.0),
+                                 err=peak_frac(h)[1])
     res.update(hists=hists, table=table, cls_incl=cls_incl, hsamp=hsamp,
                hmult=hmult)
     return res
@@ -475,13 +477,13 @@ def report_peak(members, gincl, gslice, tincl, tslice, args):
     for name, hi, hs in rows:
         f0, e0 = peak_frac(hi)
         print(f"\n  {name}: no BDT cut {100*f0:.1f}% +-{100*e0:.1f}  "
-              f"({hi.GetEntries():.0f} entries)")
-        print(f"    {'BDT bin':<12}{'entries':>10}{'yield':>12}{'fraction':>14}"
-              f"{'minus no-BDT':>18}")
-        print("    " + "-" * 66)
+              f"({hi.GetEntries():.0f} entries, {n_eff(hi):.0f} effective)")
+        print(f"    {'BDT bin':<12}{'entries':>10}{'eff.':>9}{'yield':>12}"
+              f"{'fraction':>14}{'minus no-BDT':>18}")
+        print("    " + "-" * 75)
         for k in range(nk):
             h = hs[k]
-            if h.GetEntries() < args.min_entries:
+            if n_eff(h) < args.min_entries:
                 continue
             f, ef = peak_frac(h)
             # the slice is a subset of the inclusive sample, so the two errors
@@ -489,28 +491,27 @@ def report_peak(members, gincl, gslice, tincl, tslice, args):
             d = f - f0
             sig = abs(d) / ef if ef else 0.0
             print(f"    {edges[k]:.2f}-{edges[k+1]:<7.2f}{h.GetEntries():>10.0f}"
-                  f"{h.Integral():>12.4g}{100*f:>9.1f}% +-{100*ef:.1f}"
+                  f"{n_eff(h):>9.0f}{h.Integral():>12.4g}{100*f:>9.1f}% +-{100*ef:.1f}"
                   f"{100*d:>+10.1f}  ({sig:.1f} sigma)")
-    print(f"\n  (BDT bins with fewer than {args.min_entries} entries omitted)")
+    print(f"\n  (BDT bins with fewer than {args.min_entries} effective entries "
+          "omitted; eff. = (sum w)^2 / sum w^2)")
     print("  A process whose fraction is flat in BDT is not being sculpted;")
     print("  if only the summed fraction moves, the BDT is changing the mix.")
 
 
 def report(table, args):
     edges = args.bdt_bins
-    print(f"\n{'BDT bin':<14}{'class':>7}{'entries':>10}{'yield':>12}"
+    print(f"\n{'BDT bin':<14}{'class':>7}{'entries':>10}{'eff.':>9}{'yield':>12}"
           f"{'in 120-130':>12}{'fraction':>11}")
-    print("-" * 66)
+    print("-" * 75)
     for k in range(len(edges) - 1):
         for cname in ("n=2", "n>=3"):
             t = table[(k, cname)]
             if t["entries"] == 0:
                 continue
-            # binomial error on the fraction, from the raw entry count
-            f, n = t["frac"], max(t["entries"], 1)
-            ef = np.sqrt(max(f * (1 - f), 0) / n)
+            f, ef = t["frac"], t["err"]
             print(f"{edges[k]:.1f}-{edges[k+1]:<9.1f}{cname:>7}"
-                  f"{t['entries']:>10.0f}{t['yield_']:>12.4g}"
+                  f"{t['entries']:>10.0f}{t['neff']:>9.0f}{t['yield_']:>12.4g}"
                   f"{t['peak']:>12.4g}{100*f:>9.1f}%"
                   f" +-{100*ef:.1f}")
     print(f"\nfraction = yield in {PEAK[0]:.0f}-{PEAK[1]:.0f} over the whole "
@@ -527,8 +528,7 @@ def report(table, args):
                   f"{'(too few events)':>38}")
             continue
         fa, fb = a["frac"], b["frac"]
-        ea = np.sqrt(max(fa*(1-fa), 0)/max(a["entries"], 1))
-        eb = np.sqrt(max(fb*(1-fb), 0)/max(b["entries"], 1))
+        ea, eb = a["err"], b["err"]
         d, ed = fb - fa, np.sqrt(ea*ea + eb*eb)
         sig = abs(d) / ed if ed else 0.0
         print(f"{edges[k]:.1f}-{edges[k+1]:<9.1f}{100*fa:>11.1f}%"
@@ -539,15 +539,39 @@ def report(table, args):
 
 
 def peak_frac(h):
-    """(fraction of the range inside the peak window, binomial error)."""
+    """(fraction of the range inside the peak window, its error).
+
+    Each event's uncertainty is scaled by its own weight, so the error is
+    propagated from the sums of squared weights inside and outside the
+    window (kept by Sumw2):
+
+        var(f) = [(1-f)^2 sum_in w^2 + f^2 sum_out w^2] / (sum w)^2
+
+    With equal weights this is the binomial sqrt(f(1-f)/N); with a few
+    heavy events it is larger, as it should be.
+    """
     y = h.Integral()
     if y <= 0:
         return 0.0, 0.0
     b1 = h.FindFixBin(PEAK[0] + 1e-6)
     b2 = h.FindFixBin(PEAK[1] - 1e-6)
     f = h.Integral(b1, b2) / y
-    n = max(h.GetEntries(), 1)
-    return f, np.sqrt(max(f * (1 - f), 0) / n)
+    w2 = [h.GetBinError(b) ** 2 for b in range(1, h.GetNbinsX() + 1)]
+    w2_in = sum(w2[b1 - 1:b2])
+    w2_out = sum(w2) - w2_in
+    var = ((1 - f) ** 2 * w2_in + f ** 2 * w2_out) / (y * y)
+    return f, np.sqrt(max(var, 0.0))
+
+
+def n_eff(h):
+    """Effective number of MC events, (sum w)^2 / sum w^2, over the range.
+
+    Equal to the raw count for equal weights; smaller when a few heavy
+    events carry the yield, which is what sets the statistical power.
+    """
+    w2 = sum(h.GetBinError(b) ** 2 for b in range(1, h.GetNbinsX() + 1))
+    y = h.Integral()
+    return y * y / w2 if w2 > 0 else 0.0
 
 
 def overlay(entries, xtitle, header, stem, args, legend_right=True,
@@ -590,7 +614,7 @@ def overlay(entries, xtitle, header, stem, args, legend_right=True,
         h.SetMarkerSize(0.7)
         hs.append(h)
         f, ef = peak_frac(h0)
-        leg.AddEntry(h, f"{lab}  ({h0.GetEntries():.0f} ev, "
+        leg.AddEntry(h, f"{lab}  ({n_eff(h0):.0f} eff. ev, "
                         f"{100*f:.0f}#pm{100*ef:.0f}% in peak)", "lep")
     ymax = max(h.GetMaximum() + h.GetBinError(h.GetMaximumBin()) for h in hs)
     if logy:
@@ -706,8 +730,8 @@ def draw_dominant(hmult, args, outdir):
             h0 = hmult.get((sid, m))
             if h0 is None or h0.Integral() <= 0:
                 continue
-            if h0.GetEntries() < args.min_entries:
-                skipped.append(f"{label} {m} ({h0.GetEntries():.0f})")
+            if n_eff(h0) < args.min_entries:
+                skipped.append(f"{label} {m} ({n_eff(h0):.0f} eff.)")
                 continue
             h = h0.Clone(f"dom_{sid}_{m}")
             if rebin > 1:
@@ -829,7 +853,7 @@ def draw_nobdt(hincl, hsamp, args, outdir):
         for sid in sorted({s for s, _ in hsamp},
                           key=lambda s: -hsamp[(s, cname)].GetEntries()):
             h = hsamp[(sid, cname)]
-            if h.GetEntries() < args.min_entries:
+            if n_eff(h) < args.min_entries:
                 continue
             ents.append((h, SAMPLE_LABEL.get(sid, str(sid))))
         keep.append(overlay(
@@ -870,14 +894,15 @@ def report_nobdt(hincl, hsamp, args):
     print("    " + "-" * 51)
     for sid in sorted({s for s, _ in hsamp}):
         h2, h3 = hsamp[(sid, "n=2")], hsamp[(sid, "n>=3")]
-        if h3.GetEntries() < args.min_entries:
+        if n_eff(h3) < args.min_entries:
             continue
         f2, e2 = peak_frac(h2)
         f3, e3 = peak_frac(h3)
         dd, edd = f3 - f2, np.sqrt(e2*e2 + e3*e3)
         print(f"    {SAMPLE_LABEL.get(sid, sid):<12}{100*f2:>10.1f}%"
               f"{100*f3:>11.1f}%{100*dd:>+11.1f} +-{100*edd:.1f}")
-    print(f"    (samples with fewer than {args.min_entries} n>=3 entries omitted)")
+    print(f"    (samples with fewer than {args.min_entries} effective n>=3 "
+          "entries omitted)")
 
 
 def draw(hists, args, outdir, nmva):
@@ -1122,7 +1147,7 @@ def report_sidebands(res, args):
 
 
 def sideband_text(args):
-    """'110-115, 135-150' for the default mass range and blinded window."""
+    """'110-120, 130-150' for the default mass range and blinded window."""
     lo, hi = args.mass_range
     blo, bhi = args.blind
     parts = []
@@ -1341,7 +1366,7 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
 
     def slices(hs):
         return [(hs[k], f"{edges[k]:.1f}-{edges[k+1]:.1f}")
-                for k in range(nk) if hs[k].GetEntries() >= args.min_entries]
+                for k in range(nk) if n_eff(hs[k]) >= args.min_entries]
 
     # 1. the processes with no BDT cut, as yields, so their size is visible
     keep.append(overlay(
@@ -1359,11 +1384,11 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
 
     # 2b. the same, one pad per BDT bin against the shape with no BDT cut,
     #     the pairing-control layout without the multiplicity split
-    live = [k for k in range(nk) if tslice[k].GetEntries() >= args.min_entries]
+    live = [k for k in range(nk) if n_eff(tslice[k]) >= args.min_entries]
     if live:
         panels = [(f"BDT {edges[k]:.1f}-{edges[k+1]:.1f}",
                    [(tincl, "no BDT cut", ROOT.kAzure + 2),
-                    (tslice[k], f"this bin ({tslice[k].GetEntries():.0f})",
+                    (tslice[k], f"this bin ({n_eff(tslice[k]):.0f} eff.)",
                      ROOT.kRed + 1)])
                   for k in live]
         keep.append(draw_grid(panels, os.path.join(outdir, "bkgMass_BDTbins"),
@@ -1412,10 +1437,10 @@ def main():
                    help="data ids for the sidebands in the score plot, written "
                         "with '=' since they are negative (--data=-41,-42), '' "
                         "for none (default: every data snapshot in -d)")
-    p.add_argument("--blind", nargs=2, type=float, default=[115.0, 135.0],
+    p.add_argument("--blind", nargs=2, type=float, default=[120.0, 130.0],
                    metavar=("LO", "HI"),
                    help="mass window where data is never looked at "
-                        "(default: %(default)s, the snapshots' isH)")
+                        "(default: %(default)s, the same as the peak window)")
     p.add_argument("--score-bins", type=int, default=50,
                    help="bins of the BDT score plot (default: %(default)s)")
     p.add_argument("--bdt-bins", default="0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
@@ -1447,8 +1472,9 @@ def main():
                    help="plots go to <plotdir>/<cat> (default: %(default)s)")
     p.add_argument("--min-entries", type=int, default=20,
                    help="omit a BDT slice, or a sample from the per-sample "
-                        "multiplicity plots, when it has fewer entries than "
-                        "this (default: %(default)s)")
+                        "multiplicity plots, when its effective number of MC "
+                        "events, (sum w)^2 / sum w^2, is below this "
+                        "(default: %(default)s)")
     p.add_argument("--dom-rebin", type=int, default=2,
                    help="merge this many mass bins in the dominant-sample "
                         "plot only, where n=4 is sparse (default: %(default)s)")

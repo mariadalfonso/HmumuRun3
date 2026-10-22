@@ -70,6 +70,12 @@ alternatives to a nominal sample (DY 109/126-128, EWK Z 98/99, amcatnlo VV
 207-212, ttbar and ttW systematics), which are left out so they are not added
 on top of the nominal and listed at startup. `-s` and `--sig` take explicit id lists instead.
 
+The fraction of the mass range inside 120-130 GeV is the number every control
+compares. Its error is propagated from the event weights (each event's
+uncertainty scaled by its weight), so a slice dominated by a few heavy events
+gets the large error it should. Legends and tables also show the effective
+number of MC events, (sum w)^2 / sum w^2, and `--min-entries` cuts on it.
+
 Two controls, both printed as tables and drawn:
 
 | Control | Categories | Plots |
@@ -84,8 +90,8 @@ edge. The signal is the `signal_hmm` ids (10-15, 17) found; `--sig ''` turns it
 off. When data snapshots are in the same directory, the plot also shows the data
 sidebands and the MC background in the same sidebands, and a table compares the
 two per BDT bin (normalisation and shape). Data is only ever read outside the
-blinded window, 115-135 GeV by default as for the snapshots' `isH` (`--blind LO
-HI`); `--data ''` leaves it out. The plot is skipped when neither signal nor data
+blinded window, 120-130 GeV by default (`--blind LO HI`; the snapshots' `isH`
+flag blinds 115-135); `--data ''` leaves it out. The plot is skipped when neither signal nor data
 is found.
 
 The multiplicity control is off where the category vetoes extra muons, since
