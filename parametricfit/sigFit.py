@@ -564,8 +564,13 @@ def effective_entries(hist, lo=XLOW, hi=XHIGH):
 
 
 def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
-            save_pdf=False):
-    """Fit one histogram. Returns (pdf, bundle, norm_var, record) or None."""
+            save_pdf=False, yield_info=None):
+    """Fit one histogram. Returns (pdf, bundle, norm_var, record) or None.
+
+    `yield_info` (from run_category) carries the signal yield extrapolated
+    to the full year; it replaces the MC integral in the norm and the JSON.
+    The plots and chi2 always use the MC integral of `hist`.
+    """
     norm = range_integral(hist)
     n_eff = effective_entries(hist)
     if norm <= 0:
@@ -607,7 +612,11 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
 
     print(f"  mu     = {nom['mu'].getVal():7.3f} +/- {nom['mu'].getError():.3f}")
     print(f"  sigma  = {nom['sigma'].getVal():7.3f} +/- {nom['sigma'].getError():.3f}")
+    sig_yield = norm if yield_info is None else yield_info["value"]
     print(f"  norm   = {norm:10.2f}   (N_eff = {n_eff:.1f})")
+    if yield_info is not None:
+        print(f"  yield  = {sig_yield:10.2f}   extrapolated to {year} "
+              f"(x{sig_yield / norm:.3f})")
     print(f"  chi2/ndf = {chi2_ndf:6.3f}   status={status} covQual={cov} "
           f"edm={edm:.2e}")
     if parked:
@@ -635,8 +644,10 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
             **bundle["cfg"],
         },
         "normalization": {
-            "integral": norm,
+            "integral": sig_yield,          # the datacard rate
             "effective_entries": n_eff,
+            **({"mc_integral": norm, "extrapolation": yield_info}
+               if yield_info is not None else {}),
         },
         "fit_quality": {
             "chi2_ndf": chi2_ndf,
@@ -651,7 +662,7 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
     }
 
     norm_var = ROOT.RooRealVar(f"{pdf.GetName()}_norm",
-                               f"{pdf.GetName()}_norm", norm)
+                               f"{pdf.GetName()}_norm", sig_yield)
     norm_var.setConstant(True)
 
     if freeze:
@@ -666,7 +677,9 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
 def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
                  save_pdf=False):
     # imported late so --selftest runs without prepareFits
-    from prepareFits import getHisto, normalize_year
+    from prepareFits import (getHistoSignalByEra, normalize_year,
+                             signal_yield_scales, expand_year,
+                             DATA_YEAR_GROUPS, LUMIS)
 
     year = normalize_year(year)        # '_Run3' -> 'Run3'
 
@@ -681,11 +694,18 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
     # dump ~30 files into one directory
     catdir = os.path.join(plotdir, category)
 
+    # The shape is fitted on the MC eras; the yield is extrapolated to every
+    # era of the year (2025/2026 borrow 2024's yield per fb^-1).
+    scales = signal_yield_scales(year)
+
     dump = {
         "provenance": {
             "written_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "git_commit": git_commit(),
             "category": category, "bin": binMVA, "year": year,
+            "yield_scales": scales,
+            "lumi": {e: LUMIS[e]
+                     for e in expand_year(year, DATA_YEAR_GROUPS)},
             "fit_range": [XLOW, XHIGH],
             "n_bins": nbins,
             "bins_per_gev": BINS_PER_GEV,
@@ -696,12 +716,25 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
     keep = []   # hold references so PyROOT does not collect mid-loop
     for sig in modes:
         print(f"\n--- {category} {binMVA} {sig} ---")
-        hist = getHisto(nbins, XLOW, XHIGH, False,
-                        category, year, True, binMVA, sig)
+        by_era = getHistoSignalByEra(nbins, XLOW, XHIGH, category, year,
+                                     binMVA, sig)
+        hist = None
+        for h_era in by_era.values():       # the MC the shape is fitted on
+            if hist is None:
+                hist = h_era.Clone(f"h_{tag_cat}_{sig}")
+                hist.SetDirectory(0)
+            else:
+                hist.Add(h_era)
+        mc_by_era = {e: range_integral(h) for e, h in by_era.items()}
+        yield_info = {
+            "value": sum(scales[e] * n for e, n in mc_by_era.items()),
+            "by_era": {e: {"mc": n, "scale": scales[e]}
+                       for e, n in mc_by_era.items()},
+        }
 
         out = fit_one(x, hist, f"{tag_cat}_{sig}",
                       f"{category} {binMVA} {sig}", catdir, freeze,
-                      year=year, save_pdf=save_pdf)
+                      year=year, save_pdf=save_pdf, yield_info=yield_info)
         if out is None:
             dump["fits"][sig] = {"skipped": "empty histogram"}
             continue
