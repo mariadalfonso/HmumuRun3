@@ -43,7 +43,8 @@ off by default and --mult forces it on.
 
 The script reports, per BDT bin and per process group or multiplicity:
 
-    yield, entries, and the fraction of the mass range inside 120-130 GeV
+    yield, raw and effective MC entries, and the fraction of the mass range
+    inside 120-130 GeV, with its error propagated from the event weights
 
 If the 120-130 fraction agrees between n==2 and n>=3 within its uncertainty,
 the pairing is not building structure under the peak. If n>=3 is high, it is.
@@ -53,6 +54,15 @@ muons above 20 GeV, so a VV sample may leave only a handful of events in the
 fit range. The yields are printed first for that reason, and --no-cat drops
 the category requirement (keeping nGoodMuons) to recover events when the test
 would otherwise be unanswerable.
+
+The BDT score plot
+------------------
+bkgMass_BDTscore overlays the signal and background MC score inside the mass
+window, and the data and MC background in the mass sidebands outside the
+blinded window (--blind, 120-130 GeV by default); data is never read inside it.
+The deployed BDTs were trained on MC with even event numbers, so for half the
+MC they score events they have seen: --filter "event % 2 == 1" keeps only the
+unbiased half.
 """
 
 import argparse
@@ -1513,7 +1523,7 @@ def slice_colors(n):
     return [pal.At(int(top * i / max(n - 1, 1))) for i in range(n)]
 
 
-def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
+def draw_processes(members, gincl, gslice, tslice, args, outdir):
     """Control 1: the mass in BDT slices, summed and per process group."""
     edges = args.bdt_bins
     nk = len(edges) - 1
@@ -1747,8 +1757,7 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     _keeps = (draw_score(res, args, outdir)
               if res["score_sig"] or res["score_data"] else None)
-    _keep = draw_processes(members, gincl, gslice, tincl, tslice, args,
-                           outdir)
+    _keep = draw_processes(members, gincl, gslice, tslice, args, outdir)
     if args.mult:
         _keep1 = draw_nobdt(res["cls_incl"], res["hsamp"], args, outdir)
         _keepd = draw_dominant(res["hmult"], args, outdir)

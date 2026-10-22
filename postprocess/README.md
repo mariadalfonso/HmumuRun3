@@ -98,8 +98,13 @@ off. When data snapshots are in the same directory, the plot also shows the data
 sidebands and the MC background in the same sidebands, and a table compares the
 two per BDT bin (normalisation and shape). Data is only ever read outside the
 blinded window, 120-130 GeV by default (`--blind LO HI`; the snapshots' `isH`
-flag blinds 115-135); `--data ''` leaves it out. The plot is skipped when neither signal nor data
-is found.
+flag blinds 115-135); `--data ''` leaves it out. The plot is skipped when
+neither signal nor data is found.
+
+The deployed BDTs were trained on the MC events with even event numbers and are
+applied to all of them, so half the MC is scored by a model that has seen it:
+add `--filter "event % 2 == 1"` for MC score distributions and S/B numbers
+without that bias (yields halve; data is not affected).
 
 The multiplicity control is off where the category vetoes extra muons, since
 every event there has exactly two. The per-group plots and the composition
