@@ -81,7 +81,12 @@ It also draws the signal against the background BDT score inside the mass
 window, `bkgMass_BDTscore` (linear and `_log`, both scaled to unit area), and
 prints S, B, S/B and S/sqrt(B) per BDT bin and for a cut at each bin's lower
 edge. The signal is the `signal_hmm` ids (10-15, 17) found; `--sig ''` turns it
-off. The plot is skipped when no signal snapshot is found.
+off. When data snapshots are in the same directory, the plot also shows the data
+sidebands and the MC background in the same sidebands, and a table compares the
+two per BDT bin (normalisation and shape). Data is only ever read outside the
+blinded window, 115-135 GeV by default as for the snapshots' `isH` (`--blind LO
+HI`); `--data ''` leaves it out. The plot is skipped when neither signal nor data
+is found.
 
 The multiplicity control is off where the category vetoes extra muons, since
 every event there has exactly two. The per-group plots and the composition

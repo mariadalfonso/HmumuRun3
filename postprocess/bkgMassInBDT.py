@@ -110,13 +110,14 @@ ALTERNATIVES = {98, 99, 109, 126, 127, 128, *range(141, 150), *range(207, 213),
                 *range(242, 246)}
 
 
-def discover(indir, cat, year):
-    """(id, path) of every MC snapshot in <indir>/<cat>/ for this year."""
+def discover(indir, cat, year, data=False):
+    """(id, path) of every MC snapshot in <indir>/<cat>/ for this year, or
+    of every data snapshot with data=True (data carries negative ids)."""
     pre, post = "snapshot_mc_", f"_{year}_{cat}.root"
     out = []
     for path in glob.glob(os.path.join(indir, cat, f"{pre}*{post}")):
         sid = os.path.basename(path)[len(pre):-len(post)]
-        if sid.isdigit():                  # data snapshots carry negative ids
+        if sid.lstrip("-").isdigit() and sid.startswith("-") == data:
             out.append((int(sid), path))
     return sorted(out)
 
@@ -177,6 +178,19 @@ def open_sample(sid, path, args, need=("HiggsCandCorrMass", "w_allSF")):
     """
     lo, hi = args.mass_range
     label = SAMPLE_LABEL.get(sid, sid)
+    # a job that is still writing, or died while writing, leaves a file ROOT
+    # cannot open; skip it rather than stop the whole run
+    try:                                   # newer ROOT raises, older returns null
+        f = ROOT.TFile.Open(path)
+    except OSError:
+        f = None
+    ok = bool(f) and not f.IsZombie() and bool(f.Get(TREE))
+    if f:
+        f.Close()
+    if not ok:
+        print(f"  {label}: {os.path.basename(path)} is unreadable or has no "
+              f"'{TREE}' tree (job still running, or crashed?), skipped")
+        return None
     df = ROOT.RDataFrame(TREE, path)
     cols = {str(c) for c in df.GetColumnNames()}
     mva = args.mva or find_mva(cols)
@@ -187,7 +201,7 @@ def open_sample(sid, path, args, need=("HiggsCandCorrMass", "w_allSF")):
     if missing:
         print(f"  {label}: no {missing[0]}, skipped")
         return None
-    wexpr = "w_allSF"
+    wexpr = "w_allSF" if "w_allSF" in cols else "1.0"
     if (sid in DY_PTWEIGHT and "boson_ptWeight" in cols
             and not args.no_ptweight):
         wexpr = "w_allSF * boson_ptWeight"
@@ -201,7 +215,7 @@ def open_sample(sid, path, args, need=("HiggsCandCorrMass", "w_allSF")):
     return df, inr, mva
 
 
-def collect(paths, args, sig_paths=()):
+def collect(paths, args, sig_paths=(), data_paths=()):
     """Book and fill every histogram, so each file is read once.
 
     Always, for control 1:
@@ -212,6 +226,9 @@ def collect(paths, args, sig_paths=()):
     For the score plot, inside the mass range:
         score_bkg[sid], score_sig[sid]   BDT score per sample
         sig_slice[k]                     signal yield per BDT bin
+    and in the sidebands only, outside the blinded window:
+        score_bkg_sb[sid], score_data[sid], bkg_sb_slice[k], data_slice[k]
+    Data is never booked inside the blinded window.
     Returns None when no sample could be used.
     """
     lo, hi = args.mass_range
@@ -233,6 +250,9 @@ def collect(paths, args, sig_paths=()):
 
     b_incl, b_slice, b_cls, b_x, b_m = [], [], [], [], []
     b_sbkg, b_ssig, b_sslice = [], [], []
+    b_sbsb, b_bsbslice, b_sdata, b_dslice = [], [], [], []
+    blo, bhi = args.blind
+    sideband = (f"!(HiggsCandCorrMass > {blo} && HiggsCandCorrMass < {bhi})")
     persample, used = [], []
     for sid, path in paths:
         opened = open_sample(sid, path, args,
@@ -249,6 +269,13 @@ def collect(paths, args, sig_paths=()):
             inr.Filter("nGoodMuons >= 3").Sum("wgt")))
         b_incl.append((sid, book(inr, f"x_{sid}")))
         b_sbkg.append((sid, book_score(inr, mva, f"sb_{sid}")))
+        if data_paths:
+            side = inr.Filter(sideband, "sidebands")
+            b_sbsb.append((sid, book_score(side, mva, f"sbsb_{sid}")))
+            for k in range(len(edges) - 1):
+                a, b = edges[k], edges[k + 1]
+                b_bsbslice.append((k, side.Filter(f"{mva} >= {a} && {mva} < {b}")
+                                          .Sum("wgt")))
         for k in range(len(edges) - 1):
             a, b = edges[k], edges[k + 1]
             inbin = inr.Filter(f"{mva} >= {a} && {mva} < {b}", f"bdt{k}")
@@ -279,6 +306,20 @@ def collect(paths, args, sig_paths=()):
             b_sslice.append((k, inr.Filter(f"{mva} >= {a} && {mva} < {b}")
                                    .Sum("wgt")))
 
+    for sid, path in data_paths:
+        opened = open_sample(sid, path, args, ("HiggsCandCorrMass",))
+        if opened is None:
+            continue
+        _, inr, mva = opened
+        # blinded: the sideband filter comes before anything is booked
+        side = inr.Filter(sideband, "sidebands")
+        b_sdata.append((sid, side.Histo1D(
+            (f"sd_{sid}", "", args.score_bins, edges[0], edges[-1]), mva)))
+        for k in range(len(edges) - 1):
+            a, b = edges[k], edges[k + 1]
+            b_dslice.append((k, side.Filter(f"{mva} >= {a} && {mva} < {b}")
+                                    .Count()))
+
     if not b_incl:
         return None
 
@@ -294,6 +335,16 @@ def collect(paths, args, sig_paths=()):
     res["sig_slice"] = {k: 0.0 for k in range(len(edges) - 1)}
     for k, v in b_sslice:
         res["sig_slice"][k] += v.GetValue()
+    res["score_bkg_sb"] = {sid: hh.GetPtr().Clone(f"scbsb_{sid}")
+                           for sid, hh in b_sbsb}
+    res["score_data"] = {sid: hh.GetPtr().Clone(f"scd_{sid}")
+                         for sid, hh in b_sdata}
+    res["bkg_sb_slice"] = {k: 0.0 for k in range(len(edges) - 1)}
+    for k, v in b_bsbslice:
+        res["bkg_sb_slice"][k] += v.GetValue()
+    res["data_slice"] = {k: 0 for k in range(len(edges) - 1)}
+    for k, v in b_dslice:
+        res["data_slice"][k] += v.GetValue()
     res["rows"] = [dict(sid=sid, n_tot=a.GetValue(), n=b.GetValue(),
                         y=c.GetValue(), n2=d.GetValue(), n3=e.GetValue(),
                         y3=f.GetValue())
@@ -1045,16 +1096,61 @@ def report_score(res, tslice, args):
           "lower edge")
 
 
+def report_sidebands(res, args):
+    """Data against MC background in the sidebands, per BDT bin."""
+    edges = args.bdt_bins
+    nk = len(edges) - 1
+    nd = sum(res["data_slice"].values())
+    nb = sum(res["bkg_sb_slice"].values())
+    print(f"\ndata and MC background in the sidebands per BDT bin   "
+          f"({sideband_text(args)} GeV)")
+    print(f"  {'BDT bin':<12}{'data':>10}{'MC bkg':>12}{'data/MC':>10}"
+          f"{'data/MC, shape':>16}")
+    print("  " + "-" * 60)
+    for k in range(nk):
+        d, b = res["data_slice"][k], res["bkg_sb_slice"][k]
+        r = d / b if b > 0 else 0.0
+        # shape: both normalised to their totals, so only the BDT-score
+        # distribution is compared and the overall normalisation drops out
+        rs = (d / nd) / (b / nb) if nd > 0 and nb > 0 and b > 0 else 0.0
+        ers = rs / np.sqrt(d) if d > 0 else 0.0
+        print(f"  {edges[k]:.2f}-{edges[k+1]:<7.2f}{d:>10,}{b:>12.4g}"
+              f"{r:>10.3f}{rs:>10.3f} +-{ers:.3f}")
+    print(f"  {'total':<12}{nd:>10,}{nb:>12.4g}{(nd / nb if nb else 0):>10.3f}")
+    print("  data/MC is the overall normalisation; the shape column divides it "
+          "out.\n  Errors are data statistics only.")
+
+
+def sideband_text(args):
+    """'110-115, 135-150' for the default mass range and blinded window."""
+    lo, hi = args.mass_range
+    blo, bhi = args.blind
+    parts = []
+    if lo < blo:
+        parts.append(f"{lo:.0f}-{min(blo, hi):.0f}")
+    if bhi < hi:
+        parts.append(f"{max(bhi, lo):.0f}-{hi:.0f}")
+    return ", ".join(parts) or "none"
+
+
 def draw_score(res, args, outdir):
-    """Signal against background BDT score, both scaled to unit area."""
+    """Signal against background BDT score, all scaled to unit area.
+
+    With data: the data sidebands as points, and the MC background in the
+    same sidebands as a dashed line, which is what the data compares to.
+    """
     edges = args.bdt_bins
     lo, hi = args.mass_range
     hb0 = score_sum(res["score_bkg"], "score_bkg", args)
     hs0 = score_sum(res["score_sig"], "score_sig", args)
-    if hb0.Integral() <= 0 or hs0.Integral() <= 0:
-        print("    signal or background has no events in the mass range, "
+    hbs0 = score_sum(res["score_bkg_sb"], "score_bkg_sb", args)
+    hd0 = score_sum(res["score_data"], "score_data", args)
+    have_sig, have_data = hs0.Integral() > 0, hd0.Integral() > 0
+    if hb0.Integral() <= 0 or not (have_sig or have_data):
+        print("    no signal or data next to the background in the mass range, "
               "so the score plot is skipped")
         return None
+    sbtext = sideband_text(args)
     keep = []
     for logy in (False, True):
         tag = "_log" if logy else ""
@@ -1065,22 +1161,50 @@ def draw_score(res, args, outdir):
         c.SetTopMargin(0.09)
         c.SetLogy(logy)
         hb = hb0.Clone(f"score_bkg_n{tag}")
-        hs = hs0.Clone(f"score_sig_n{tag}")
         hb.Scale(1.0 / hb.Integral())
-        hs.Scale(1.0 / hs.Integral())
         hb.SetFillColorAlpha(ROOT.kAzure - 9, 0.7)
         hb.SetLineColor(ROOT.kAzure + 2)
         hb.SetLineWidth(2)
-        hs.SetLineColor(ROOT.kRed + 1)
-        hs.SetLineWidth(3)
-        hs.SetMarkerSize(0)
-        ymax = max(hb.GetMaximum(), hs.GetMaximum())
+        shown = [hb]
+        hs = hbs = hd = None
+        if have_sig:
+            hs = hs0.Clone(f"score_sig_n{tag}")
+            hs.Scale(1.0 / hs.Integral())
+            hs.SetLineColor(ROOT.kRed + 1)
+            hs.SetLineWidth(3)
+            hs.SetMarkerSize(0)
+            shown.append(hs)
+        if have_data:
+            hd = hd0.Clone(f"score_data_n{tag}")
+            hd.Scale(1.0 / hd.Integral())
+            hd.SetMarkerStyle(20)
+            hd.SetMarkerSize(0.9)
+            hd.SetMarkerColor(ROOT.kBlack)
+            hd.SetLineColor(ROOT.kBlack)
+            shown.append(hd)
+            if hbs0.Integral() > 0:
+                hbs = hbs0.Clone(f"score_bkg_sb_n{tag}")
+                hbs.Scale(1.0 / hbs.Integral())
+                hbs.SetLineColor(ROOT.kAzure + 3)
+                hbs.SetLineStyle(2)
+                hbs.SetLineWidth(3)
+                hbs.SetMarkerSize(0)
+                shown.append(hbs)
+        ymax = max(h.GetMaximum() for h in shown)
+        # the share of the frame, from the top, that the legend takes (one
+        # row per curve, plus the sideband header with data), with a small
+        # gap; the axis is stretched so every curve stays below it
+        nrows = len(shown) + bool(hd)
+        frame_lo, frame_hi = 0.14, 0.91           # bottom and 1 - top margin
+        leg_lo = 0.88 - 0.06 * nrows
+        f = min((frame_hi - leg_lo) / (frame_hi - frame_lo) + 0.04, 0.8)
         if logy:
-            pos = [h.GetBinContent(b) for h in (hb, hs)
+            pos = [h.GetBinContent(b) for h in shown
                    for b in range(1, h.GetNbinsX() + 1) if h.GetBinContent(b) > 0]
-            ylo, ytop = 0.5 * min(pos), 30.0 * ymax
+            ylo = 0.5 * min(pos)
+            ytop = ylo * (ymax / ylo) ** (1.0 / (1.0 - f))
         else:
-            ylo, ytop = 0.0, 1.45 * ymax
+            ylo, ytop = 0.0, ymax / (1.0 - f)
         hb.SetMinimum(ylo)
         hb.SetMaximum(ytop)
         for ax, t in ((hb.GetXaxis(), "BDT score"),
@@ -1093,7 +1217,12 @@ def draw_score(res, args, outdir):
         hb.GetXaxis().SetTitleOffset(1.4)
         hb.GetYaxis().SetTitleOffset(1.6)
         hb.Draw("HIST")
-        hs.Draw("HIST E SAME")
+        if hbs:
+            hbs.Draw("HIST SAME")
+        if hs:
+            hs.Draw("HIST E SAME")
+        if hd:
+            hd.Draw("E1 P SAME")
         # the slice edges used by every other plot, so the two can be read
         # against each other
         lines = []
@@ -1103,15 +1232,24 @@ def draw_score(res, args, outdir):
             ln.SetLineStyle(3)
             ln.Draw()
             lines.append(ln)
-        leg = ROOT.TLegend(0.40, 0.76, 0.96, 0.88)
+        leg = ROOT.TLegend(0.36, leg_lo, 0.96, 0.88)
         leg.SetBorderSize(0)
         leg.SetFillStyle(0)
         leg.SetTextFont(43)
         leg.SetTextSize(LAB)
-        leg.AddEntry(hs, f"signal H#rightarrow#mu#mu  ({hs0.Integral():.3g} exp, "
-                         f"{hs0.GetEntries():.0f} MC)", "l")
+        if hd:
+            leg.SetHeader(f"sidebands: {sbtext} GeV")
+        if hs:
+            leg.AddEntry(hs, f"signal H#rightarrow#mu#mu  ({hs0.Integral():.3g} exp, "
+                             f"{hs0.GetEntries():.0f} MC)", "l")
         leg.AddEntry(hb, f"background  ({hb0.Integral():.4g} exp, "
                          f"{hb0.GetEntries():.0f} MC)", "f")
+        if hbs:
+            leg.AddEntry(hbs, f"background, sidebands  ({hbs0.Integral():.4g} exp)",
+                         "l")
+        if hd:
+            leg.AddEntry(hd, f"data, sidebands  ({hd0.GetEntries():.0f} events)",
+                         "pe")
         leg.Draw()
         c.RedrawAxis()
         lat = ROOT.TLatex()
@@ -1119,12 +1257,13 @@ def draw_score(res, args, outdir):
         lat.SetTextFont(43)
         lat.SetTextSize(HDR)
         lat.SetTextAlign(12)
-        lat.DrawLatex(0.14, 0.955, f"{args.cat}, MC, "
+        what = "MC and data" if hd else "MC"
+        lat.DrawLatex(0.14, 0.955, f"{args.cat}, {what}, "
                                    f"{lo:.0f} < m_{{#mu#mu}} < {hi:.0f} GeV")
         stem = os.path.join(outdir, f"bkgMass_BDTscore{tag}")
         c.SaveAs(f"{stem}.png")
         print(f"    wrote {stem}.png")
-        keep.append((c, hb, hs, leg, lat, lines))
+        keep.append((c, hb, hs, hbs, hd, leg, lat, lines))
     return keep
 
 
@@ -1269,6 +1408,14 @@ def main():
     p.add_argument("--sig-indir", default=None,
                    help="signal snapshot directory, <dir>/<cat>/, when it is "
                         "not -d (default: the same as -d)")
+    p.add_argument("--data", default=None,
+                   help="data ids for the sidebands in the score plot, written "
+                        "with '=' since they are negative (--data=-41,-42), '' "
+                        "for none (default: every data snapshot in -d)")
+    p.add_argument("--blind", nargs=2, type=float, default=[115.0, 135.0],
+                   metavar=("LO", "HI"),
+                   help="mass window where data is never looked at "
+                        "(default: %(default)s, the snapshots' isH)")
     p.add_argument("--score-bins", type=int, default=50,
                    help="bins of the BDT score plot (default: %(default)s)")
     p.add_argument("--bdt-bins", default="0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
@@ -1350,6 +1497,14 @@ def main():
           f"mass {args.mass_range[0]:.0f}-{args.mass_range[1]:.0f} GeV, "
           f"{len(args.bdt_bins)-1} BDT slices")
     print("samples: " + ", ".join(str(SAMPLE_LABEL.get(s, s)) for s, _ in paths))
+    if args.data == "":
+        data_paths = []
+    elif args.data:
+        data_paths = explicit([int(x) for x in args.data.split(",")],
+                              args.indir, args.cat, args.year, "data")
+    else:
+        data_paths = discover(args.indir, args.cat, args.year, data=True)
+
     print("signal:  " + (", ".join(str(SAMPLE_LABEL.get(s, s)) for s, _ in sig_paths)
                          + f"  ({os.path.dirname(sig_paths[0][1])})"
                          if sig_paths else
@@ -1363,7 +1518,10 @@ def main():
         print(f"extra filter: {args.filter}")
     print("multiplicity control: " + ("on" if args.mult else "off"))
 
-    res = collect(paths, args, sig_paths)
+    print(f"data:    {len(data_paths)} file(s), sidebands {sideband_text(args)} GeV "
+          f"only (blinded {args.blind[0]:.0f}-{args.blind[1]:.0f})" if data_paths
+          else "data:    " + ("off (--data '')" if args.data == "" else "none found"))
+    res = collect(paths, args, sig_paths, data_paths)
     if res is None:
         sys.exit("nothing to plot")
     mvas = sorted({m for _, m in res["used"]})
@@ -1376,13 +1534,16 @@ def main():
     report_peak(members, gincl, gslice, tincl, tslice, args)
     if res["score_sig"]:
         report_score(res, tslice, args)
+    if res["score_data"]:
+        report_sidebands(res, args)
     if args.mult:
         report_nobdt(res["cls_incl"], res["hsamp"], args)
         report(res["table"], args)
     print()
     outdir = os.path.join(args.plotdir, args.cat)
     os.makedirs(outdir, exist_ok=True)
-    _keeps = draw_score(res, args, outdir) if res["score_sig"] else None
+    _keeps = (draw_score(res, args, outdir)
+              if res["score_sig"] or res["score_data"] else None)
     _keep = draw_processes(members, gincl, gslice, tincl, tslice, args,
                            outdir)
     if args.mult:
