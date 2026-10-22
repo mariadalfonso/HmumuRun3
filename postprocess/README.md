@@ -36,15 +36,80 @@ Add `-i` / `-o` to override input and output directories, `--unblind` on
 | `makeHistos.py` | fills all histograms in one event loop |
 | `SummaryPlots.py` | stacked data/MC plots |
 | `SummaryPlotsShapes.py` | shape-comparison plots |
+| `bkgMassInBDT.py` | background m_mumu in BDT slices, reads the snapshots directly (see below) |
 | `utils/prepareHisto.py` | RDataFrame booking |
 | `utils/histo_config.py` | regions, process groups, variable lists, plot groups |
 | `utils/plot_vars.py` | per-variable expression, binning, axis label |
 | `utils/plot_style.py` | CMS style, colours, canvas geometry |
 | `utils/LoadTree.py` | builds the snapshot TChain |
 
-Run the three entry points from this directory: `utils/` is imported as a
+Run the entry points from this directory: `utils/` is imported as a
 package, so `python makeHistos.py ...` works but calling it by a longer path
 from elsewhere does not.
+
+## Background mass in BDT slices: `bkgMassInBDT.py`
+
+A standalone study, not part of the two-step chain: it reads the snapshots
+directly and writes PNGs, with no histogram file in between. It checks whether
+the BDT sculpts the background m_mumu, and why.
+
+```bash
+python bkgMassInBDT.py 2024 --cat ggHcat                    # whatever has been run
+python bkgMassInBDT.py 2024 --cat ggHcat -s 103,104,101     # chosen samples
+python bkgMassInBDT.py 2024 --cat VLcat --mass-range 70 200
+```
+
+Snapshots from `/work/submit/$USER/HmumuRun3/ROOTFILES/<cat>/` (`-d`), the
+`Hmm.py` default output, so `run_all.py` needs no `-o`; `--sig-indir` if the
+signal is somewhere else. Plots to `~/public_html/HmumuRun3/bkgshape/<cat>/`
+(`-o`). MC only, weighted with `w_allSF` (times `boson_ptWeight` for DY).
+
+The samples are whatever snapshots are there, so a partial set is fine: the
+`signal_hmm` ids are signal, and every other MC snapshot is background except the
+alternatives to a nominal sample (DY 109/126-128, EWK Z 98/99, amcatnlo VV
+207-212, ttbar and ttW systematics), which are left out so they are not added
+on top of the nominal and listed at startup. The pT-binned DY (114-117,
+122-125) is the DY of `VHcat`, which has no inclusive DY; it is left out only
+when 100 or 103 is there too. All seven categories work the same way. `-s` and `--sig` take explicit id lists instead.
+
+The fraction of the mass range inside 120-130 GeV is the number every control
+compares. Its error is propagated from the event weights (each event's
+uncertainty scaled by its weight), so a slice dominated by a few heavy events
+gets the large error it should. Legends and tables also show the effective
+number of MC events, (sum w)^2 / sum w^2, and `--min-entries` cuts on it.
+
+The BDT-slice overlays use an ordered colour scale, dark for low score to light
+for high, so a trend with the score shows as a gradual change in colour.
+`bkgMass_BDTbins` has one pad per BDT bin with the DY and EWK Z mass shapes
+overlaid (`--bins-groups` for other process groups), on shared axes.
+
+Two controls, both printed as tables and drawn:
+
+| Control | Categories | Plots |
+|---|---|---|
+| process composition: is the mix changing, or one process's shape? | all | `bkgMass_BDTslices_all`, `bkgMass_BDTbins`, `bkgMass_BDTslices_<group>`, `bkgMass_composition`, `bkgMass_noBDT_byProcess` |
+| good-muon multiplicity: does the muon pairing sculpt the mass? | `VLcat`, `TTLcat` (`--mult` elsewhere) | `bkgMass_pairingControl`, `bkgMass_noBDT_pairing`, `bkgMass_noBDT_bySample_*`, `bkgMass_noBDT_dominant`, `bkgMass_BDTslices_n2`/`_n3ormore` |
+
+It also draws the signal against the background BDT score inside the mass
+window, `bkgMass_BDTscore` (linear and `_log`, both scaled to unit area), and
+prints S, B, S/B and S/sqrt(B) per BDT bin and for a cut at each bin's lower
+edge. The signal is the `signal_hmm` ids (10-15, 17) found; `--sig ''` turns it
+off. When data snapshots are in the same directory, the plot also shows the data
+sidebands and the MC background in the same sidebands, and a table compares the
+two per BDT bin (normalisation and shape). Data is only ever read outside the
+blinded window, 120-130 GeV by default (`--blind LO HI`; the snapshots' `isH`
+flag blinds 115-135); `--data ''` leaves it out. The plot is skipped when
+neither signal nor data is found.
+
+The deployed BDTs were trained on the MC events with even event numbers and are
+applied to all of them, so half the MC is scored by a model that has seen it:
+add `--filter "event % 2 == 1"` for MC score distributions and S/B numbers
+without that bias (yields halve; data is not affected).
+
+The multiplicity control is off where the category vetoes extra muons, since
+every event there has exactly two. The per-group plots and the composition
+are skipped when only one process group is present. The script's docstring
+(`-h`) has the reasoning behind both controls.
 
 ## Adding a variable
 
