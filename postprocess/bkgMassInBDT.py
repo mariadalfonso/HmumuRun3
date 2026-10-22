@@ -79,8 +79,13 @@ SAMPLE_LABEL = {10: "VBFH", 11: "ggH", 12: "WminusH", 13: "WplusH",
                 100: "DYto2L", 103: "DYto2Mu", 104: "DYto2Tau",
                 109: "DYto2Mu_105-160", 126: "DYto2Mu_50-130",
                 127: "DYto2Mu_130-200", 128: "DYto2Mu_200-400",
+                114: "DYto2L_pT0-100", 115: "DYto2L_pT100-200",
+                116: "DYto2L_pT200-400", 117: "DYto2L_pT400-600",
+                122: "DYto2L_pT0-100", 123: "DYto2L_pT100-200",
+                124: "DYto2L_pT200-400", 125: "DYto2L_pT400-600",
                 101: "EWK_Z2J", 98: "EWK_Z2J_105-160_hw", 99: "EWK_Z2J_105-160_py",
-                140: "TTto2L2Nu",
+                140: "TTto2L2Nu", 141: "TTto2L2Nu_train", 142: "TTto2L2Nu_train",
+                **{i: "TTto2L2Nu_syst" for i in range(143, 150)},
                 105: "TWminus", 106: "TbarWplus", 107: "TTtoLNu2Q",
                 201: "WZto2L2Q", 202: "ZZto2L2Nu", 203: "ZZto2L2Q",
                 204: "WZto3LNu", 205: "ZZto4L", 206: "WWto2L2Nu",
@@ -106,6 +111,10 @@ CATS = ["ggHcat", "VBFcat", "Zinvcat", "VLcat", "VHcat", "TTLcat", "TTHcat"]
 # (overlapping 101), the amcatnlo VV set, and systematic variations.
 # Left out of a discovered set so they are not added on top of the nominal;
 # -s still picks them deliberately.
+# The pT-binned DY sets are the DY of VHcat (pT(mumu) > 100 GeV), whose lists
+# have no 100/103; they cover the same events as 100/103, so they are left out
+# only when the inclusive DY is there too.
+DY_PTBINNED = {114, 115, 116, 117, 122, 123, 124, 125}
 ALTERNATIVES = {98, 99, 109, 126, 127, 128, *range(141, 150), *range(207, 213),
                 *range(242, 246)}
 
@@ -135,7 +144,7 @@ def explicit(ids, indir, cat, year, what):
 
 
 # process groups, in drawing order; a sample in no group falls into "other"
-GROUPS = [("DY", {100, 103, 104, 109, 126, 127, 128}),
+GROUPS = [("DY", {100, 103, 104, 109, 126, 127, 128, *DY_PTBINNED}),
           ("EWK Z", {98, 99, 101}),
           ("ttbar", {140}),
           ("single top", {105, 106, 107}),
@@ -1664,9 +1673,12 @@ def main():
                          args.indir, args.cat, args.year, "background")
     else:
         found = discover(args.indir, args.cat, args.year)
+        drop = set(ALTERNATIVES)
+        if {100, 103} & {sid for sid, _ in found}:
+            drop |= DY_PTBINNED
         paths = [(sid, p) for sid, p in found
-                 if sid not in SIGNAL and sid not in ALTERNATIVES]
-        left = [sid for sid, _ in found if sid in ALTERNATIVES]
+                 if sid not in SIGNAL and sid not in drop]
+        left = [sid for sid, _ in found if sid in drop]
         if left:
             print("  left out as alternatives to a nominal sample (-s to use): "
                   + ", ".join(str(SAMPLE_LABEL.get(x, x)) for x in left))

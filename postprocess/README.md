@@ -68,7 +68,9 @@ The samples are whatever snapshots are there, so a partial set is fine: the
 `signal_hmm` ids are signal, and every other MC snapshot is background except the
 alternatives to a nominal sample (DY 109/126-128, EWK Z 98/99, amcatnlo VV
 207-212, ttbar and ttW systematics), which are left out so they are not added
-on top of the nominal and listed at startup. `-s` and `--sig` take explicit id lists instead.
+on top of the nominal and listed at startup. The pT-binned DY (114-117,
+122-125) is the DY of `VHcat`, which has no inclusive DY; it is left out only
+when 100 or 103 is there too. All seven categories work the same way. `-s` and `--sig` take explicit id lists instead.
 
 The fraction of the mass range inside 120-130 GeV is the number every control
 compares. Its error is propagated from the event weights (each event's
