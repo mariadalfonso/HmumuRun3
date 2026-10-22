@@ -675,6 +675,11 @@ def objScaleSmear(df, year, mc):
 
     if year in ["12022", "22022", "12023", "22023", "2024", "2025", "2026"]:
 
+        # Jet_muonSubtrDeltaPhi exists from NanoAODv15 (2024+) only; for v12 (2022/2023)
+        # take the muon-subtracted jet direction to be the jet direction
+        if "Jet_muonSubtrDeltaPhi" not in {str(c) for c in df.GetColumnNames()}:
+            df = df.Define("Jet_muonSubtrDeltaPhi", "ROOT::RVecF(Jet_pt.size(), 0.f)")
+
         # recompute MET after JEC corrections, need to run before the Jet_pt redefine so that it picks what stored in nano
         df = df.Define("METvars",'computeMETforJECcorrection(corr_sf, RawPuppiMET_pt, RawPuppiMET_phi, Jet_chEmEF, Jet_neEmEF, Jet_muonSubtrFactor, Jet_muonSubtrDeltaPhi, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}")'.format(year,mc))
         df = df.Redefine("PuppiMET_pt","METvars.first")
