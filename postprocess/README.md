@@ -76,6 +76,9 @@ uncertainty scaled by its weight), so a slice dominated by a few heavy events
 gets the large error it should. Legends and tables also show the effective
 number of MC events, (sum w)^2 / sum w^2, and `--min-entries` cuts on it.
 
+The BDT-slice overlays use an ordered colour scale, dark for low score to light
+for high, so a trend with the score shows as a gradual change in colour.
+
 Two controls, both printed as tables and drawn:
 
 | Control | Categories | Plots |

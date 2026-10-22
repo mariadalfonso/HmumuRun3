@@ -575,8 +575,10 @@ def n_eff(h):
 
 
 def overlay(entries, xtitle, header, stem, args, legend_right=True,
-            normalize=True, logy=False, legend_x0=None):
+            normalize=True, logy=False, legend_x0=None, colors=None):
     """entries: list of (TH1D, legend label).
+
+    colors overrides the default categorical colours, one per entry.
 
     normalize=True compares shapes, each scaled to unit area. False keeps the
     w_allSF yields, so samples of very different size can be read against each
@@ -603,6 +605,8 @@ def overlay(entries, xtitle, header, stem, args, legend_right=True,
     leg.SetTextFont(43)
     leg.SetTextSize(LAB)
     hs = []
+    if colors:
+        cols = [colors[k] for k, (h, _) in enumerate(entries) if h.Integral() > 0]
     for k, (h0, lab) in enumerate(live):
         h = h0.Clone(h0.GetName() + ("_nrm" if normalize else "_abs"))
         if normalize:
@@ -1358,15 +1362,28 @@ def draw_composition(members, gslice, tslice, args, outdir):
     return c, stack, hs, leg, lat
 
 
+def slice_colors(n):
+    """n colours in order, dark blue to green to yellow-green (viridis without
+    its pale yellow end, which does not show on white)."""
+    ROOT.gStyle.SetPalette(ROOT.kViridis)
+    pal = ROOT.TColor.GetPalette()
+    top = int(0.85 * (pal.GetSize() - 1))
+    return [pal.At(int(top * i / max(n - 1, 1))) for i in range(n)]
+
+
 def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
     """Control 1: the mass in BDT slices, summed and per process group."""
     edges = args.bdt_bins
     nk = len(edges) - 1
     keep = []
 
+    scol = slice_colors(nk)
+
     def slices(hs):
-        return [(hs[k], f"{edges[k]:.1f}-{edges[k+1]:.1f}")
-                for k in range(nk) if n_eff(hs[k]) >= args.min_entries]
+        """(entries, colours) for one overlay, in BDT order."""
+        ks = [k for k in range(nk) if n_eff(hs[k]) >= args.min_entries]
+        return ([(hs[k], f"{edges[k]:.1f}-{edges[k+1]:.1f}") for k in ks],
+                [scol[k] for k in ks])
 
     # 1. the processes with no BDT cut, as yields, so their size is visible
     keep.append(overlay(
@@ -1376,11 +1393,12 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
         normalize=False, logy=True, legend_x0=0.48))
 
     # 2. all background summed, shape per BDT slice
+    ents, cols = slices(tslice)
     keep.append(overlay(
-        slices(tslice), "m_{#mu#mu} [GeV]",
+        ents, "m_{#mu#mu} [GeV]",
         f"{args.cat} background, {nk} BDT slices, all processes",
         os.path.join(outdir, "bkgMass_BDTslices_all"), args,
-        legend_x0=0.52))
+        legend_x0=0.52, colors=cols))
 
     # 2b. the same, one pad per BDT bin against the shape with no BDT cut,
     #     the pairing-control layout without the multiplicity split
@@ -1398,7 +1416,7 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
     #    inside each plot, so any change left is the BDT shaping that process
     if len(members) > 1:
         for g in members:
-            ents = slices({k: gslice[(g, k)] for k in range(nk)})
+            ents, cols = slices({k: gslice[(g, k)] for k in range(nk)})
             if len(ents) < 2:
                 print(f"    {g}: fewer than two populated BDT slices, skipped")
                 continue
@@ -1406,7 +1424,7 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
                 ents, "m_{#mu#mu} [GeV]",
                 f"{args.cat} {g}, in {nk} BDT slices",
                 os.path.join(outdir, f"bkgMass_BDTslices_{tag_of(g)}"), args,
-                legend_x0=0.52))
+                legend_x0=0.52, colors=cols))
 
         keep.append(draw_composition(members, gslice, tslice, args, outdir))
     return keep
