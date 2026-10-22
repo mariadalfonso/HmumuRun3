@@ -1296,6 +1296,133 @@ def draw_score(res, args, outdir):
     return keep
 
 
+def draw_grid_tight(panels, stem, cname, header, nx=4):
+    """One pad per BDT bin with no gaps between pads: one shared y range,
+    y labels on the first column only, x labels only on the pads with no
+    pad below, axis titles once for the whole canvas.
+
+    panels: list of (pad title, [(TH1D, legend label, colour), ...]),
+    each histogram scaled to unit area.
+    """
+    n = len(panels)
+    nx = min(nx, n)
+    ny = int(np.ceil(n / nx))
+    FW, FH = 330, 240                  # frame size of every pad, pixels
+    L, R, B, T = 70, 12, 50, 40        # outer margins, pixels
+    W, H = L + nx * FW + R, T + ny * FH + B
+    lab_px, tit_px, leg_px = 15, 18, 14
+
+    hs_all = []
+    for p, (_, entries) in enumerate(panels):
+        hs = []
+        for i, (h0, _, col) in enumerate(entries):
+            h = h0.Clone(f"{cname}_{p}_{i}")
+            if h.Integral() > 0:
+                h.Scale(1.0 / h.Integral())
+            h.SetLineColor(col)
+            h.SetLineWidth(2)
+            h.SetMarkerColor(col)
+            h.SetMarkerStyle(20)
+            h.SetMarkerSize(0.5)
+            hs.append(h)
+        hs_all.append(hs)
+    # one y range for every pad, from the bin contents: the error bars of a
+    # sparse slice would otherwise flatten all the others
+    ymax = max(h.GetMaximum() for hs in hs_all for h in hs)
+    ytop = 1.45 * ymax                  # room for the pad title and legend
+
+    c = ROOT.TCanvas(cname, "", W, H)
+    keep = [c]
+    for p, ((title, entries), hs) in enumerate(zip(panels, hs_all)):
+        i, j = p % nx, p // nx
+        below = p + nx < n              # another pad underneath
+        xl = 0 if i == 0 else L + i * FW
+        xr = L + (i + 1) * FW + (R if i == nx - 1 else 0)
+        yt = 0 if j == 0 else T + j * FH
+        yb = T + (j + 1) * FH + (0 if below else B)
+        c.cd()
+        pad = ROOT.TPad(f"{cname}_pad{p}", "", xl / W, 1 - yb / H, xr / W,
+                        1 - yt / H)
+        pw, ph = xr - xl, yb - yt
+        pad.SetLeftMargin(L / pw if i == 0 else 0.0)
+        pad.SetRightMargin(R / pw if i == nx - 1 else 0.0)
+        pad.SetTopMargin(T / ph if j == 0 else 0.0)
+        pad.SetBottomMargin(0.0 if below else B / ph)
+        pad.SetFillStyle(0)
+        pad.Draw()
+        pad.cd()
+        keep.append(pad)
+
+        h1 = hs[0]
+        h1.SetMinimum(0.0)
+        h1.SetMaximum(ytop)
+        xa, ya = h1.GetXaxis(), h1.GetYaxis()
+        xa.SetTitle("")
+        ya.SetTitle("")
+        for ax in (xa, ya):
+            ax.SetLabelFont(43)
+            ax.SetLabelSize(lab_px)
+            ax.SetNdivisions(505)
+        ya.SetLabelSize(lab_px if i == 0 else 0)
+        xa.SetLabelSize(0 if below else lab_px)
+        # labels at a shared pad edge would be cut in half: only the first
+        # column keeps the label at the left end of the axis, only the last
+        # column the one at the right end, only the bottom pads the y zero
+        if i > 0:
+            xa.ChangeLabel(1, -1, 0)
+        if i < nx - 1:
+            xa.ChangeLabel(-1, -1, 0)
+        if below:
+            ya.ChangeLabel(1, -1, 0)
+        xa.SetTickLength(0.03 * 330 / FW)
+        ya.SetTickLength(0.02)
+        for k, h in enumerate(hs):
+            h.Draw("HIST E" if k == 0 else "HIST E SAME")
+        pad.RedrawAxis()
+
+        # pad title and legend inside the frame, against its top
+        fl, fr = pad.GetLeftMargin(), 1 - pad.GetRightMargin()
+        ft = 1 - pad.GetTopMargin()
+        tx = ROOT.TLatex()
+        tx.SetNDC()
+        tx.SetTextFont(43)
+        tx.SetTextSize(tit_px)
+        tx.SetTextAlign(13)
+        tx.DrawLatex(fl + 0.03 * (fr - fl), ft - 0.04, title)
+        lg = ROOT.TLegend(fl + 0.50 * (fr - fl), ft - 0.04 - 0.085 * len(hs),
+                          fr - 0.01, ft - 0.03)
+        lg.SetBorderSize(0)
+        lg.SetFillStyle(0)
+        lg.SetTextFont(43)
+        lg.SetTextSize(leg_px)
+        for h, (_, label, _) in zip(hs, entries):
+            lg.AddEntry(h, label, "l")
+        lg.Draw()
+        keep += [hs, tx, lg]
+
+    # axis titles and the header, once, on the canvas
+    c.cd()
+    lat = ROOT.TLatex()
+    lat.SetNDC()
+    lat.SetTextFont(43)
+    lat.SetTextSize(tit_px)
+    lat.SetTextAlign(31)
+    lat.DrawLatex((L + nx * FW) / W, 0.12 * B / H, "m_{#mu#mu} [GeV]")
+    lat.SetTextAngle(90)
+    lat.SetTextAlign(23)
+    lat.DrawLatex(0.12 * L / W, 1 - (T + 0.5 * ny * FH) / H, "Normalized Events")
+    hd = ROOT.TLatex()
+    hd.SetNDC()
+    hd.SetTextFont(43)
+    hd.SetTextSize(tit_px)
+    hd.SetTextAlign(12)
+    hd.DrawLatex(L / W, 1 - 0.5 * T / H, header)
+    keep += [lat, hd]
+    c.SaveAs(f"{stem}.png")
+    print(f"    wrote {stem}.png")
+    return keep
+
+
 def draw_composition(members, gslice, tslice, args, outdir):
     """Stacked share of each process group per BDT bin."""
     edges = args.bdt_bins
@@ -1400,17 +1527,28 @@ def draw_processes(members, gincl, gslice, tincl, tslice, args, outdir):
         os.path.join(outdir, "bkgMass_BDTslices_all"), args,
         legend_x0=0.52, colors=cols))
 
-    # 2b. the same, one pad per BDT bin against the shape with no BDT cut,
-    #     the pairing-control layout without the multiplicity split
-    live = [k for k in range(nk) if n_eff(tslice[k]) >= args.min_entries]
-    if live:
-        panels = [(f"BDT {edges[k]:.1f}-{edges[k+1]:.1f}",
-                   [(tincl, "no BDT cut", ROOT.kAzure + 2),
-                    (tslice[k], f"this bin ({n_eff(tslice[k]):.0f} eff.)",
-                     ROOT.kRed + 1)])
-                  for k in live]
-        keep.append(draw_grid(panels, os.path.join(outdir, "bkgMass_BDTbins"),
-                              "c_bins"))
+    # 2b. one pad per BDT bin, the chosen process groups (DY and EWK Z by
+    #     default) overlaid: whether the two main backgrounds of the bin
+    #     share a mass shape, bin by bin
+    want = [g.strip() for g in args.bins_groups.split(",") if g.strip()]
+    gcols = [ROOT.kAzure + 2, ROOT.kRed + 1, ROOT.kGreen + 3, ROOT.kOrange + 7]
+    shown = [g for g in want if g in members]
+    panels = []
+    for k in range(nk):
+        ents = [(gslice[(g, k)], f"{g} ({n_eff(gslice[(g, k)]):.0f})",
+                 gcols[i % len(gcols)])
+                for i, g in enumerate(shown)
+                if n_eff(gslice[(g, k)]) >= args.min_entries]
+        if ents:
+            panels.append((f"BDT {edges[k]:.1f}-{edges[k+1]:.1f}", ents))
+    if panels:
+        keep.append(draw_grid_tight(
+            panels, os.path.join(outdir, "bkgMass_BDTbins"), "c_bins",
+            f"{args.cat}: {' vs '.join(shown)} mass per BDT bin "
+            "(unit area; effective MC events in brackets)"))
+    else:
+        print(f"    none of {', '.join(want)} has a populated BDT bin, so "
+              "bkgMass_BDTbins is skipped")
 
     # 3. the same, one process group at a time: the composition is fixed
     #    inside each plot, so any change left is the BDT shaping that process
@@ -1469,6 +1607,9 @@ def main():
                         "Use 70 200 to see the Z as well.")
     p.add_argument("--nbins", type=int, default=40,
                    help="mass bins (default: %(default)s; widen when statistics are thin)")
+    p.add_argument("--bins-groups", default="DY,EWK Z",
+                   help="process groups overlaid in each pad of "
+                        "bkgMass_BDTbins (default: %(default)s)")
     p.add_argument("--mva", default=None,
                    help="discriminant branch; autodetected as discrMVA or discrMVA0")
     p.add_argument("--cat-filter", default="category>0",

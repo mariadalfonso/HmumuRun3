@@ -78,6 +78,8 @@ number of MC events, (sum w)^2 / sum w^2, and `--min-entries` cuts on it.
 
 The BDT-slice overlays use an ordered colour scale, dark for low score to light
 for high, so a trend with the score shows as a gradual change in colour.
+`bkgMass_BDTbins` has one pad per BDT bin with the DY and EWK Z mass shapes
+overlaid (`--bins-groups` for other process groups), on shared axes.
 
 Two controls, both printed as tables and drawn:
 
