@@ -577,7 +577,7 @@ def main():
     print(f"sideband bins used for chi2: {len(sb_idx)} of {nbins}")
 
     # ---- fit every candidate -------------------------------------------
-    names = args.candidates or sorted(pdefs.BKG_FACTORIES)
+    names = args.candidates or sorted(pdefs.BKG_NPAR)
     print(f"\nfitting {len(names)} candidates on the sideband")
     print(f"{'model':<8}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")

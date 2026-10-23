@@ -1,35 +1,159 @@
-"""
-pdfDefinitions.py -- the PDF definitions shared by every fit script.
-
-Design rules:
-
-  1. NO ROOT CLASSES IMPORTED AT MODULE LEVEL. `import ROOT` only, and
-     classes resolved inside the functions, so load order cannot matter.
-
-  2. NO COMBINE DEPENDENCY. Every background PDF here is plain ROOT. The
-     signal shape picks RooCrystalBall (ROOT >= 6.24) when it exists and
-     falls back to Combine's RooDoubleCBFast otherwise -- identical
-     function, identical arguments, so a shape fitted with one is
-     evaluated unchanged by the other. So this module imports in the plain
-     conda environment; only workspace writing (RooMultiPdf) needs the
-     container.
-
-  3. EVERY CANDIDATE OWNS ITS PARAMETERS. Each candidate is built by a
-     factory with its own variables, so fitting one cannot move another's
-     starting point and the result does not depend on fit order.
-
-  4. ONE SET OF BOUNDS, ONE SET OF NAMES. Defined here and imported, not
-     duplicated in each script.
-
-The signal factory returns (pdf, bundle) with the bundle layout
-sigFit.fit_one expects: nom / nuis / mh / func / cfg.
-"""
-
+# pdfDefinitions.py
 import ROOT
+from ROOT import RooRealVar, RooBernstein, RooChebychev
+from ROOT import RooExponential, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
+
+class PDFDefinitions:
+    """Centralized PDF definitions for signal and background fits"""
+
+    @staticmethod
+    def create_signal_pdfs(x, tag, suffix="", scale_unc=None, res_unc=None,
+                           correlated=True, bounds=None):
+        """Create double Crystal Ball signal PDFs
+
+            mean  = (cb_mu + MH - MH_REF) * (1 + scale_unc * CMS_scale_m)
+            sigma =  cb_sigma             * (1 + res_unc   * CMS_res_m)
+
+        MH is the mass hypothesis (an additive shift; Combine's -m), not a
+        systematic. CMS_scale_m / CMS_res_m are unit Gaussians, exactly
+        degenerate with cb_mu / cb_sigma, so the caller pins them for the MC
+        fit and releases them afterwards.
+        """
+        scale_unc = SCALE_UNC if scale_unc is None else scale_unc
+        res_unc = RES_UNC if res_unc is None else res_unc
+        bounds = BOUNDS if bounds is None else bounds
+        RooDSCB, cls_name = dscb_class()
+
+        cb_mu = RooRealVar(f'cb_mu{suffix}{tag}', 'cb_mu', *bounds['mu'])
+        cb_sigma = RooRealVar(f'cb_sigma{suffix}{tag}', 'cb_sigma', *bounds['sigma'])
+        cb_alphaL = RooRealVar(f'cb_alphaL{suffix}{tag}', 'cb_alphaL', *bounds['alphaL'])
+        cb_alphaR = RooRealVar(f'cb_alphaR{suffix}{tag}', 'cb_alphaR', *bounds['alphaR'])
+        cb_nL = RooRealVar(f'cb_nL{suffix}{tag}', 'cb_nL', *bounds['nL'])
+        cb_nR = RooRealVar(f'cb_nR{suffix}{tag}', 'cb_nR', *bounds['nR'])
+
+        # mass hypothesis and the two shape nuisances
+        mh = RooRealVar('MH', 'Higgs mass hypothesis', MH_REF, 120., 130.)
+        mh.setConstant(True)
+        nsuf = "" if correlated else f'{suffix}{tag}'
+        cms_scale_m = RooRealVar(f'CMS_scale_m{nsuf}', 'muon scale', 0., -5., 5.)
+        cms_res_m = RooRealVar(f'CMS_res_m{nsuf}', 'muon resolution', 0., -5., 5.)
+
+        cb_mean = RooFormulaVar(f'cb_mean{suffix}{tag}', 'mean',
+                                f'(@0 + @1 - {MH_REF})*(1 + {scale_unc}*@2)',
+                                RooArgList(cb_mu, mh, cms_scale_m))
+        cb_sigmaEff = RooFormulaVar(f'cb_sigmaEff{suffix}{tag}', 'sigmaEff',
+                                    f'@0*(1 + {res_unc}*@1)',
+                                    RooArgList(cb_sigma, cms_res_m))
+
+        # bwsHrare.py looks the PDF up as crystal_ball_<tag>; keep it.
+        pdf_cb = RooDSCB(f'crystal_ball{suffix}{tag}', 'crystal_ball', x,
+                         cb_mean, cb_sigmaEff, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
+
+        return {
+            'pdf': pdf_cb,
+            'params': {
+                'mu': cb_mu, 'sigma': cb_sigma, 'alphaL': cb_alphaL,
+                'nL': cb_nL, 'alphaR': cb_alphaR, 'nR': cb_nR
+            },
+            'nuis': {'scale': cms_scale_m, 'res': cms_res_m},
+            'mh': mh,
+            'func': {'mean': cb_mean, 'sigma': cb_sigmaEff},
+            'cfg': {'scale_unc': scale_unc, 'res_unc': res_unc,
+                    'correlated': correlated, 'mh_ref': MH_REF,
+                    'pdf_class': cls_name,
+                    'model': 'double-sided Crystal Ball'},
+        }
+
+    @staticmethod
+    def create_bkg_pdfs(x, tag):
+        """
+        Create all background PDFs - KEEP ALL OBJECTS IN MEMORY!
+
+        Every candidate owns its parameters (keys and names start with the
+        candidate name), so fitting one cannot move another's starting point.
+
+        Returns dict with:
+            - 'pdfs': final PDF objects to use
+            - 'params': all RooRealVar parameters
+            - 'components': intermediate PDF components
+            - 'formulas': all RooFormulaVar objects
+        """
+
+        params = {}
+        pdfs = {}
+        components = {}  # Store intermediate PDFs!
+        formulas = {}    # Store formula variables!
+
+        # ===== BERNSTEIN PDFs =====
+        # order+1 coefficients, all in [0, 10]: non-negative keeps the PDF positive
+        for o in range(6):
+            for i in range(o + 1):
+                params[f'bern{o}_c{i}'] = RooRealVar(f'bern{o}_c{i}_{tag}', f'c{i}',
+                                                     1.0 if i == 0 else 0.5, 0., 10.)
+            pdfs[f'bern{o}'] = RooBernstein(f'bern{o}_{tag}', f'bern{o}', x,
+                                            RooArgList(*[params[f'bern{o}_c{i}'] for i in range(o + 1)]))
+
+        # ===== CHEBYCHEV PDFs =====
+        # `order` coefficients in [-1, 1]
+        for o in (1, 2, 3):
+            for i in range(o):
+                params[f'cheb{o}_c{i}'] = RooRealVar(f'cheb{o}_c{i}_{tag}', f'c{i}',
+                                                     0.1 if i == 0 else 0., -1., 1.)
+            pdfs[f'cheb{o}'] = RooChebychev(f'cheb{o}_{tag}', f'cheb{o}', x,
+                                            RooArgList(*[params[f'cheb{o}_c{i}'] for i in range(o)]))
+
+        # ===== EXPONENTIAL PDFs =====
+        # ===== POWER PDFs =====
+        # sum of n terms with fractions f0, (1-f0)*f1, rest: each in [0, 1], so
+        # the sum stays positive
+        for kind in ('exp', 'pow'):
+            for n in (1, 2, 3):
+                comps = []
+                for i in range(n):
+                    if kind == 'exp':
+                        params[f'{kind}{n}_p{i}'] = RooRealVar(f'{kind}{n}_p{i}_{tag}', f'p{i}',
+                                                               -0.02 * (i + 1), -2., 0.)
+                        components[f'{kind}{n}_c{i}'] = RooExponential(f'{kind}{n}_c{i}_{tag}', f'comp{i}', x,
+                                                                       params[f'{kind}{n}_p{i}'])
+                    else:
+                        params[f'{kind}{n}_p{i}'] = RooRealVar(f'{kind}{n}_p{i}_{tag}', f'p{i}',
+                                                               -2.5 * (i + 1), -20., 0.)
+                        components[f'{kind}{n}_c{i}'] = RooGenericPdf(f'{kind}{n}_c{i}_{tag}', f'comp{i}',
+                                                                      'TMath::Power(@0,@1)',
+                                                                      RooArgList(x, params[f'{kind}{n}_p{i}']))
+                    comps.append(components[f'{kind}{n}_c{i}'])
+
+                if n == 1:
+                    pdfs[f'{kind}1'] = comps[0]
+                    continue
+
+                for i in range(n - 1):
+                    params[f'{kind}{n}_f{i}'] = RooRealVar(f'{kind}{n}_f{i}_{tag}', f'f{i}', 0.5, 0., 1.)
+                formulas[f'{kind}{n}_frac0'] = RooFormulaVar(f'{kind}{n}_frac0_{tag}', '@0',
+                                                             RooArgList(params[f'{kind}{n}_f0']))
+                if n == 3:
+                    formulas[f'{kind}{n}_frac1'] = RooFormulaVar(f'{kind}{n}_frac1_{tag}', '(1-@0)*@1',
+                                                                 RooArgList(params[f'{kind}{n}_f0'],
+                                                                            params[f'{kind}{n}_f1']))
+                pdfs[f'{kind}{n}'] = RooAddPdf(f'{kind}{n}_{tag}', f'{kind}{n}',
+                                               RooArgList(*comps),
+                                               RooArgList(*[formulas[f'{kind}{n}_frac{i}'] for i in range(n - 1)]))
+
+        # Return EVERYTHING to keep all references alive
+        return {
+            'pdfs': pdfs,
+            'params': params,
+            'components': components,
+            'formulas': formulas
+        }
 
 
 # ---------------------------------------------------------------------------
-# configuration
+# Below: configuration and helpers for the parametricfit scripts. Unlike
+# analysis/FITS/pdfDefinitions.py, no Combine class is imported at module
+# level: the signal picks RooCrystalBall when this ROOT has it and Combine's
+# RooDoubleCBFast otherwise (same function, same arguments), so the module
+# imports in plain conda and only the workspace step needs the container.
 # ---------------------------------------------------------------------------
 
 MH_REF = 125.0            # reference mass the shape is fitted at
@@ -50,15 +174,27 @@ BOUNDS = {
     "nR":     (5.0,      0.1,  50.0),
 }
 
+# number of FREE parameters, for the F-test and for ndf
+BKG_NPAR = {
+    **{f"bern{o}": o + 1 for o in range(6)},
+    **{f"cheb{o}": o for o in (1, 2, 3)},
+    **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
+    **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
+}
+
+# candidates that are nested within one another, for the F-test
+BKG_FAMILIES = {
+    "bernstein": [f"bern{o}" for o in range(6)],
+    "chebychev": [f"cheb{o}" for o in (1, 2, 3)],
+    "exponential": [f"exp{n}" for n in (1, 2, 3)],
+    "power": [f"pow{n}" for n in (1, 2, 3)],
+}
+
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
               "libHiggsAnalysisCombinedLimit.so"
 
 _combine_loaded = False
 
-
-# ---------------------------------------------------------------------------
-# class resolution
-# ---------------------------------------------------------------------------
 
 def load_combine(path=None, quiet=False):
     """Load the Combine library, once. Only needed for RooMultiPdf (and
@@ -92,166 +228,15 @@ def dscb_class():
     return cls, "RooDoubleCBFast"
 
 
-# ---------------------------------------------------------------------------
-# signal
-# ---------------------------------------------------------------------------
-
 def create_signal_pdf(x, tag, scale_unc=None, res_unc=None,
-                      correlated=True, bounds=None, name=None):
-    """Double-sided Crystal Ball with mass-hypothesis and nuisance hooks.
-
-        mean  = (cb_mu + MH - MH_REF) * (1 + scale_unc * CMS_scale_m)
-        sigma =  cb_sigma             * (1 + res_unc   * CMS_res_m)
-
-    MH is the mass hypothesis: an ADDITIVE shift, so the same workspace
-    can be evaluated at other masses. Named MH because that is what
-    Combine's -m looks for. Not a systematic.
-
-    CMS_scale_m / CMS_res_m are unit Gaussians. They are exactly
-    degenerate with cb_mu / cb_sigma, so the caller must pin them for the
-    MC fit and release them afterwards.
-
-    Returns (pdf, bundle). Everything lives in the bundle because PyROOT
-    collects any RooFit object nothing holds a reference to.
-    """
-    scale_unc = SCALE_UNC if scale_unc is None else scale_unc
-    res_unc = RES_UNC if res_unc is None else res_unc
-    cls, cls_name = dscb_class()
-    bounds = BOUNDS if bounds is None else bounds
-
-    nom = {k: ROOT.RooRealVar(f"cb_{k}_{tag}", f"cb_{k}", *v)
-           for k, v in bounds.items()}
-
-    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", MH_REF, 120.0, 130.0)
-    mh.setConstant(True)
-
-    nsuf = "" if correlated else f"_{tag}"
-    nuis = {
-        "scale": ROOT.RooRealVar(f"CMS_scale_m{nsuf}", "muon scale",
-                                 0.0, -5.0, 5.0),
-        "res": ROOT.RooRealVar(f"CMS_res_m{nsuf}", "muon resolution",
-                               0.0, -5.0, 5.0),
-    }
-
-    mean = ROOT.RooFormulaVar(
-        f"cb_mean_{tag}", "mean",
-        f"(@0 + @1 - {MH_REF})*(1 + {scale_unc}*@2)",
-        ROOT.RooArgList(nom["mu"], mh, nuis["scale"]))
-    sigma = ROOT.RooFormulaVar(
-        f"cb_sigmaEff_{tag}", "sigmaEff",
-        f"@0*(1 + {res_unc}*@1)",
-        ROOT.RooArgList(nom["sigma"], nuis["res"]))
-
-    # bwsHrare.py looks the PDF up as crystal_ball_<tag>; keep it.
-    pdf = cls(name or f"crystal_ball_{tag}", "crystal_ball",
-              x, mean, sigma,
-              nom["alphaL"], nom["nL"], nom["alphaR"], nom["nR"])
-
-    return pdf, {"nom": nom, "nuis": nuis, "mh": mh,
-                 "func": {"mean": mean, "sigma": sigma},
-                 "cfg": {"scale_unc": scale_unc, "res_unc": res_unc,
-                         "correlated": correlated, "mh_ref": MH_REF,
-                         "pdf_class": cls_name,
-                         "model": "double-sided Crystal Ball"}}
-
-
-# ---------------------------------------------------------------------------
-# background
-# ---------------------------------------------------------------------------
-# Each factory builds ONE candidate with its own RooRealVars, so no two
-# candidates share a parameter and fit order cannot matter. Coefficient
-# ranges are deliberately wide: a coefficient pinned against a bound makes
-# a good model look bad, and the discrete-profiling envelope needs each
-# candidate fitted at its own best point, not at the edge of a box.
-
-def _bernstein(x, tag, order):
-    """Bernstein of the given order: order+1 coefficients, all in [0, 10].
-
-    Bernstein coefficients are non-negative by construction (that is what
-    keeps the PDF positive), so the lower bound of 0 is physical; the
-    upper bound is loose.
-    """
-    pars = [ROOT.RooRealVar(f"bern{order}_c{i}_{tag}", f"c{i}",
-                            1.0 if i == 0 else 0.5, 0.0, 10.0)
-            for i in range(order + 1)]
-    pdf = ROOT.RooBernstein(f"bern{order}_{tag}", f"bern{order}",
-                            x, ROOT.RooArgList(*pars))
-    return pdf, pars
-
-
-def _chebychev(x, tag, order):
-    """Chebychev of the given order: `order` coefficients in [-1, 1]."""
-    pars = [ROOT.RooRealVar(f"cheb{order}_c{i}_{tag}", f"c{i}",
-                            0.1 if i == 0 else 0.0, -1.0, 1.0)
-            for i in range(order)]
-    pdf = ROOT.RooChebychev(f"cheb{order}_{tag}", f"cheb{order}",
-                            x, ROOT.RooArgList(*pars))
-    return pdf, pars
-
-
-def _sum_of(x, tag, kind, nterms):
-    """Sum of `nterms` exponentials or power laws, with recursive
-    fractions so the coefficients stay in [0, 1] and the sum is positive.
-
-    RooAddPdf with recursiveFraction=True means coefficient i is the
-    fraction of what is left after the first i-1 terms, which removes the
-    "fractions must sum to < 1" constraint that trips up the explicit
-    form.
-    """
-    comps, pars = [], []
-    for i in range(nterms):
-        if kind == "exp":
-            p = ROOT.RooRealVar(f"{kind}{nterms}_p{i}_{tag}", f"p{i}",
-                                -0.02 * (i + 1), -2.0, 0.0)
-            c = ROOT.RooExponential(f"{kind}{nterms}_c{i}_{tag}",
-                                    f"comp{i}", x, p)
-        else:
-            p = ROOT.RooRealVar(f"{kind}{nterms}_p{i}_{tag}", f"p{i}",
-                                -2.5 * (i + 1), -20.0, 0.0)
-            c = ROOT.RooGenericPdf(f"{kind}{nterms}_c{i}_{tag}", f"comp{i}",
-                                   "TMath::Power(@0,@1)",
-                                   ROOT.RooArgList(x, p))
-        comps.append(c)
-        pars.append(p)
-
-    if nterms == 1:
-        return comps[0], pars, comps
-
-    fracs = [ROOT.RooRealVar(f"{kind}{nterms}_f{i}_{tag}", f"f{i}",
-                             0.5, 0.0, 1.0) for i in range(nterms - 1)]
-    pdf = ROOT.RooAddPdf(f"{kind}{nterms}_{tag}", f"{kind}{nterms}",
-                         ROOT.RooArgList(*comps), ROOT.RooArgList(*fracs),
-                         True)                      # recursive fractions
-    return pdf, pars + fracs, comps
-
-
-# name -> builder. Add a candidate here and every script sees it.
-BKG_FACTORIES = {
-    **{f"bern{o}": (lambda x, t, o=o: _bernstein(x, t, o)) for o in range(6)},
-    **{f"cheb{o}": (lambda x, t, o=o: _chebychev(x, t, o)) for o in (1, 2, 3)},
-    # no [:2] slice: the third return value holds the components, and
-    # dropping it lets PyROOT delete them under the RooAddPdf (segfault)
-    **{f"exp{n}": (lambda x, t, n=n: _sum_of(x, t, "exp", n))
-       for n in (1, 2, 3)},
-    **{f"pow{n}": (lambda x, t, n=n: _sum_of(x, t, "pow", n))
-       for n in (1, 2, 3)},
-}
-
-# number of FREE parameters, for the F-test and for ndf
-BKG_NPAR = {
-    **{f"bern{o}": o + 1 for o in range(6)},
-    **{f"cheb{o}": o for o in (1, 2, 3)},
-    **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
-    **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
-}
-
-# candidates that are nested within one another, for the F-test
-BKG_FAMILIES = {
-    "bernstein": [f"bern{o}" for o in range(6)],
-    "chebychev": [f"cheb{o}" for o in (1, 2, 3)],
-    "exponential": [f"exp{n}" for n in (1, 2, 3)],
-    "power": [f"pow{n}" for n in (1, 2, 3)],
-}
+                      correlated=True, bounds=None):
+    """PDFDefinitions.create_signal_pdfs as (pdf, bundle), the layout
+    sigFit.fit_one expects: nom / nuis / mh / func / cfg."""
+    out = PDFDefinitions.create_signal_pdfs(x, f"_{tag}", scale_unc=scale_unc,
+                                            res_unc=res_unc, correlated=correlated,
+                                            bounds=bounds)
+    return out['pdf'], {"nom": out['params'], "nuis": out['nuis'],
+                        "mh": out['mh'], "func": out['func'], "cfg": out['cfg']}
 
 
 def create_bkg_pdf(x, tag, name):
@@ -260,8 +245,9 @@ def create_bkg_pdf(x, tag, name):
     Returns (pdf, keep) -- `keep` holds every object that must stay
     referenced, which PyROOT otherwise collects.
     """
-    if name not in BKG_FACTORIES:
+    if name not in BKG_NPAR:
         raise KeyError(f"unknown background model '{name}'; "
-                       f"known: {sorted(BKG_FACTORIES)}")
-    pdf, pars, *extra = BKG_FACTORIES[name](x, tag)   # extra = [comps]
-    return pdf, {"params": pars, "pdf": pdf, "extra": extra}
+                       f"known: {sorted(BKG_NPAR)}")
+    out = PDFDefinitions.create_bkg_pdfs(x, tag)
+    pars = [v for k, v in out['params'].items() if k.startswith(f"{name}_")]
+    return out['pdfs'][name], {"params": pars, "pdf": out['pdfs'][name], "all": out}
