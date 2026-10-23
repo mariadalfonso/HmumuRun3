@@ -10,11 +10,11 @@ class PDFDefinitions:
     def create_signal_pdfs(x, tag, suffix=""):
         """Create double Crystal Ball signal PDFs"""
         cb_mu = RooRealVar(f'cb_mu{suffix}{tag}', 'cb_mu', 125., 120., 130.)
-        cb_sigma = RooRealVar(f'cb_sigma{suffix}{tag}', 'cb_sigma', 3, 0.5, 6.)
-        cb_alphaL = RooRealVar(f'cb_alphaL{suffix}{tag}', 'cb_alphaL', 2., 0., 5.)
-        cb_alphaR = RooRealVar(f'cb_alphaR{suffix}{tag}', 'cb_alphaR', 2., 0., 5.)
-        cb_nL = RooRealVar(f'cb_nL{suffix}{tag}', 'cb_nL', 3., 0., 5.)
-        cb_nR = RooRealVar(f'cb_nR{suffix}{tag}', 'cb_nR', 8., 0., 12.)
+        cb_sigma = RooRealVar(f'cb_sigma{suffix}{tag}', 'cb_sigma', 2., 0.5, 6.)
+        cb_alphaL = RooRealVar(f'cb_alphaL{suffix}{tag}', 'cb_alphaL', 1.5, 0.1, 3.)
+        cb_alphaR = RooRealVar(f'cb_alphaR{suffix}{tag}', 'cb_alphaR', 1.5, 0.1, 3.)
+        cb_nL = RooRealVar(f'cb_nL{suffix}{tag}', 'cb_nL', 5., 0.1, 50.)
+        cb_nR = RooRealVar(f'cb_nR{suffix}{tag}', 'cb_nR', 5., 0.1, 50.)
 
         pdf_cb = RooDoubleCBFast(f'crystal_ball{suffix}{tag}', 'crystal_ball', x, 
                                  cb_mu, cb_sigma, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
@@ -45,12 +45,12 @@ class PDFDefinitions:
         formulas = {}    # Store formula variables!
         
         # ===== BERNSTEIN PDFs =====
-        params['bern_c0'] = RooRealVar(f'bern_c0_{tag}', 'bern_c0', 1.8, 0.5, 2.)
-        params['bern_c1'] = RooRealVar(f'bern_c1_{tag}', 'bern_c1', 1., 0., 2.)
-        params['bern_c2'] = RooRealVar(f'bern_c2_{tag}', 'bern_c2', 0.5, 0., 1.5)
-        params['bern_c3'] = RooRealVar(f'bern_c3_{tag}', 'bern_c3', 0.1, 0., 1.)
-        params['bern_c4'] = RooRealVar(f'bern_c4_{tag}', 'bern_c4', 0.5, 0., 5.)
-        params['bern_c5'] = RooRealVar(f'bern_c5_{tag}', 'bern_c5', 1e-2, 0., 0.1)
+        params['bern_c0'] = RooRealVar(f'bern_c0_{tag}', 'bern_c0', 1., 0., 10.)
+        params['bern_c1'] = RooRealVar(f'bern_c1_{tag}', 'bern_c1', 0.5, 0., 10.)
+        params['bern_c2'] = RooRealVar(f'bern_c2_{tag}', 'bern_c2', 0.5, 0., 10.)
+        params['bern_c3'] = RooRealVar(f'bern_c3_{tag}', 'bern_c3', 0.5, 0., 10.)
+        params['bern_c4'] = RooRealVar(f'bern_c4_{tag}', 'bern_c4', 0.5, 0., 10.)
+        params['bern_c5'] = RooRealVar(f'bern_c5_{tag}', 'bern_c5', 0.5, 0., 10.)
 
         pdfs['bern0'] = RooBernstein(f'bern0_{tag}', 'bern0', x, 
                                       RooArgList(params['bern_c0']))
@@ -70,9 +70,9 @@ class PDFDefinitions:
                                                 params['bern_c4'], params['bern_c5']))
 
         # ===== CHEBYCHEV PDFs =====
-        params['chebychev_c0'] = RooRealVar(f'chebychev_c0_{tag}', 'chebychev_c0', 1.08, -1.1, 10.)
-        params['chebychev_c1'] = RooRealVar(f'chebychev_c1_{tag}', 'chebychev_c1', 0.4, -1., 1.)
-        params['chebychev_c2'] = RooRealVar(f'chebychev_c2_{tag}', 'chebychev_c2', 0.01, -0.1, 0.1)
+        params['chebychev_c0'] = RooRealVar(f'chebychev_c0_{tag}', 'chebychev_c0', 0.1, -1., 1.)
+        params['chebychev_c1'] = RooRealVar(f'chebychev_c1_{tag}', 'chebychev_c1', 0., -1., 1.)
+        params['chebychev_c2'] = RooRealVar(f'chebychev_c2_{tag}', 'chebychev_c2', 0., -1., 1.)
         params['chebychev_c3'] = RooRealVar(f'chebychev_c3_{tag}', 'chebychev_c3', 0., -1., 1.)
 
         pdfs['chebychev1'] = RooChebychev(f'chebychev1_{tag}', 'chebychev1', x,
@@ -91,9 +91,9 @@ class PDFDefinitions:
                                      params['gauss_mu'], params['gauss_sigma'])
 
         # ===== EXPONENTIAL PDFs =====
-        params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -0.5, 0.)
-        params['exp_p2'] = RooRealVar(f'exp_p2{tag}', 'exp_p2', -1e-2, -10, 10)
-        params['exp_p3'] = RooRealVar(f'exp_p3{tag}', 'exp_p3', -1e-3, -10, 0)
+        params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.02, -2., 0.)
+        params['exp_p2'] = RooRealVar(f'exp_p2{tag}', 'exp_p2', -0.04, -2., 0.)
+        params['exp_p3'] = RooRealVar(f'exp_p3{tag}', 'exp_p3', -0.06, -2., 0.)
         params['exp_c1'] = RooRealVar(f'exp_c1{tag}', 'exp_c1', 0.5, 0., 1.)
         params['exp_c2'] = RooRealVar(f'exp_c2{tag}', 'exp_c2', 0.5, 0., 1.)
 
@@ -117,16 +117,16 @@ class PDFDefinitions:
                                  RooArgList(formulas['exp_frac1'], formulas['exp_frac2']))
 
         # ===== POWER PDFs =====
-        params['frac1'] = RooRealVar(f'frac1{tag}', 'frac1', 0.3, 0., 1.)
+        params['frac1'] = RooRealVar(f'frac1{tag}', 'frac1', 0.5, 0., 1.)
         params['frac2'] = RooRealVar(f'frac2{tag}', 'frac2', 0.5, 0., 1.)
         formulas['pow_frac1'] = RooFormulaVar(f"pow_frac1{tag}", "@0", 
                                               RooArgList(params['frac1']))
         formulas['pow_frac2'] = RooFormulaVar(f"pow_frac2{tag}", "(1-@0)*@1", 
                                               RooArgList(params['frac1'], params['frac2']))
 
-        params['pow_p1'] = RooRealVar(f'p1{tag}', 'p1', -2.555, -10., 0.)
-        params['pow_p2'] = RooRealVar(f'p2{tag}', 'p2', -8., -10., 0.)
-        params['pow_p3'] = RooRealVar(f'p3{tag}', 'p3', -10., -10., 0.)
+        params['pow_p1'] = RooRealVar(f'p1{tag}', 'p1', -2.5, -20., 0.)
+        params['pow_p2'] = RooRealVar(f'p2{tag}', 'p2', -5., -20., 0.)
+        params['pow_p3'] = RooRealVar(f'p3{tag}', 'p3', -7.5, -20., 0.)
 
         # Store intermediate power PDFs
         components['pdf_pow1'] = RooGenericPdf(f'pow1_{tag}', 'pow1',
