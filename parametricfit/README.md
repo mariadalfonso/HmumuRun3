@@ -33,8 +33,8 @@ refitted there.
   (L₂₀₂₄ + L₂₀₂₅ + L₂₀₂₆)/L₂₀₂₄ (`SIGNAL_PROXY` and `signal_yield_scales` in
   `prepareFits.py`, luminosities from `LUMIS`). The JSON keeps the unscaled MC
   yield and the per-era factors under `normalization.extrapolation`.
-- **`bkgFit.py`** fits the background candidates (Bernstein, Chebychev,
-  exponential and power-law sums) on the sidebands 110–120 and 130–150 GeV, with
+- **`bkgFit.py`** fits the background candidates (Bernstein, exponential
+  and power-law sums) on the sidebands 110–120 and 130–150 GeV, with
   120–130 blinded. It picks one order per family with an F-test, keeps those
   passing a goodness-of-fit cut, and extrapolates the yield into the blinded
   region. The survivors form the envelope Combine profiles over (discrete
@@ -105,10 +105,9 @@ once its `wsDIR`, `years`, `cases` and `cats` are edited.
 ## Status (2026-10-20)
 
 - The full chain runs for ggHcat incl 2024: expected limit r < 1.76 (median).
-- **Open: background envelope.** The Bernstein family has one redundant
-  coefficient (status-1 fits; bern5 is in the ggHcat envelope), Chebychev
-  duplicates Bernstein, the Bernstein orders run out at 5, and failed fits are
-  not yet excluded from the envelope. Fix these before quoting limits.
+- **Open: background envelope.** Failed fits are not yet excluded from the
+  envelope, and `bkgFit.py` prints the full-window event count. Bernstein
+  orders stop at 5 by choice.
 - In `--algo singles`, the low-side errors of `r` and the nuisances are not
   found (reported to the range edge); use `--algo grid` scans for those.
 - Not wired into this chain: the studies `sigFitCond.py`, `sigFitDCBG.py`,

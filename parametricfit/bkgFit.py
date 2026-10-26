@@ -13,8 +13,8 @@ The full-range data is saved in the workspace as `datahist_<tag>` for the observ
 Model selection
 ---------------
 
-  1. F-test within each nested family (bernstein, chebychev,
-     exponential, power): take the lowest order where adding the next
+  1. F-test within each nested family (bernstein, exponential,
+     power): take the lowest order where adding the next
      parameter is not justified at p < F_THRESHOLD.
   2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.

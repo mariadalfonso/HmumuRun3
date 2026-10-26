@@ -180,7 +180,6 @@ BOUNDS = {
 # background candidates and their number of FREE parameters (F-test, ndf)
 BKG_NPAR = {
     **{f"bern{o}": o for o in range(1, 6)},        # bern_c0 is constant
-    **{f"chebychev{o}": o + 1 for o in (1, 2, 3)},
     **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
     **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
 }
@@ -188,7 +187,6 @@ BKG_NPAR = {
 # candidates that are nested within one another, for the F-test
 BKG_FAMILIES = {
     "bernstein": [f"bern{o}" for o in range(1, 6)],
-    "chebychev": [f"chebychev{o}" for o in (1, 2, 3)],
     "exponential": [f"exp{n}" for n in (1, 2, 3)],
     "power": [f"pow{n}" for n in (1, 2, 3)],
 }
