@@ -72,7 +72,7 @@ class PDFDefinitions:
         # ===== CHEBYCHEV PDFs =====
         params['chebychev_c0'] = RooRealVar(f'chebychev_c0_{tag}', 'chebychev_c0', 1.08, -1.1, 10.)
         params['chebychev_c1'] = RooRealVar(f'chebychev_c1_{tag}', 'chebychev_c1', 0.4, -1., 1.)
-        params['chebychev_c2'] = RooRealVar(f'chebychev_c2_{tag}', 'chebychev_c2', 0.01, -0.1, 0.1)
+        params['chebychev_c2'] = RooRealVar(f'chebychev_c2_{tag}', 'chebychev_c2', 0.01, -1., 1.)
         params['chebychev_c3'] = RooRealVar(f'chebychev_c3_{tag}', 'chebychev_c3', 0., -1., 1.)
 
         pdfs['chebychev1'] = RooChebychev(f'chebychev1_{tag}', 'chebychev1', x,
@@ -91,9 +91,9 @@ class PDFDefinitions:
                                      params['gauss_mu'], params['gauss_sigma'])
 
         # ===== EXPONENTIAL PDFs =====
-        params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -0.5, 0.)
+        params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -10., 10.)
         params['exp_p2'] = RooRealVar(f'exp_p2{tag}', 'exp_p2', -1e-2, -10, 10)
-        params['exp_p3'] = RooRealVar(f'exp_p3{tag}', 'exp_p3', -1e-3, -10, 0)
+        params['exp_p3'] = RooRealVar(f'exp_p3{tag}', 'exp_p3', -1e-3, -10, 10)
         params['exp_c1'] = RooRealVar(f'exp_c1{tag}', 'exp_c1', 0.5, 0., 1.)
         params['exp_c2'] = RooRealVar(f'exp_c2{tag}', 'exp_c2', 0.5, 0., 1.)
 
@@ -124,9 +124,9 @@ class PDFDefinitions:
         formulas['pow_frac2'] = RooFormulaVar(f"pow_frac2{tag}", "(1-@0)*@1", 
                                               RooArgList(params['frac1'], params['frac2']))
 
-        params['pow_p1'] = RooRealVar(f'p1{tag}', 'p1', -2.555, -10., 0.)
-        params['pow_p2'] = RooRealVar(f'p2{tag}', 'p2', -8., -10., 0.)
-        params['pow_p3'] = RooRealVar(f'p3{tag}', 'p3', -10., -10., 0.)
+        params['pow_p1'] = RooRealVar(f'p1{tag}', 'p1', -2.555, -10., 10.)
+        params['pow_p2'] = RooRealVar(f'p2{tag}', 'p2', -8., -20., 10.)
+        params['pow_p3'] = RooRealVar(f'p3{tag}', 'p3', -10., -20., 10.)
 
         # Store intermediate power PDFs
         components['pdf_pow1'] = RooGenericPdf(f'pow1_{tag}', 'pow1',

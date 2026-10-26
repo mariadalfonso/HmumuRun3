@@ -182,7 +182,8 @@ def fit_candidate(x, data, name, tag, sb_range):
             # PDF is normalised over the sideband
             ROOT.RooFit.Range(sb_range),
             ROOT.RooFit.SumW2Error(True),
-            ROOT.RooFit.PrintLevel(-1)]
+            ROOT.RooFit.PrintLevel(-1),
+            ROOT.RooFit.PrintEvalErrors(-1)]
     pdf.fitTo(data, *opts)
     res = pdf.fitTo(data, *opts)
 
