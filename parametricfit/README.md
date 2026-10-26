@@ -26,7 +26,13 @@ refitted there.
 - **`sigFit.py`** fits a double-sided Crystal Ball to the signal MC of each
   production mode, freezes the shape, and leaves two shape nuisances for
   Combine: `CMS_scale_m` (muon momentum scale) and `CMS_res_m` (resolution),
-  plus `MH` for mass scans.
+  plus `MH` for mass scans. The shape is fitted on the MC eras (2022–2024),
+  but the yield, which becomes the datacard rate, covers every era of the
+  requested year. 2025 and 2026 have no signal MC, so they take 2024's yield
+  per fb⁻¹: for `-y Run3` the 2024 yield is scaled by
+  (L₂₀₂₄ + L₂₀₂₅ + L₂₀₂₆)/L₂₀₂₄ (`SIGNAL_PROXY` and `signal_yield_scales` in
+  `prepareFits.py`, luminosities from `LUMIS`). The JSON keeps the unscaled MC
+  yield and the per-era factors under `normalization.extrapolation`.
 - **`bkgFit.py`** fits the background candidates (Bernstein, Chebychev,
   exponential and power-law sums) on the sidebands 110–120 and 130–150 GeV, with
   120–130 blinded. It picks one order per family with an F-test, keeps those

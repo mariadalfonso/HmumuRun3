@@ -95,6 +95,11 @@ _COMMON_YEAR_GROUPS = {
 SIGNAL_YEAR_GROUPS = {**_COMMON_YEAR_GROUPS, "Run3": RUN3_SIGNAL_ERAS}
 DATA_YEAR_GROUPS   = {**_COMMON_YEAR_GROUPS, "Run3": RUN3_DATA_ERAS}
 
+# Eras with no signal MC of their own, mapped to the MC era whose signal yield
+# per fb^-1 they borrow (same detector configuration and NanoAOD version).
+# Only the YIELD is extrapolated: the signal shape is fitted on the MC eras.
+SIGNAL_PROXY = {"2025": "2024", "2026": "2024"}
+
 
 def normalize_year(year):
     """'Run3', 2022, '_2022' -> 'Run3', '2022', '2022' (bare, idempotent)."""
@@ -105,6 +110,25 @@ def expand_year(year, groups):
     """Return the list of concrete eras for a requested year."""
     year = normalize_year(year)
     return list(groups.get(year, [year]))
+
+
+def signal_yield_scales(year):
+    """{MC era: factor} that turns each MC era's signal yield into its share
+    of the yield for the FULL requested year, i.e. the same eras as the data.
+
+    An era with its own MC contributes 1 to itself; an era in SIGNAL_PROXY
+    adds L_era / L_proxy to its proxy. So Run3 -> the 2022 and 2023 eras x 1,
+    and 2024 x (L2024 + L2025 + L2026) / L2024; '2025' -> 2024 x L2025/L2024.
+    """
+    scales = {}
+    for era in expand_year(year, DATA_YEAR_GROUPS):
+        mc = SIGNAL_PROXY.get(era, era)
+        missing = [e for e in (era, mc) if e not in LUMIS]
+        if missing:
+            raise ValueError(f"no luminosity for era(s) {missing} "
+                             f"(requested {normalize_year(year)})")
+        scales[mc] = scales.get(mc, 0.0) + LUMIS[era] / LUMIS[mc]
+    return scales
 
 
 def get_lumi(year, groups=SIGNAL_YEAR_GROUPS):
@@ -172,7 +196,7 @@ def get_signal_files(sig, category, year, rootfiles_dir=ROOTFILES_DIR):
     """
     if sig not in SIGNAL_TAGS:
         raise ValueError(f"Unknown signal '{sig}' (have: {sorted(SIGNAL_TAGS)})")
-    eras = expand_year(year, SIGNAL_YEAR_GROUPS)
+    eras = list(signal_yield_scales(year))   # MC eras; proxied eras -> 2024
     return _collect_files([(era, SIGNAL_TAGS[sig]) for era in eras],
                           category, rootfiles_dir)
 
@@ -291,6 +315,32 @@ def getHistoSignal(nbin, low, high, category, year, binMVA, sig,
 
     return fill_mass_histo(df, f"h_{category}_{year}", f"{category} {year}",
                            nbin, low, high)
+
+
+def getHistoSignalByEra(nbin, low, high, category, year, binMVA, sig,
+                        rootfiles_dir=ROOTFILES_DIR):
+    """Signal mass histograms for one (category, BDT bin, production mode),
+    one per MC era of signal_yield_scales(year), UNSCALED.
+
+    Their sum is the MC the shape is fitted on; each era's integral times
+    its scale gives the signal yield of the full requested year.
+    Returns {MC era: detached TH1}.
+    """
+    year = normalize_year(year)
+    if sig not in SIGNAL_TAGS:
+        raise ValueError(f"Unknown signal '{sig}' (have: {sorted(SIGNAL_TAGS)})")
+    out = {}
+    for era in signal_yield_scales(year):
+        files = _collect_files([(era, SIGNAL_TAGS[sig])], category,
+                               rootfiles_dir)
+        df = (ROOT.RDataFrame("events", files)
+              .Filter(get_selection(category, binMVA), "selection cut")
+              .Filter("!isnan(HiggsCandCorrMass)", "Valid mass")
+              .Filter("mc >= 10 && mc <= 15", "Signal (ggH, VBF, VH, ttH)"))
+        out[era] = fill_mass_histo(df, f"h_{category}_{binMVA}_{sig}_{era}",
+                                   f"{category} {era}", nbin, low, high)
+        print(f"✅ {sig} {era}: {len(files)} file(s)")
+    return out
 
 
 def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig='',
