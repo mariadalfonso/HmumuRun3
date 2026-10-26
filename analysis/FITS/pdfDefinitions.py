@@ -10,11 +10,11 @@ class PDFDefinitions:
     def create_signal_pdfs(x, tag, suffix=""):
         """Create double Crystal Ball signal PDFs"""
         cb_mu = RooRealVar(f'cb_mu{suffix}{tag}', 'cb_mu', 125., 120., 130.)
-        cb_sigma = RooRealVar(f'cb_sigma{suffix}{tag}', 'cb_sigma', 3, 0.5, 6.)
-        cb_alphaL = RooRealVar(f'cb_alphaL{suffix}{tag}', 'cb_alphaL', 2., 0., 5.)
-        cb_alphaR = RooRealVar(f'cb_alphaR{suffix}{tag}', 'cb_alphaR', 2., 0., 5.)
-        cb_nL = RooRealVar(f'cb_nL{suffix}{tag}', 'cb_nL', 3., 0., 5.)
-        cb_nR = RooRealVar(f'cb_nR{suffix}{tag}', 'cb_nR', 8., 0., 12.)
+        cb_sigma = RooRealVar(f'cb_sigma{suffix}{tag}', 'cb_sigma', 2., 0.5, 6.)
+        cb_alphaL = RooRealVar(f'cb_alphaL{suffix}{tag}', 'cb_alphaL', 1.5, 0.1, 3.)
+        cb_alphaR = RooRealVar(f'cb_alphaR{suffix}{tag}', 'cb_alphaR', 1.5, 0.1, 3.)
+        cb_nL = RooRealVar(f'cb_nL{suffix}{tag}', 'cb_nL', 5., 0.1, 50.)
+        cb_nR = RooRealVar(f'cb_nR{suffix}{tag}', 'cb_nR', 5., 0.1, 50.)
 
         pdf_cb = RooDoubleCBFast(f'crystal_ball{suffix}{tag}', 'crystal_ball', x, 
                                  cb_mu, cb_sigma, cb_alphaL, cb_nL, cb_alphaR, cb_nR)
@@ -45,7 +45,7 @@ class PDFDefinitions:
         formulas = {}    # Store formula variables!
         
         # ===== BERNSTEIN PDFs =====
-        params['bern_c0'] = RooRealVar(f'bern_c0_{tag}', 'bern_c0', 1.8, 0.5, 2.)
+        params['bern_c0'] = RooRealVar(f'bern_c0_{tag}', 'bern_c0', 1.)  # constant value for the normalisation; only the ratios to it are fitted
         params['bern_c1'] = RooRealVar(f'bern_c1_{tag}', 'bern_c1', 1., 0., 2.)
         params['bern_c2'] = RooRealVar(f'bern_c2_{tag}', 'bern_c2', 0.5, 0., 1.5)
         params['bern_c3'] = RooRealVar(f'bern_c3_{tag}', 'bern_c3', 0.1, 0., 1.)
