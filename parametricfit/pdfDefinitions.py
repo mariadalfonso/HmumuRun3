@@ -85,13 +85,13 @@ class PDFDefinitions:
         formulas = {}    # Store formula variables!
 
         # ===== BERNSTEIN PDFs =====
-        # order+1 coefficients, all in [0, 10]: non-negative keeps the PDF positive
-        for o in range(6):
-            for i in range(o + 1):
-                params[f'bern{o}_c{i}'] = RooRealVar(f'bern{o}_c{i}_{tag}', f'c{i}',
-                                                     1.0 if i == 0 else 0.5, 0., 10.)
+        # last coefficient fixed at 1 (only ratios matter), the others in [-10, 10]
+        for o in range(1, 6):
+            for i in range(o):
+                params[f'bern{o}_c{i}'] = RooRealVar(f'bern{o}_c{i}_{tag}', f'c{i}', 1., -10., 10.)
             pdfs[f'bern{o}'] = RooBernstein(f'bern{o}_{tag}', f'bern{o}', x,
-                                            RooArgList(*[params[f'bern{o}_c{i}'] for i in range(o + 1)]))
+                                            RooArgList(*[params[f'bern{o}_c{i}'] for i in range(o)],
+                                                       ROOT.RooFit.RooConst(1.)))
 
         # ===== CHEBYCHEV PDFs =====
         # `order` coefficients in [-1, 1]
@@ -163,8 +163,8 @@ MH_REF = 125.0            # reference mass the shape is fitted at
 SCALE_UNC = 0.002         # 0.2% muon momentum scale
 RES_UNC = 0.05            # 5% muon momentum resolution
 
-# Signal shape bounds. alpha/n ranges follow the ATLAS H->mumu choice; n
-# must be allowed well above 10 or the fits park on the upper bound.
+# Signal shape bounds; n must be allowed well above 10 or the fits park on
+# the upper bound.
 BOUNDS = {
     "mu":     (MH_REF, 120.0, 130.0),
     "sigma":  (2.0,      0.5,   6.0),
@@ -176,7 +176,7 @@ BOUNDS = {
 
 # number of FREE parameters, for the F-test and for ndf
 BKG_NPAR = {
-    **{f"bern{o}": o + 1 for o in range(6)},
+    **{f"bern{o}": o for o in range(1, 6)},
     **{f"cheb{o}": o for o in (1, 2, 3)},
     **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
     **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
@@ -184,7 +184,7 @@ BKG_NPAR = {
 
 # candidates that are nested within one another, for the F-test
 BKG_FAMILIES = {
-    "bernstein": [f"bern{o}" for o in range(6)],
+    "bernstein": [f"bern{o}" for o in range(1, 6)],
     "chebychev": [f"cheb{o}" for o in (1, 2, 3)],
     "exponential": [f"exp{n}" for n in (1, 2, 3)],
     "power": [f"pow{n}" for n in (1, 2, 3)],
