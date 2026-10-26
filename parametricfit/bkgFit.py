@@ -579,20 +579,20 @@ def main():
     # ---- fit every candidate -------------------------------------------
     names = args.candidates or sorted(pdefs.BKG_NPAR)
     print(f"\nfitting {len(names)} candidates on the sideband")
-    print(f"{'model':<8}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
+    print(f"{'model':<11}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")
     fits = {}
     for nm in names:
         try:
             f = fit_candidate(x, data, nm, tag, sb_range)
         except Exception as exc:
-            print(f"{nm:<8}  failed: {exc}")
+            print(f"{nm:<11}  failed: {exc}")
             continue
         f.update(sideband_chi2(x, h, f["pdf"], sb_idx,
                                full_yield(n_sb, f), f["npar"]))
         fits[nm] = f
         flag = "" if f["status"] == 0 and f["cov_qual"] == 3 else "  <-- check"
-        print(f"{nm:<8}{f['npar']:>5}{f['nll']:>14.2f}"
+        print(f"{nm:<11}{f['npar']:>5}{f['nll']:>14.2f}"
               f"{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}"
               f"{f['sb_fraction']:>8.3f}{f['status']:>8}{flag}")
 
@@ -623,7 +623,7 @@ def main():
     envelope = sorted(set(envelope), key=lambda n: -fits[n]["pvalue"])
     print(f"\nGOF cut (p > {GOF_THRESHOLD})")
     for nm in sorted(set(chosen.values())):
-        print(f"  {nm:<8} p={fits[nm]['pvalue']:.4f}  "
+        print(f"  {nm:<11} p={fits[nm]['pvalue']:.4f}  "
               f"{'IN' if nm in envelope else 'rejected'}")
     if not envelope:
         raise SystemExit("no candidate passed the goodness-of-fit cut; "
