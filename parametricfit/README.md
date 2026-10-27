@@ -18,6 +18,7 @@ each sideband of a blinded `Range("sbLow,sbHigh")` fit separately and has no
 | 3 | `makeWorkspaces.py` | container | the two JSONs + TH1D | `Signal_<tag>_workspace.root`, `Bkg_<tag>_workspace.root` |
 | 4 | `analysis/FITS/bwsHrare.py` | container | the two workspaces | datacard + combined workspace |
 | 5 | `text2workspace.py`, `combine` | container | the datacard | limits, fits |
+| 6 | `biasStudy.py` | container | the datacard | `BIAS/<tag>/`: toys, fits, pull summary |
 
 `<tag>` is `<category>_<bin>_<year>`, e.g. `ggHcat_incl_2024`. Only numbers
 (JSON) and a plain TH1D cross from conda to the container, and nothing is
@@ -97,6 +98,27 @@ combine -M MultiDimFit -m 125 -t -1 --expectSignal=1 --algo singles \
 **Keep `-t -1` on every combine call.** The workspace holds the full data,
 the blinded region included.
 
+**6. Bias study**, in the container, from `parametricfit/`:
+```bash
+python biasStudy.py -c ggHcat -b incl -y 2024 --ntoys 1000 -j 8
+python biasStudy.py -c ggHcat -b incl -y 2024 --only report   # re-read only
+```
+For each envelope member it generates toys from that member alone
+(`pdfindex_<tag>` frozen), with r = 1, and fits them with the full model, the
+index floating, as in the limit. The pull is (r̂ − r_inj)/σ_r, with σ_r the
+error on the side facing r_inj. A member passes if |median pull| < 0.14, and
+every member must pass. The table also gives how often the fit picked each
+member, and why toys were dropped (fit failed, no interval, interval at the
+r range edge). The r range of the toy fits is r_inj ± 10 σ_r from an Asimov
+fit, so the 1σ interval does not reach the edge (unlike `--rMin 0` above).
+
+Toys come from the pre-fit workspace, never from a fit to data:
+`--toysFrequentist` would fit the blinded region. Output goes to
+`BIAS/<tag>/` (`bias_<tag>_r1p00.json`), plots to
+`~/public_html/HmumuFits/bias/<category>/`. Jobs whose output exists are
+skipped, so a crashed run resumes; add `--seed` for more toys,
+`--force` to redo. `--dry-run` prints the combine commands.
+
 For another category, bin or year, change `-c` / `-b` / `-y` and the
 `--which*` options; the same values must be used in every step.
 `analysis/FITS/combineCommand.sh` loops steps 4–5 over categories and bins
@@ -124,3 +146,16 @@ once its `wsDIR`, `years`, `cases` and `cats` are edited.
 - **`--pdf`**: also write PDFs
 - **`--no-freeze`**: leave the shape parameters floating in the workspace
 - **`--selftest`**: closure test (500k generated events, fitted back), then exit
+
+## Bias study options
+
+- **`-c`, `-b`, `-y`**: as for the fits; one study per `<cat>_<bin>_<year>`
+- **`--carddir`** (default `analysis/FITS/workspaces`): where `datacard_<tag>.txt` is
+- **`--outdir`** (default `BIAS`), **`--plotdir`** (default `~/public_html/HmumuFits/bias`)
+- **`--inject`** (default `1`): injected r, one or more, e.g. `--inject 0 1`
+- **`--ntoys`** (default 1000) per member and r, in jobs of **`--toys-per-job`** (100),
+  **`-j`** at a time
+- **`--rrange RMIN RMAX`**: fixed r range instead of the Asimov one
+- **`--threshold`** (default 0.14): max |median pull|
+- **`--combine-opts`**: passed to every combine call, e.g. `"--toysNoSystematics"`
+- **`--only run|report`**, **`--force`**, **`--dry-run`**, **`--pdf`**
