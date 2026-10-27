@@ -13,8 +13,8 @@ The full-range data is saved in the workspace as `datahist_<tag>` for the observ
 Model selection
 ---------------
 
-  1. F-test within each nested family (bernstein, chebychev,
-     exponential, power): take the lowest order where adding the next
+  1. F-test within each nested family (bernstein, exponential,
+     power): take the lowest order where adding the next
      parameter is not justified at p < F_THRESHOLD.
   2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.
@@ -182,7 +182,8 @@ def fit_candidate(x, data, name, tag, sb_range):
             # PDF is normalised over the sideband
             ROOT.RooFit.Range(sb_range),
             ROOT.RooFit.SumW2Error(True),
-            ROOT.RooFit.PrintLevel(-1)]
+            ROOT.RooFit.PrintLevel(-1),
+            ROOT.RooFit.PrintEvalErrors(-1)]
     pdf.fitTo(data, *opts)
     res = pdf.fitTo(data, *opts)
 
@@ -577,25 +578,33 @@ def main():
     print(f"sideband bins used for chi2: {len(sb_idx)} of {nbins}")
 
     # ---- fit every candidate -------------------------------------------
-    names = args.candidates or sorted(pdefs.BKG_FACTORIES)
+    names = args.candidates or sorted(pdefs.BKG_NPAR)
     print(f"\nfitting {len(names)} candidates on the sideband")
-    print(f"{'model':<8}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
+    print(f"{'model':<11}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")
-    fits = {}
+    fits, failed = {}, {}
     for nm in names:
         try:
             f = fit_candidate(x, data, nm, tag, sb_range)
         except Exception as exc:
-            print(f"{nm:<8}  failed: {exc}")
+            print(f"{nm:<11}  failed: {exc}")
             continue
         f.update(sideband_chi2(x, h, f["pdf"], sb_idx,
                                full_yield(n_sb, f), f["npar"]))
-        fits[nm] = f
         flag = "" if f["status"] == 0 and f["cov_qual"] == 3 else "  <-- check"
-        print(f"{nm:<8}{f['npar']:>5}{f['nll']:>14.2f}"
+        print(f"{nm:<11}{f['npar']:>5}{f['nll']:>14.2f}"
               f"{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}"
               f"{f['sb_fraction']:>8.3f}{f['status']:>8}{flag}")
+        # a failed fit (status != 0) never enters the F-test or the envelope
+        if f["status"] != 0:
+            failed[nm] = f
+        else:
+            fits[nm] = f
 
+    if failed:
+        print("\nWARNING: failed fits, excluded from the envelope: "
+              + ", ".join(f"{nm} (status {f['status']})"
+                          for nm, f in failed.items()))
     if not fits:
         raise SystemExit("no candidate fitted")
 
@@ -623,7 +632,7 @@ def main():
     envelope = sorted(set(envelope), key=lambda n: -fits[n]["pvalue"])
     print(f"\nGOF cut (p > {GOF_THRESHOLD})")
     for nm in sorted(set(chosen.values())):
-        print(f"  {nm:<8} p={fits[nm]['pvalue']:.4f}  "
+        print(f"  {nm:<11} p={fits[nm]['pvalue']:.4f}  "
               f"{'IN' if nm in envelope else 'rejected'}")
     if not envelope:
         raise SystemExit("no candidate passed the goodness-of-fit cut; "
@@ -688,6 +697,7 @@ def main():
         "candidates": {nm: {k: v for k, v in f.items()
                             if k not in ("pdf", "keep", "result")}
                        for nm, f in fits.items()},
+        "failed_fits": {nm: f["status"] for nm, f in failed.items()},
         "ftest": ftests,
         "family_choice": chosen,
         "envelope": envelope,
