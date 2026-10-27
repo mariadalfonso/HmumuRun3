@@ -1,7 +1,8 @@
 """
 biasStudy.py -- bias on r from the discrete-profiling background envelope.
 
-For each tag = "<cat>_<bin>_<year>" and each member i of multipdf_<tag>_bkg:
+For each tag = "<cat>_<bin>_<year>" and each member i of the envelope
+(multipdf_<tag>_bkg in the card, indexed by pdfindex_<tag>):
 
   1. generate toys from member i (pdfindex_<tag> frozen to i), with r = r_inj
   2. fit every toy with the full model, pdfindex_<tag> FLOATING, exactly as
@@ -64,6 +65,7 @@ FITS_DIR = os.path.normpath(os.path.join(HERE, "..", "analysis", "FITS"))
 # ---------------------------------------------------------------------------
 
 MH = 125.0
+MULTIPDF_CLASS = "RooMultiPdf"
 PULL_THRESHOLD = 0.14      # |median pull| above this fails
 MIN_VALID_FRAC = 0.90      # warn when fewer toys than this give a usable pull
 PULL_RANGE = 5.0           # pull histogram and Gaussian fit over +/- this
@@ -187,8 +189,22 @@ def build_t2w(card, t2w, dry):
         raise SystemExit(f"text2workspace failed: see {log}")
 
 
+def find_multipdf(w, tag):
+    """The RooMultiPdf indexed by pdfindex_<tag>. text2workspace renames the
+    card's multipdf_<tag>_bkg to shapeBkg_<process>_<bin>, so match on the
+    index category, not the name."""
+    index = f"pdfindex_{tag}"
+    multis = [p for p in w.allPdfs() if p.InheritsFrom(MULTIPDF_CLASS)]
+    found = [p for p in multis if p.findServer(index)]
+    if len(found) != 1:
+        raise SystemExit(f"expected one {MULTIPDF_CLASS} indexed by {index}, "
+                         f"found {len(found)}; {MULTIPDF_CLASS}s in the "
+                         f"workspace: {[p.GetName() for p in multis]}")
+    return found[0]
+
+
 def read_envelope(t2w, tag):
-    """Names of the members of multipdf_<tag>_bkg, in pdfindex order."""
+    """Names of the envelope members, in pdfindex order."""
     if not pdefs.load_combine(quiet=True):
         raise SystemExit("needs libHiggsAnalysisCombinedLimit: run inside "
                          "the Combine container")
@@ -196,9 +212,9 @@ def read_envelope(t2w, tag):
     if not f or f.IsZombie():
         raise SystemExit(f"cannot open {t2w}")
     w = f.Get("w")
-    multi = w.pdf(f"multipdf_{tag}_bkg") if w else None
-    if not multi:
-        raise SystemExit(f"{t2w}: no multipdf_{tag}_bkg")
+    if not w:
+        raise SystemExit(f"{t2w}: no workspace 'w'")
+    multi = find_multipdf(w, tag)
     names = [multi.getPdf(i).GetName() for i in range(multi.getNumPdfs())]
     f.Close()
     return names
