@@ -266,18 +266,21 @@ def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry):
     ok = run_cmd(cmd, outdir, os.path.join(outdir, "logs", f"{name[1:]}.log"),
                  dry) and take_output(outdir, name, "MultiDimFit", dest, dry)
     if dry:
-        return [r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE]
-    toy = read_singles(dest).get(0, {}) if ok else {}
+        return [r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE], "fallback"
+    # one fit, whatever iToy combine gives the Asimov (not 0)
+    rows = list(read_singles(dest).values()) if ok else []
+    toy = rows[0] if len(rows) == 1 else {}
     errs = [abs(toy[k] - toy["best"]) for k in ("lo", "hi")
             if k in toy and "best" in toy]
     errs = [e for e in errs if 0 < e < 0.9 * R_SEED_RANGE]
     if not errs:
-        print(f"  !! Asimov fit gave no usable error on r; using "
-              f"r in +/- {R_SEED_RANGE:g}. Set --rrange to override.")
-        return [r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE]
+        print(f"  !! Asimov fit gave no usable error on r (see "
+              f"logs/{name[1:]}.log); using r in +/- {R_SEED_RANGE:g}. "
+              f"Set --rrange to override.")
+        return [r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE], "fallback"
     sig = max(errs)
     print(f"  Asimov, r = {r_inj:g}: sigma_r = {sig:.3f}")
-    return [r_inj - R_WIDTH * sig, r_inj + R_WIDTH * sig]
+    return [r_inj - R_WIDTH * sig, r_inj + R_WIDTH * sig], "asimov"
 
 
 def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
@@ -344,6 +347,7 @@ def run_tag(tag, args):
                  "envelope": names, "mh": MH,
                  "combine_opts": COMBINE_FIT_OPTS + extra})
     meta.setdefault("rrange", {})
+    meta.setdefault("rrange_source", {})   # asimov, fallback or user
     meta.setdefault("ntoys", {})       # per job, to count fits that wrote nothing
     print("  envelope : " + ", ".join(f"[{i}] {short_name(n, tag)}"
                                       for i, n in enumerate(names)))
@@ -353,12 +357,21 @@ def run_tag(tag, args):
         key = rlabel(r_inj)
         if args.rrange:
             meta["rrange"][key] = list(args.rrange)
+            meta["rrange_source"][key] = "user"
         elif key not in meta["rrange"] or args.force:
-            meta["rrange"][key] = asimov_rrange(t2w, tag, r_inj, outdir,
-                                                extra, args.dry_run)
+            meta["rrange"][key], meta["rrange_source"][key] = asimov_rrange(
+                t2w, tag, r_inj, outdir, extra, args.dry_run)
+        elif key not in meta["rrange_source"]:  # meta.json from before
+            wide = meta["rrange"][key][1] - meta["rrange"][key][0]
+            meta["rrange_source"][key] = ("fallback" if
+                                          wide >= 2 * R_SEED_RANGE - 1e-6
+                                          else "asimov")
         rrange = meta["rrange"][key]
         print(f"  r = {r_inj:g}: toy fits in r [{rrange[0]:.3g}, "
               f"{rrange[1]:.3g}]")
+        if meta["rrange_source"][key] == "fallback":
+            print(f"  !! this is the +/- {R_SEED_RANGE:g} fallback (the "
+                  f"Asimov fit failed); --force retries it")
         nchunks = int(math.ceil(args.ntoys / float(args.toys_per_job)))
         for igen in range(len(names)):
             for k in range(nchunks):
