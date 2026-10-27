@@ -112,14 +112,15 @@ def main():
         # signal core (see histo_config.REGIONS).
         blind = args.blind and region["blindable"]
 
-        for varname in active_vars:
+        for varname in cfg.region_vars(region_name, active_vars):
             binning = plot_vars.get_binning(varname)
             if binning is None:
                 skipped.append((region_name, varname, "no binning defined"))
                 continue
 
             ptrs = prepareHisto.book_variable(
-                node, category, varname, binning, blind=blind
+                node, category, varname, binning, blind=blind,
+                book_data=not region.get("mc_only", False)
             )
             if ptrs is None:
                 skipped.append((region_name, varname, "branch not available"))

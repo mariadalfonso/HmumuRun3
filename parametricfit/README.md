@@ -1,36 +1,121 @@
-# Fitting framwork
+# Parametric fit framework
 
-Performing parametric fits in dimuon mass.
+Parametric fits of the dimuon mass for H→μμ: a signal shape from MC, a
+background envelope from the data sidebands, and the Combine workspaces and
+datacard built from them.
 
-## Signal fit
+## What runs where
 
-`sigFit.py` fits a double-sided Crystal Ball to signal MC in each `(category, BDT bin, production mode)`, freezes the shape, and writes a RooFit workspace plus a JSON record for `bwsHrare.py` to consume.
+The fits need ROOT ≥ 6.28. The Combine container on SubMIT
+(`analysis/FITS/runSing`, combine v9.2.1) ships ROOT 6.22, which normalises
+each sideband of a blinded `Range("sbLow,sbHigh")` fit separately and has no
+`RooCrystalBall`. So the chain is split in two:
 
-### To run
+| step | script | where | reads | writes (in `--wsdir`) |
+|---|---|---|---|---|
+| 1 | `sigFit.py` | conda | signal snapshots | `Signal_<tag>_params.json` (+ a conda-only workspace) |
+| 2 | `bkgFit.py` | conda | data snapshots | `Bkg_<tag>_params.json`, `Bkg_<tag>_data.root` |
+| 3 | `makeWorkspaces.py` | container | the two JSONs + TH1D | `Signal_<tag>_workspace.root`, `Bkg_<tag>_workspace.root` |
+| 4 | `analysis/FITS/bwsHrare.py` | container | the two workspaces | datacard + combined workspace |
+| 5 | `text2workspace.py`, `combine` | container | the datacard | limits, fits |
 
-Selftest to validate code setup:
+`<tag>` is `<category>_<bin>_<year>`, e.g. `ggHcat_incl_2024`. Only numbers
+(JSON) and a plain TH1D cross from conda to the container, and nothing is
+refitted there.
+
+- **`sigFit.py`** fits a double-sided Crystal Ball to the signal MC of each
+  production mode, freezes the shape, and leaves two shape nuisances for
+  Combine: `CMS_scale_m` (muon momentum scale) and `CMS_res_m` (resolution),
+  plus `MH` for mass scans.
+- **`bkgFit.py`** fits the background candidates (Bernstein, Chebychev,
+  exponential and power-law sums) on the sidebands 110–120 and 130–150 GeV, with
+  120–130 blinded. It picks one order per family with an F-test, keeps those
+  passing a goodness-of-fit cut, and extrapolates the yield into the blinded
+  region. The survivors form the envelope Combine profiles over (discrete
+  profiling).
+- **`makeWorkspaces.py`** rebuilds both models with the container's classes
+  (`RooDoubleCBFast` for the signal) and writes `crystal_ball_<tag>_<mode>`,
+  `multipdf_<tag>_bkg`, `pdfindex_<tag>`, `multipdf_<tag>_bkg_norm` and
+  `datahist_<tag>`, the names `bwsHrare.py` expects.
+- **`bwsHrare.py`** writes the datacard: signal rates from the MC, the
+  background yield as a free `rateParam`, `CMS_scale_m` / `CMS_res_m` as
+  `param 0 1`, and `pdfindex_<tag> discrete`.
+
+## How to run: ggHcat, inclusive, 2024
+
+**1–2. Fits, in conda**, from `parametricfit/`:
 ```bash
-python sigFit.py --selftest
+conda activate pyenv
+python sigFit.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
+python bkgFit.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
 ```
-It does a closure test: generates 500k events from a `RooCrystalBall` 
-with known parameters, fits them back, and checks the parameters are recovered.
+Run `sigFit.py` without `-s`, so the signal JSON covers every production mode
+of the category. Check the printouts for `CHECK THIS FIT` / `<-- check`, and the
+plots in `~/public_html/HmumuFits/{signal_fits,bkg_fits}/ggHcat/`.
 
-Fit a single signal:
+**3. Workspaces, in the container.** Leave conda first, and start the container
+with `--cleanenv`. Otherwise the conda ROOT headers leak into it and the
+Combine classes fail to load ("cannot instantiate incomplete class
+`RooDoubleCBFast`").
 ```bash
-python sigFit.py -c ggHcat -y Run3 -b incl -s ggH
+conda deactivate
+singularity shell --cleanenv -B /work -B /ceph --nv /work/submit/jaeyserm/software/docker/combine-standalone_v9.2.1.sif
+cd <path to>/parametricfit
+python makeWorkspaces.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
 ```
 
+**4. Datacard**, still in the container, from `analysis/FITS/`:
+```bash
+python bwsHrare.py --whichCat=ggHcat --whichBIN=incl --whichYear=2024 \
+    --inputFileSig=../../parametricfit/WS_2024/Signal_ggHcat_incl_2024_workspace.root \
+    --inputFileBKG=../../parametricfit/WS_2024/Bkg_ggHcat_incl_2024_workspace.root \
+    --output=workspaces/workspace_ggHcat_incl_2024_workspace.root \
+    --datCardName=workspaces/datacard_ggHcat_incl_2024.txt
+```
+The card should end with `CMS_res_m param 0 1`, `CMS_scale_m param 0 1` and
+`pdfindex_ggHcat_incl_2024 discrete`.
 
-### Options
+**5. Combine**, from `analysis/FITS/`:
+```bash
+text2workspace.py -m 125 workspaces/datacard_ggHcat_incl_2024.txt -o workspaces/ggHcat_incl_2024.root
 
-- **`-c`, `--category`** (default `VBFcat`) — one or more categories
-- **`-b`, `--bins`** (default `bdt0`) — BDT bin labels: `bdt0`, `bdt1`, `bdt2`, `incl`
-- **`-s`, `--sig`** (default: all for the category) — production modes: `ggH`, `qqH`, `VH`, `ttH`
-- **`-y`, `--year`** (default `Run3`) — year tag passed to `getHisto`
-- **`--wsdir`** (default `WS_LOCAL`) — workspace + JSON output dir
-- **`--plotdir`** (default `~/public_html/HmumuFits/signal_fits`) — plots land in `<plotdir>/<cat>/`
-- **`--pdf`** (default off) — also write PDF alongside the PNG
-- **`--no-freeze`** (default off) — leave shape parameters floating in the workspace
-- **`--selftest`** (default off) — CB closure test, then exit
+# expected limit
+combine -M AsymptoticLimits -m 125 -t -1 --run expected --rMin 0 \
+    -d workspaces/ggHcat_incl_2024.root --X-rtd MINIMIZER_freezeDisassociatedParams -n _ggH2024
 
-Output directories are created automatically.
+# Asimov fit with r = 1: r ~ 1, CMS_scale_m and CMS_res_m ~ 0 +/- 1
+combine -M MultiDimFit -m 125 -t -1 --expectSignal=1 --algo singles \
+    -P r -P CMS_scale_m -P CMS_res_m --floatOtherPOIs 1 \
+    -d workspaces/ggHcat_incl_2024.root --X-rtd MINIMIZER_freezeDisassociatedParams -n _ggH2024_check
+```
+**Keep `-t -1` on every combine call.** The workspace holds the full data,
+the blinded region included.
+
+For another category, bin or year, change `-c` / `-b` / `-y` and the
+`--which*` options; the same values must be used in every step.
+`analysis/FITS/combineCommand.sh` loops steps 4–5 over categories and bins
+once its `wsDIR`, `years`, `cases` and `cats` are edited.
+
+## Status (2026-10-20)
+
+- The full chain runs for ggHcat incl 2024: expected limit r < 1.76 (median).
+- **Open: background envelope.** The Bernstein family has one redundant
+  coefficient (status-1 fits; bern5 is in the ggHcat envelope), Chebychev
+  duplicates Bernstein, the Bernstein orders run out at 5, and failed fits are
+  not yet excluded from the envelope. Fix these before quoting limits.
+- In `--algo singles`, the low-side errors of `r` and the nuisances are not
+  found (reported to the range edge); use `--algo grid` scans for those.
+- Not wired into this chain: the studies `sigFitCond.py`, `sigFitDCBG.py`,
+  `fitEtaBins.py`, `fitMVABins.py`, `massResVsMass.py`.
+
+## Signal fit options
+
+- **`-c`, `--category`** (default `VBFcat`): one or more categories
+- **`-b`, `--bins`** (default `bdt0`): BDT bin labels, e.g. `incl bdt0 bdt1 bdt2`
+- **`-s`, `--sig`** (default: all modes of the category): `ggH`, `qqH`, `VH`, `ttH`
+- **`-y`, `--year`** (default `Run3`): era or group (`2022`, `2023`, `2024`, `Run3`, ...)
+- **`--wsdir`** (default `WS_LOCAL`): JSON + workspace output dir
+- **`--plotdir`** (default `~/public_html/HmumuFits/signal_fits`): plots land in `<plotdir>/<cat>/`
+- **`--pdf`**: also write PDFs
+- **`--no-freeze`**: leave the shape parameters floating in the workspace
+- **`--selftest`**: closure test (500k generated events, fitted back), then exit

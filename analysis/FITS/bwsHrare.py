@@ -220,6 +220,12 @@ if fBkgIn == None:
 
 #Backgrounds are given a positive number, while 0 and negative numbers are used for signal processes. Different process identifiers must be used for different processes.
 
+# Parameters left floating in the signal workspace are shape nuisances
+# (sigFit.py: CMS_scale_m, CMS_res_m), unit Gaussians. Combine treats any
+# floating parameter the datacard does not declare as free, so they are
+# collected here and written as "param 0 1" below.
+sigNuisances = []
+
 for cat in category:
     tag = cat+"_"+opts.whichBIN+"_"+opts.whichYear
     for proc in mcAll:
@@ -239,6 +245,10 @@ for cat in category:
         func = wInput.pdf(name)
         if func == None: raise IOError("Unable to get func" + name)
         getattr(w,'import')(func)
+        if SigPdf[cat] in name:
+            for par in func.getParameters(argset_obs):
+                if not par.isConstant() and par.GetName() not in sigNuisances:
+                    sigNuisances.append(par.GetName())
 
         datacard.write("shapes")
         datacard.write("\t"+proc )
@@ -369,6 +379,9 @@ if doSyst:
 #    ### Add autoMCStats
 #    datacard.write("\n")
 #    datacard.write("* autoMCStats 0\n")
+
+for nuis in sigNuisances:
+    datacard.write("%s \tparam \t0 \t1\n"%nuis)
 
 datacard.write("-------------------------------------\n")
 

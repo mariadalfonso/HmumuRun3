@@ -741,6 +741,7 @@ def analysis(files,year,mc,sumW):
           .Define("HiggsCandMassErr","MinvErr(Muon1Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu1], Muon2Vec_.Pt(), Muon_bsConstrainedPtErr[idx_mu2])")
           .Define("HiggsCandCorr","Pair12(Muon1Vec,Muon2Vec)")
           .Define("HiggsCandCorrMass","HiggsCandCorr.M()")
+          .Define("HiggsCandCorrMassErr","MinvErr(Muon1Vec.Pt(), Muon_bsConstrainedPtErr[idx_mu1], Muon2Vec.Pt(), Muon_bsConstrainedPtErr[idx_mu2])") # relative, BS + FSR corrected
           .Define("HiggsCandCorrPt","HiggsCandCorr.Pt()")
           .Define("HiggsCandCorrEta","HiggsCandCorr.Eta()")
           .Define("HiggsCandCorrPhi","HiggsCandCorr.Phi()")
