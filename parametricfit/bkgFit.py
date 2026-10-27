@@ -582,7 +582,7 @@ def main():
     print(f"\nfitting {len(names)} candidates on the sideband")
     print(f"{'model':<11}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")
-    fits = {}
+    fits, failed = {}, {}
     for nm in names:
         try:
             f = fit_candidate(x, data, nm, tag, sb_range)
@@ -591,12 +591,20 @@ def main():
             continue
         f.update(sideband_chi2(x, h, f["pdf"], sb_idx,
                                full_yield(n_sb, f), f["npar"]))
-        fits[nm] = f
         flag = "" if f["status"] == 0 and f["cov_qual"] == 3 else "  <-- check"
         print(f"{nm:<11}{f['npar']:>5}{f['nll']:>14.2f}"
               f"{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}"
               f"{f['sb_fraction']:>8.3f}{f['status']:>8}{flag}")
+        # a failed fit (status != 0) never enters the F-test or the envelope
+        if f["status"] != 0:
+            failed[nm] = f
+        else:
+            fits[nm] = f
 
+    if failed:
+        print("\nWARNING: failed fits, excluded from the envelope: "
+              + ", ".join(f"{nm} (status {f['status']})"
+                          for nm, f in failed.items()))
     if not fits:
         raise SystemExit("no candidate fitted")
 
@@ -689,6 +697,7 @@ def main():
         "candidates": {nm: {k: v for k, v in f.items()
                             if k not in ("pdf", "keep", "result")}
                        for nm, f in fits.items()},
+        "failed_fits": {nm: f["status"] for nm, f in failed.items()},
         "ftest": ftests,
         "family_choice": chosen,
         "envelope": envelope,
