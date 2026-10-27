@@ -123,9 +123,6 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile):
         store.add(pdf)
         keep.append((pdf, k))
 
-    if not pdefs.load_combine():
-        raise SystemExit("needs libHiggsAnalysisCombinedLimit: run inside "
-                         "the Combine container")
     cat = ROOT.RooCategory(f"pdfindex_{tag}", f"pdfindex_{tag}")
     multi = ROOT.RooMultiPdf(f"multipdf_{tag}_bkg", "multipdf", cat, store)
 
@@ -170,6 +167,11 @@ def main():
                     help="where the JSONs are, and the workspaces go")
     ap.add_argument("--only", choices=("signal", "bkg"), default=None)
     args = ap.parse_args()
+
+    # before writing anything: the workspaces must be built with Combine's classes
+    if not pdefs.load_combine(quiet=True):
+        raise SystemExit("needs libHiggsAnalysisCombinedLimit: run inside "
+                         "the Combine container")
 
     tag = f"{args.category}_{args.bin}_{args.year}"
     print(f"tag      : {tag}\nROOT     : {ROOT.gROOT.GetVersion()}")
