@@ -637,7 +637,8 @@ def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
     for i, b in enumerate(by_bin):
         frame.GetXaxis().SetBinLabel(i + 1, b)
     frame.GetXaxis().SetLabelSize(0.05)
-    frame.GetXaxis().SetTitleOffset(1.6)
+    frame.GetXaxis().SetTitleOffset(1.4)
+    frame.GetXaxis().CenterTitle()
     frame.Draw("AXIS")
     band = ROOT.TBox(-0.5, -threshold, n - 0.5, threshold)
     band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
@@ -658,14 +659,21 @@ def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
     names.SetTextAlign(21)
     names.SetTextColor(ROOT.kGray + 2)
     keep = [frame, band, zero, leg, names]
+    # points of a bin are spread symmetrically about its centre, over the
+    # families that bin actually has
+    step = min(0.22, 0.7 / nf)
+    present = [[f for f in fams
+                if any(family(g) == f and "median_pull" in m
+                       for g, m in summary["members"].items())]
+               for summary in by_bin.values()]
     for j, fam in enumerate(fams):
         col = ROOT.TColor.GetColor(*FAMILY_RGB[j % len(FAMILY_RGB)])
-        dx = (j - (nf - 1) / 2.0) * min(0.22, 0.7 / nf)
         gr = ROOT.TGraphErrors()
         for i, summary in enumerate(by_bin.values()):
             for gen, m in summary["members"].items():
                 if family(gen) != fam or "median_pull" not in m:
                     continue
+                dx = (present[i].index(fam) - (len(present[i]) - 1) / 2.0) * step
                 k = gr.GetN()
                 gr.SetPoint(k, i + dx, m["median_pull"])
                 gr.SetPointError(k, 0, m["median_pull_err"])
