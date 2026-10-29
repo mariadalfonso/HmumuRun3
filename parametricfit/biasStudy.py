@@ -76,6 +76,11 @@ PULL_FILL_RGB = (166, 206, 227)    # light blue
 PULL_LINE_RGB = (31, 120, 180)     # darker blue
 PULL_GAUS_RGB = (153, 0, 13)       # dark red
 SUMMARY_BAND_RGB = (217, 217, 217)  # light grey
+# one colour and marker per background family in the summary over BDT bins
+FAMILY_RGB = [(42, 120, 214), (235, 104, 52), (27, 175, 122), (237, 161, 0)]
+FAMILY_MARKERS = [20, 21, 22, 23]
+FAMILY_LABEL = {"bern": "Bernstein", "exp": "exponential sum",
+                "pow": "power-law sum"}
 
 # r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
 # that the 1 sigma interval of a toy never reaches the edge; --algo singles
@@ -603,6 +608,88 @@ def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
     save(c, outbase, pdf)
 
 
+def family(member):
+    """bern5 -> bern: the member without its order."""
+    return member.rstrip("0123456789")
+
+
+def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
+    """Median Bias per BDT bin, one colour per background family. by_bin maps
+    a bin label to that bin's report summary; each bin has its own envelope,
+    so each point is labelled with its member (the order can differ)."""
+    fams = []
+    for summary in by_bin.values():
+        for gen in summary["members"]:
+            if family(gen) not in fams:
+                fams.append(family(gen))
+    n, nf = len(by_bin), len(fams)
+    c = new_canvas(f"c_{os.path.basename(outbase)}")
+    c.SetBottomMargin(0.18)
+    frame = ROOT.TH1D(f"f_{os.path.basename(outbase)}",
+                      ";BDT category;median Bias", n, -0.5, n - 0.5)
+    frame.SetDirectory(0)
+    vals = [abs(m.get("median_pull", 0)) + m.get("median_pull_err", 0)
+            for summary in by_bin.values()
+            for m in summary["members"].values()]
+    lim = max([threshold * 2.5] + vals) * 1.5
+    frame.SetMinimum(-lim)
+    frame.SetMaximum(lim)
+    for i, b in enumerate(by_bin):
+        frame.GetXaxis().SetBinLabel(i + 1, b)
+    frame.GetXaxis().SetLabelSize(0.05)
+    frame.GetXaxis().SetTitleOffset(1.6)
+    frame.Draw("AXIS")
+    band = ROOT.TBox(-0.5, -threshold, n - 0.5, threshold)
+    band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
+    band.Draw()
+    zero = ROOT.TLine(-0.5, 0, n - 0.5, 0)
+    zero.SetLineStyle(2)
+    zero.Draw()
+    x0 = c.GetLeftMargin() + 0.03
+    leg = ROOT.TLegend(x0, 0.775, 1 - c.GetRightMargin() - 0.03, 0.815)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(42)
+    leg.SetTextSize(0.035)
+    leg.SetNColumns(nf)
+    names = ROOT.TLatex()
+    names.SetTextFont(42)
+    names.SetTextSize(0.026)
+    names.SetTextAlign(21)
+    names.SetTextColor(ROOT.kGray + 2)
+    keep = [frame, band, zero, leg, names]
+    for j, fam in enumerate(fams):
+        col = ROOT.TColor.GetColor(*FAMILY_RGB[j % len(FAMILY_RGB)])
+        dx = (j - (nf - 1) / 2.0) * min(0.22, 0.7 / nf)
+        gr = ROOT.TGraphErrors()
+        for i, summary in enumerate(by_bin.values()):
+            for gen, m in summary["members"].items():
+                if family(gen) != fam or "median_pull" not in m:
+                    continue
+                k = gr.GetN()
+                gr.SetPoint(k, i + dx, m["median_pull"])
+                gr.SetPointError(k, 0, m["median_pull_err"])
+                names.DrawLatex(i + dx, m["median_pull"]
+                                + m["median_pull_err"] + 0.03 * lim, gen)
+        gr.SetMarkerStyle(FAMILY_MARKERS[j % len(FAMILY_MARKERS)])
+        gr.SetMarkerSize(1.3)
+        gr.SetMarkerColor(col)
+        gr.SetLineColor(col)
+        gr.SetLineWidth(2)
+        gr.Draw("P same")
+        leg.AddEntry(gr, FAMILY_LABEL.get(fam, fam), "pe")
+        keep.append(gr)
+    frame.Draw("AXIS same")
+    leg.Draw()
+    lat = ROOT.TLatex()
+    lat.SetNDC()
+    lat.SetTextFont(42)
+    lat.SetTextSize(0.035)
+    lat.DrawLatex(x0 + 0.01, 0.86, f"{title}, #mu_{{inj}} = {r_inj:g}")
+    keep += [lat, draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV)]
+    save(c, outbase, pdf)
+
+
 def report_tag(tag, args):
     outdir = os.path.join(args.outdir, tag)
     meta_path = os.path.join(outdir, "meta.json")
@@ -745,8 +832,21 @@ def main():
         for tag in tags:
             run_tag(tag, args)
     if args.only != "run" and not args.dry_run:
-        for tag in tags:
-            report_tag(tag, args)
+        reports = {tag: report_tag(tag, args) for tag in tags}
+        if len(args.bins) > 1:
+            for cat in args.category:
+                for r_inj in args.inject:
+                    key = rlabel(r_inj)
+                    by_bin = {b: reports[f"{cat}_{b}_{args.year}"][key]
+                              for b in args.bins
+                              if key in reports[f"{cat}_{b}_{args.year}"]}
+                    if len(by_bin) > 1:
+                        plot_summary_bins(
+                            by_bin, f"{cat}, {args.year}", r_inj,
+                            args.threshold,
+                            os.path.join(args.plotdir, cat,
+                                         f"bias_{cat}_{args.year}_{key}"
+                                         "_summary_bins"), args.pdf)
 
 
 if __name__ == "__main__":
