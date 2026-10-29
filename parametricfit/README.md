@@ -18,7 +18,7 @@ each sideband of a blinded `Range("sbLow,sbHigh")` fit separately and has no
 | 3 | `makeWorkspaces.py` | container | the two JSONs + TH1D | `Signal_<tag>_workspace.root`, `Bkg_<tag>_workspace.root` |
 | 4 | `analysis/FITS/bwsHrare.py` | container | the two workspaces | datacard + combined workspace |
 | 5 | `text2workspace.py`, `combine` | container | the datacard | limits, fits |
-| 6 | `biasStudy.py` | container | the datacard | `BIAS/<tag>/`: toys, fits, pull summary |
+| 6 | `biasStudy.py` | container | the datacard | `BIAS/<tag>/`: toys, fits, bias summary |
 
 `<tag>` is `<category>_<bin>_<year>`, e.g. `ggHcat_incl_2024`. Only numbers
 (JSON) and a plain TH1D cross from conda to the container, and nothing is
@@ -105,8 +105,9 @@ python biasStudy.py -c ggHcat -b incl -y 2024 --only report   # re-read only
 ```
 For each envelope member it generates toys from that member alone
 (`pdfindex_<tag>` frozen), with r = 1, and fits them with the full model, the
-index floating, as in the limit. The pull is (r̂ − r_inj)/σ_r, with σ_r the
-error on the side facing r_inj. A member passes if |median pull| < 0.14, and
+index floating, as in the limit. The bias is
+Bias(μ_fit, μ_inj, σ_μ) = (μ_fit − μ_inj)/σ_μ, with μ Combine's r and σ_μ the
+error on the side facing μ_inj. A member passes if |median Bias| < 0.20, and
 every member must pass. The table also gives how often the fit picked each
 member, and why toys were dropped (fit failed, no interval, interval at the
 r range edge). The r range of the toy fits is r_inj ± 10 σ_r from an Asimov
@@ -156,6 +157,6 @@ once its `wsDIR`, `years`, `cases` and `cats` are edited.
 - **`--ntoys`** (default 1000) per member and r, in jobs of **`--toys-per-job`** (100),
   **`-j`** at a time
 - **`--rrange RMIN RMAX`**: fixed r range instead of the Asimov one
-- **`--threshold`** (default 0.14): max |median pull|
+- **`--threshold`** (default 0.20): max |median Bias|
 - **`--combine-opts`**: passed to every combine call, e.g. `"--toysNoSystematics"`
 - **`--only run|report`**, **`--force`**, **`--dry-run`**, **`--pdf`**

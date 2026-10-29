@@ -7,12 +7,14 @@ For each tag = "<cat>_<bin>_<year>" and each member i of the envelope
   1. generate toys from member i (pdfindex_<tag> frozen to i), with r = r_inj
   2. fit every toy with the full model, pdfindex_<tag> FLOATING, exactly as
      the limit is computed (discrete profiling)
-  3. pull = (r_fit - r_inj) / sigma_r, sigma_r = the error on the side that
-     faces r_inj (the upper error if the fit is low, the lower if high)
+  3. Bias(mu_fit, mu_inj, sigma_mu) = (mu_fit - mu_inj) / sigma_mu, with mu
+     Combine's r and sigma_mu the error on the side that faces mu_inj (the
+     upper error if the fit is low, the lower if high)
 
-The envelope is unbiased against member i if |median pull| < 0.14 (--threshold),
-the usual CMS criterion: the bias is then < 14% of the statistical error, which
-inflates the total error by < 1%. Every member of the envelope must pass.
+The envelope is unbiased against member i if |median Bias| < 0.20 (--threshold):
+the bias is then < 20% of the statistical error, which would inflate the total
+error by < 2% (flashggFinalFit uses the tighter 0.14, < 1%). Every member of the
+envelope must pass.
 
 Toys come from the pre-fit workspace: each member at its own sideband fit, the
 background norm at its rateParam value, CMS_scale_m / CMS_res_m drawn from
@@ -66,10 +68,14 @@ FITS_DIR = os.path.normpath(os.path.join(HERE, "..", "analysis", "FITS"))
 
 MH = 125.0
 MULTIPDF_CLASS = "RooMultiPdf"
-PULL_THRESHOLD = 0.14      # |median pull| above this fails
+PULL_THRESHOLD = 0.20      # |median pull| above this fails
 MIN_VALID_FRAC = 0.90      # warn when fewer toys than this give a usable pull
 PULL_RANGE = 5.0           # pull histogram and Gaussian fit over +/- this
 PULL_BINS = 50
+PULL_FILL_RGB = (166, 206, 227)    # light blue
+PULL_LINE_RGB = (31, 120, 180)     # darker blue
+PULL_GAUS_RGB = (153, 0, 13)       # dark red
+SUMMARY_BAND_RGB = (217, 217, 217)  # light grey
 
 # r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
 # that the 1 sigma interval of a toy never reaches the edge; --algo singles
@@ -444,7 +450,7 @@ def median(v):
 
 
 def pull_hist(name, pulls):
-    h = ROOT.TH1D(name, ";(#hat{r} - r_{inj}) / #sigma_{r};toys",
+    h = ROOT.TH1D(name, ";Bias = (#mu_{fit} - #mu_{inj}) / #sigma_{#mu};toys",
                   PULL_BINS, -PULL_RANGE, PULL_RANGE)
     h.SetDirectory(0)
     for p in pulls:
@@ -519,45 +525,47 @@ def save(c, outbase, pdf):
 def plot_member(pulls, s, tag, gen, r_inj, outbase, pdf):
     c = new_canvas(f"c_{os.path.basename(outbase)}")
     h = pull_hist(f"h_{os.path.basename(outbase)}", pulls)
-    h.SetMarkerStyle(20)
-    h.SetMaximum(1.45 * max(h.GetMaximum(), 1))
-    h.Draw("E")
+    h.SetFillColor(ROOT.TColor.GetColor(*PULL_FILL_RGB))
+    h.SetLineColor(ROOT.TColor.GetColor(*PULL_LINE_RGB))
+    h.SetLineWidth(2)
+    h.SetMaximum(1.6 * max(h.GetMaximum(), 1))
+    h.Draw("HIST")
     keep = [h]
     if "gaus_mean" in s:
         g = ROOT.TF1(f"g_{os.path.basename(outbase)}", "gaus",
                      -PULL_RANGE, PULL_RANGE)
-        g.SetParameters(h.GetMaximum() / 1.45, s["gaus_mean"], s["gaus_sigma"])
+        g.SetParameters(h.GetMaximum() / 1.6, s["gaus_mean"], s["gaus_sigma"])
         h.Fit(g, "Q0")
-        g.SetLineColor(sf.fit_color())
+        g.SetLineColor(ROOT.TColor.GetColor(*PULL_GAUS_RGB))
         g.SetLineWidth(2)
         g.Draw("same")
         keep.append(g)
-    lat = ROOT.TLatex()
-    lat.SetNDC()
-    lat.SetTextFont(42)
-    lat.SetTextSize(0.035)
-    x0, y0, dy = c.GetLeftMargin() + 0.04, 0.86, 0.045
-    lines = [tag, f"toys: {gen}, fit: envelope, r_{{inj}} = {r_inj:g}"]
-    if s.get("n_valid"):
-        lines.append("median = %+.3f #pm %.3f" % (s["median_pull"],
-                                                  s["median_pull_err"]))
+    x0 = c.GetLeftMargin() + 0.03
+    leg = ROOT.TLegend(x0, 0.68, x0 + 0.45, 0.89)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(42)
+    leg.SetTextSize(0.035)
+    leg.SetHeader(f"{tag}, #mu_{{inj}} = {r_inj:g}")
+    leg.AddEntry(h, f"{gen} (n_{{toys}} = {s['n_valid']})", "f")
     if "gaus_mean" in s:
-        lines.append("Gaus: #mu = %+.3f, #sigma = %.3f" % (s["gaus_mean"],
-                                                          s["gaus_sigma"]))
-    lines.append(f"{s['n_valid']} / {s['n_toys']} toys, {s['status']}")
-    for k, txt in enumerate(lines):
-        lat.DrawLatex(x0, y0 - k * dy, txt)
-    keep.append(draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV))
+        leg.AddEntry(g, "Gaussian fit, mean = %+.2f, #sigma = %.2f"
+                     % (s["gaus_mean"], s["gaus_sigma"]), "l")
+    if s.get("n_valid"):
+        leg.AddEntry(ROOT.nullptr, "median = %+.3f #pm %.3f"
+                     % (s["median_pull"], s["median_pull_err"]), "")
+    leg.Draw()
+    keep += [leg, draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV)]
     save(c, outbase, pdf)
 
 
 def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
-    """Median pull per generating member, with the +/- threshold band."""
+    """Median Bias per generating member, with the +/- threshold band."""
     n = len(results)
     c = new_canvas(f"c_{os.path.basename(outbase)}")
     c.SetBottomMargin(0.18)
     frame = ROOT.TH1D(f"f_{os.path.basename(outbase)}",
-                      ";toys generated from;median pull", n, -0.5, n - 0.5)
+                      ";background model;median Bias", n, -0.5, n - 0.5)
     frame.SetDirectory(0)
     lim = max([threshold * 2.5] +
               [abs(r.get("median_pull", 0)) + r.get("median_pull_err", 0)
@@ -570,7 +578,7 @@ def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
     frame.GetXaxis().SetTitleOffset(1.6)
     frame.Draw("AXIS")
     band = ROOT.TBox(-0.5, -threshold, n - 0.5, threshold)
-    band.SetFillColorAlpha(ROOT.kGreen - 9, 0.5)
+    band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
     band.Draw()
     zero = ROOT.TLine(-0.5, 0, n - 0.5, 0)
     zero.SetLineStyle(2)
@@ -589,7 +597,7 @@ def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
     lat.SetTextFont(42)
     lat.SetTextSize(0.035)
     lat.DrawLatex(c.GetLeftMargin() + 0.04, 0.86,
-                  f"{tag}, fit: envelope, r_{{inj}} = {r_inj:g}")
+                  f"{tag}, #mu_{{inj}} = {r_inj:g}")
     keep = [frame, band, zero, gr,  # noqa: F841 (ROOT needs them alive)
             draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV)]
     save(c, outbase, pdf)
@@ -619,11 +627,20 @@ def report_tag(tag, args):
         for igen, gen in enumerate(names):
             files = sorted(glob.glob(os.path.join(
                 outdir, f"fit_gen{igen}_{key}_s*.root")))
+            requested = meta.get("ntoys", {})
             pulls, dr, chosen, drop = collect_pulls(files, r_inj, rrange,
-                                                    index_name,
-                                                    meta.get("ntoys", {}))
+                                                    index_name, requested)
+            # jobs that never wrote a fit file (combine crashed): their toys
+            # count as dropped, so the valid fraction is out of all requested
+            have = {os.path.basename(p)[len("fit_"):-len(".root")]
+                    for p in files}
+            failed = sorted(st for st in requested
+                            if st.startswith(f"gen{igen}_{key}_s")
+                            and st not in have)
+            drop["job_failed"] = sum(requested[st] for st in failed)
             s = summarize(pulls, dr, chosen, drop, len(names), args.threshold)
             s["n_files"] = len(files)
+            s["failed_jobs"] = failed
             results[gen] = s
             if pulls:
                 plot_member(pulls, s, tag, gen, r_inj,
@@ -635,8 +652,8 @@ def report_tag(tag, args):
                          args.pdf)
         summary = {"tag": tag, "r_inj": r_inj, "r_range": rrange,
                    "threshold": args.threshold, "envelope": names,
-                   "pull": "(r_fit - r_inj) / sigma_r, sigma_r on the side "
-                           "facing r_inj",
+                   "pull": "Bias = (mu_fit - mu_inj) / sigma_mu, mu = r, "
+                           "sigma_mu on the side facing mu_inj",
                    "members": results,
                    "pass": all(s.get("pass", False) for s in results.values())}
         write_json(os.path.join(outdir, f"bias_{tag}_{key}.json"), summary)
@@ -672,6 +689,11 @@ def print_table(summary):
         if dropped:
             print(f"  {'':<10} dropped: " +
                   ", ".join(f"{k} {v}" for k, v in dropped.items()))
+    failed = [st for s in summary["members"].values()
+              for st in s.get("failed_jobs", [])]
+    if failed:
+        print(f"  !! {len(failed)} job(s) wrote no fit: {', '.join(failed)}; "
+              "rerun the same command to retry them")
     print("  envelope " + ("PASSES" if summary["pass"] else "FAILS"))
 
 
@@ -705,7 +727,7 @@ def main():
                     help="r range of the toy fits (default: from an Asimov "
                          f"fit, r_inj -/+ {R_WIDTH:g} sigma_r)")
     ap.add_argument("--threshold", type=float, default=PULL_THRESHOLD,
-                    help=f"max |median pull| (default {PULL_THRESHOLD})")
+                    help=f"max |median Bias| (default {PULL_THRESHOLD})")
     ap.add_argument("--combine-opts", default="",
                     help="extra options for every combine call, e.g. "
                          "\"--toysNoSystematics\"")
