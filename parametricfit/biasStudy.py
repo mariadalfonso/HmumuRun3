@@ -21,7 +21,7 @@ background norm at its rateParam value, CMS_scale_m / CMS_res_m drawn from
 their constraints. --toysFrequentist is NOT used: it fits the full data first,
 the blinded 120-130 GeV region included.
 
-Step 6 of the chain, after bwsHrare.py (README). Runs in the Combine
+Step 6 of the chain, after buildWorkspace.py (README). Runs in the Combine
 container, from parametricfit/. --only report reads back the combine output
 and needs only ROOT, so it also runs in conda.
 
@@ -167,8 +167,8 @@ def shapes_basedir(card, candidates):
     """The directory the card's relative `shapes` paths resolve from.
 
     bwsHrare.py writes the path as given on its command line, relative to
-    where it ran (analysis/FITS for the README commands), so text2workspace
-    must run from there."""
+    where it ran (parametricfit/ for buildWorkspace.py, analysis/FITS/ for
+    older cards), so text2workspace must run from there."""
     paths = []
     with open(card) as fh:
         for line in fh:
@@ -188,7 +188,7 @@ def shapes_basedir(card, candidates):
 def build_t2w(card, t2w, dry):
     """text2workspace the card, unless the output is newer than the card and
     the workspace file it points to."""
-    base = shapes_basedir(card, [os.path.dirname(card),
+    base = shapes_basedir(card, [HERE, os.path.dirname(card),
                                  os.path.dirname(os.path.dirname(card)),
                                  FITS_DIR])
     if os.path.isfile(t2w) and os.path.getmtime(t2w) > os.path.getmtime(card):
@@ -337,8 +337,8 @@ def run_tag(tag, args):
     os.makedirs(os.path.join(outdir, "logs"), exist_ok=True)
     card = os.path.abspath(os.path.join(args.carddir, f"datacard_{tag}.txt"))
     if not os.path.isfile(card):
-        raise SystemExit(f"missing {card}; run bwsHrare.py first (README "
-                         "step 4)")
+        raise SystemExit(f"missing {card}; run buildWorkspace.py first, "
+                         "or point --carddir at the cards")
     t2w = os.path.join(outdir, f"{tag}.root")
     extra = shlex.split(args.combine_opts)
 
@@ -800,9 +800,9 @@ def main():
     ap.add_argument("-b", "--bins", nargs="+", default=["incl"],
                     help="BDT bin label(s), as given to sigFit/bkgFit")
     ap.add_argument("-y", "--year", default="Run3")
-    ap.add_argument("--carddir", default=os.path.join(FITS_DIR, "workspaces"),
-                    help="where bwsHrare.py wrote datacard_<tag>.txt "
-                         "(default analysis/FITS/workspaces)")
+    ap.add_argument("--carddir", default=None,
+                    help="where buildWorkspace.py wrote datacard_<tag>.txt "
+                         "(default WS_<year>)")
     ap.add_argument("--outdir", default="BIAS",
                     help="toys, fits and summaries go to <outdir>/<tag>/")
     ap.add_argument("--plotdir",
@@ -834,6 +834,8 @@ def main():
     ap.add_argument("--pdf", action="store_true",
                     help="also write PDF alongside the PNG")
     args = ap.parse_args()
+    if args.carddir is None:
+        args.carddir = os.path.join(HERE, f"WS_{args.year}")
 
     tags = [f"{c}_{b}_{args.year}" for c in args.category for b in args.bins]
     if args.only != "report":

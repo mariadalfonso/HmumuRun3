@@ -16,13 +16,15 @@ each sideband of a blinded `Range("sbLow,sbHigh")` fit separately and has no
 | 1 | `sigFit.py` | conda | signal snapshots | `Signal_<tag>_params.json` (+ a conda-only workspace) |
 | 2 | `bkgFit.py` | conda | data snapshots | `Bkg_<tag>_params.json`, `Bkg_<tag>_data.root` |
 | 3 | `makeWorkspaces.py` | container | the two JSONs + TH1D | `Signal_<tag>_workspace.root`, `Bkg_<tag>_workspace.root` |
-| 4 | `analysis/FITS/bwsHrare.py` | container | the two workspaces | datacard + combined workspace |
-| 5 | `text2workspace.py`, `combine` | container | the datacard | limits, fits |
+| 4 | `bwsHrare.py` | container | the two workspaces | `datacard_<tag>.txt`, `workspace_<tag>_workspace.root` |
+| 5 | `text2workspace.py`, `combine` | container | the datacard | `<tag>.root`; limits, fits in `parametricfit/` |
 | 6 | `biasStudy.py` | container | the datacard | `BIAS/<tag>/`: toys, fits, bias summary |
 
 `<tag>` is `<category>_<bin>_<year>`, e.g. `ggHcat_incl_2024`. Only numbers
 (JSON) and a plain TH1D cross from conda to the container, and nothing is
-refitted there.
+refitted there. Everything runs from `parametricfit/`. `bwsHrare.py` is a
+copy of `analysis/FITS/bwsHrare.py`; the cards' shapes paths are relative to
+`parametricfit/`, so run combine from here too.
 
 - **`sigFit.py`** fits a double-sided Crystal Ball to the signal MC of each
   production mode, freezes the shape, and leaves two shape nuisances for
@@ -48,6 +50,43 @@ refitted there.
   background yield as a free `rateParam`, `CMS_scale_m` / `CMS_res_m` as
   `param 0 1`, and `pdfindex_<tag> discrete`.
 
+## Quick start: ggHcat BDT bins, Run 3
+
+**Fits, in conda**, from `parametricfit/`:
+```bash
+conda activate pyenv
+python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
+for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3 --wsdir WS_Run3; done
+```
+
+**Cards and workspace, in the container** (entered as in step 3 below), from
+`parametricfit/`:
+```bash
+python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
+```
+`buildWorkspace.py` runs steps 3–5 up to the workspace:
+- `makeWorkspaces.py` and `bwsHrare.py` for each bin;
+- `combineCards.py` over the bins, run inside `WS_Run3/` so the shapes
+  paths stay right;
+- `text2workspace.py`, writing `WS_Run3/ggHcat_bdt_Run3.root`.
+
+The cards and workspaces all go to `WS_Run3/`, next to the fit outputs.
+
+It then writes `WS_Run3/Yields_ggHcat_bdt_Run3.json` and prints it as a table:
+- the signal yield of each production mode per bin, and their total;
+- the background yield per bin, i.e. the sideband count extrapolated over
+  110–150 GeV with the best envelope member;
+- the totals over the bins.
+
+Last, it prints the `combine` commands for the expected limit and
+significance, and the bias study command, all to run from `parametricfit/`.
+`--dry-run` prints the commands without running
+them; `--name` renames the combined card and workspace.
+
+The per-bin signal yields are also in `Signal_<tag>_params.json` under
+`yields`, and the background yield in `Bkg_<tag>_params.json` under
+`normalization.value`.
+
 ## How to run: ggHcat, inclusive, 2024
 
 **1–2. Fits, in conda**, from `parametricfit/`:
@@ -71,29 +110,29 @@ cd <path to>/parametricfit
 python makeWorkspaces.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
 ```
 
-**4. Datacard**, still in the container, from `analysis/FITS/`:
+**4. Datacard**, still in the container, from `parametricfit/`:
 ```bash
 python bwsHrare.py --whichCat=ggHcat --whichBIN=incl --whichYear=2024 \
-    --inputFileSig=../../parametricfit/WS_2024/Signal_ggHcat_incl_2024_workspace.root \
-    --inputFileBKG=../../parametricfit/WS_2024/Bkg_ggHcat_incl_2024_workspace.root \
-    --output=workspaces/workspace_ggHcat_incl_2024_workspace.root \
-    --datCardName=workspaces/datacard_ggHcat_incl_2024.txt
+    --inputFileSig=WS_2024/Signal_ggHcat_incl_2024_workspace.root \
+    --inputFileBKG=WS_2024/Bkg_ggHcat_incl_2024_workspace.root \
+    --output=WS_2024/workspace_ggHcat_incl_2024_workspace.root \
+    --datCardName=WS_2024/datacard_ggHcat_incl_2024.txt
 ```
 The card should end with `CMS_res_m param 0 1`, `CMS_scale_m param 0 1` and
 `pdfindex_ggHcat_incl_2024 discrete`.
 
-**5. Combine**, from `analysis/FITS/`:
+**5. Combine**, from `parametricfit/`:
 ```bash
-text2workspace.py -m 125 workspaces/datacard_ggHcat_incl_2024.txt -o workspaces/ggHcat_incl_2024.root
+text2workspace.py -m 125 WS_2024/datacard_ggHcat_incl_2024.txt -o WS_2024/ggHcat_incl_2024.root
 
 # expected limit
 combine -M AsymptoticLimits -m 125 -t -1 --run expected --rMin 0 \
-    -d workspaces/ggHcat_incl_2024.root --X-rtd MINIMIZER_freezeDisassociatedParams -n _ggH2024
+    -d WS_2024/ggHcat_incl_2024.root --X-rtd MINIMIZER_freezeDisassociatedParams -n _ggH2024
 
 # Asimov fit with r = 1: r ~ 1, CMS_scale_m and CMS_res_m ~ 0 +/- 1
 combine -M MultiDimFit -m 125 -t -1 --expectSignal=1 --algo singles \
     -P r -P CMS_scale_m -P CMS_res_m --floatOtherPOIs 1 \
-    -d workspaces/ggHcat_incl_2024.root --X-rtd MINIMIZER_freezeDisassociatedParams -n _ggH2024_check
+    -d WS_2024/ggHcat_incl_2024.root --X-rtd MINIMIZER_freezeDisassociatedParams -n _ggH2024_check
 ```
 **Keep `-t -1` on every combine call.** The workspace holds the full data,
 the blinded region included.
@@ -122,8 +161,9 @@ skipped, so a crashed run resumes; add `--seed` for more toys,
 
 For another category, bin or year, change `-c` / `-b` / `-y` and the
 `--which*` options; the same values must be used in every step.
-`analysis/FITS/combineCommand.sh` loops steps 4–5 over categories and bins
-once its `wsDIR`, `years`, `cases` and `cats` are edited.
+`buildWorkspace.py` runs steps 3–5 up to the workspace for several bins at
+once (quick start above). `analysis/FITS/combineCommand.sh` still uses the old
+layout under `analysis/FITS/`.
 
 ## Status (2026-10-20)
 
@@ -151,7 +191,8 @@ once its `wsDIR`, `years`, `cases` and `cats` are edited.
 ## Bias study options
 
 - **`-c`, `-b`, `-y`**: as for the fits; one study per `<cat>_<bin>_<year>`
-- **`--carddir`** (default `analysis/FITS/workspaces`): where `datacard_<tag>.txt` is
+- **`--carddir`** (default `WS_<year>`): where `datacard_<tag>.txt` is; cards made in
+  `analysis/FITS/` still work with `--carddir ../analysis/FITS/workspaces`
 - **`--outdir`** (default `BIAS`), **`--plotdir`** (default `~/public_html/HmumuFits/bias`)
 - **`--inject`** (default `1`): injected r, one or more, e.g. `--inject 0 1`
 - **`--ntoys`** (default 1000) per member and r, in jobs of **`--toys-per-job`** (100),

@@ -179,14 +179,18 @@ def make_signal_pdf(x, tag, scale_unc=SCALE_UNC, res_unc=RES_UNC,
 # diagnostics
 # ---------------------------------------------------------------------------
 
-def get_lumi(year):
-    """Integrated luminosity (fb^-1) of the signal MC for a year.
+def get_lumi(year, full_year=False):
+    """Integrated luminosity (fb^-1) for a year.
 
-    Uses the signal era groups, so Run3 -> 2022 + 2023 + 2024 only.
+    By default that of the signal MC, so Run3 -> 2022 + 2023 + 2024 only.
+    full_year=True gives that of the data (Run3 -> 2022 ... 2026), which the
+    background fit reads and the signal yield is extrapolated to.
     Imported lazily so --selftest does not pull in prepareFits.
     """
-    from prepareFits import get_lumi as _get_lumi, SIGNAL_YEAR_GROUPS
-    return _get_lumi(year, SIGNAL_YEAR_GROUPS)
+    from prepareFits import (get_lumi as _get_lumi, SIGNAL_YEAR_GROUPS,
+                             DATA_YEAR_GROUPS)
+    return _get_lumi(year, DATA_YEAR_GROUPS if full_year
+                     else SIGNAL_YEAR_GROUPS)
 
 
 def fit_color():
@@ -208,8 +212,9 @@ def setup_style():
     ROOT.gStyle.SetLineColor(ROOT.kBlack)
 
 
-def cms_label(pad, year):
-    """CMS + extra text top-left, lumi + energy top-right, above the frame."""
+def cms_label(pad, year, full_year=False):
+    """CMS + extra text top-left, lumi + energy top-right, above the frame.
+    full_year: label the data luminosity instead of the signal MC's."""
     pad.cd()
     t = pad.GetTopMargin()
     l = pad.GetLeftMargin()
@@ -231,7 +236,7 @@ def cms_label(pad, year):
         latex.SetTextSize(EXTRA_OVER_CMS_TEXT_SIZE * CMS_TEXT_SIZE_FRAC * t)
         latex.DrawLatex(l + 0.10, y, CMS_EXTRA_TEXT)
 
-    lumi = get_lumi(year) if year else 0.0
+    lumi = get_lumi(year, full_year) if year else 0.0
     if lumi <= 0:
         print(f"warning: no luminosity found for year tag '{year}'")
     latex.SetTextFont(42)
@@ -422,12 +427,24 @@ def fit_legend(frame, x1=None, y1=None, x2=None, y2=None,
 
 
 def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
-             year=None, save_pdf=False):
+             year=None, save_pdf=False, scale=1.0):
     """Write two 2-panel canvases and return chi2/ndf.
 
     <outbase>_ratio.pdf/.png   fit + Template/Fit
     <outbase>_pull.pdf/.png    fit + pull
+
+    scale: the full-year yield over the MC integral. When it is not 1 the
+    template is drawn scaled by it and labelled with the data luminosity,
+    so the plot shows the yield the workspace carries; the pulls, ratio and
+    chi2 do not change under a constant scale.
     """
+    if scale != 1.0:
+        hist = hist.Clone(f"{hist.GetName()}_full_year")
+        hist.SetDirectory(0)
+        hist.Scale(scale)
+        data = ROOT.RooDataHist(f"{data.GetName()}_full_year", "data",
+                                ROOT.RooArgList(x), hist)
+        norm *= scale
     frame = x.frame(ROOT.RooFit.Title(""))
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
                 ROOT.RooFit.MarkerStyle(DATA_MARKER_STYLE),
@@ -488,7 +505,7 @@ def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
         pad1.cd()
         frame.Draw()
         keep_txt = _annotate(nom, chi2_ndf, norm, n_eff, label)
-        keep_cms = cms_label(pad1, year)
+        keep_cms = cms_label(pad1, year, full_year=(scale != 1.0))
         keep_leg = fit_legend(frame)
 
         pad2.cd()
@@ -568,8 +585,8 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
     """Fit one histogram. Returns (pdf, bundle, norm_var, record) or None.
 
     `yield_info` (from run_category) carries the signal yield extrapolated
-    to the full year; it replaces the MC integral in the norm and the JSON.
-    The plots and chi2 always use the MC integral of `hist`.
+    to the full year; it replaces the MC integral in the norm and the JSON,
+    and the plot draws the template scaled to it.
     """
     norm = range_integral(hist)
     n_eff = effective_entries(hist)
@@ -602,9 +619,10 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
     result = pdf.fitTo(data, *fitopts)       # refit from the result
 
     n_float = sum(0 if v.isConstant() else 1 for v in nom.values())
+    sig_yield = norm if yield_info is None else yield_info["value"]
     chi2_ndf = plot_fit(x, data, pdf, nom, hist, title,
                         f"{plotdir}/signal_{tag}", n_float, norm, n_eff,
-                        year=year, save_pdf=save_pdf)
+                        year=year, save_pdf=save_pdf, scale=sig_yield / norm)
 
     status, cov, edm = result.status(), result.covQual(), result.edm()
     parked = [k for k, v in nom.items() if near_bound(v)]
@@ -612,7 +630,6 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
 
     print(f"  mu     = {nom['mu'].getVal():7.3f} +/- {nom['mu'].getError():.3f}")
     print(f"  sigma  = {nom['sigma'].getVal():7.3f} +/- {nom['sigma'].getError():.3f}")
-    sig_yield = norm if yield_info is None else yield_info["value"]
     print(f"  norm   = {norm:10.2f}   (N_eff = {n_eff:.1f})")
     if yield_info is not None:
         print(f"  yield  = {sig_yield:10.2f}   extrapolated to {year} "
@@ -744,6 +761,15 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
         getattr(w, "import")(pdf)
         getattr(w, "import")(norm_var)
         dump["fits"][sig] = record
+
+    # the datacard rates over the fit window, per mode and summed
+    yields = {s: r["normalization"]["integral"]
+              for s, r in dump["fits"].items() if "normalization" in r}
+    dump["yields"] = {"window": [XLOW, XHIGH], "by_mode": yields,
+                      "total": sum(yields.values())}
+    print(f"\n  signal yield {XLOW:g}-{XHIGH:g} GeV: "
+          + ", ".join(f"{s} {v:.2f}" for s, v in yields.items())
+          + f"; total {dump['yields']['total']:.2f}")
 
     os.makedirs(wsdir, exist_ok=True)
     
