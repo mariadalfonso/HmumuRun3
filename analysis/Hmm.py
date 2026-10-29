@@ -373,7 +373,7 @@ def doCategories(df,mc,year):
         category_map = {
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",  # W→e  (WH)
             2: f"({n_goodEle}>0 && {q_looseEle}==0 && {n_looseEle}==2 && {q_goodMu}==0 && {n_looseMu}==2)", # Z→ee (ZH)
-            3: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {freeOfZ})", # W→μ  (WH)
+            3: f"({n_looseEle}==0 && {n_goodMu}==3 && {n_looseMu}==3 && abs({q_goodMu})==1 && {freeOfZ})",  # W→μ  (WH)
             4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0)",                   # Z→μμ (ZH)
         }
 
@@ -665,9 +665,8 @@ def objScaleSmear(df, year, mc):
                             "Electron_promptMVA"
                             )
 
-            if year in ["12022", "22022", "12023", "22023"]:
-                df = df.Define("Electron_jetDF","Electron_jetBTagDeepFlavB")
-                df = df.Define("Electron_isEB", "abs(Electron_eta) < 1.4")
+            df = df.Define("Electron_jetDF","Electron_jetBTagDeepFlavB")
+            df = df.Define("Electron_isEB", "abs(Electron_eta) < 1.4")
 
             df = df.Define("Muon_miniRelIsoNeutral","Muon_miniPFRelIso_all - Muon_miniPFRelIso_chg")
             df = df.Define("Muon_jetBTagDeepFlavB","getLeptonJetBTag(Jet_btagDeepFlavB,Muon_jetIdx)")
@@ -676,8 +675,7 @@ def objScaleSmear(df, year, mc):
             df = df.Define("Muon_jetPtRatio","computeLeptonJetPtRatio(Muon_jetRelIso)")
             df = df.Redefine("Muon_jetNDauCharged","ROOT::VecOps::RVec<float>(Muon_jetNDauCharged.begin(), Muon_jetNDauCharged.end())")
 
-            if year in ["12022", "22022", "12023", "22023"]:
-                df = df.Define("Muon_jetDF","Muon_jetBTagDeepFlavB")
+            df = df.Define("Muon_jetDF","Muon_jetBTagDeepFlavB")
 
             df = callMVAlep(df,"Muon",
                             "config/mva/Muon-mvaTTH.2022EE.weights.xml",
