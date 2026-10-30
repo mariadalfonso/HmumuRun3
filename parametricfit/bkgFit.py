@@ -496,7 +496,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
                      nm + ("  (best fit)" if nm == best else ""), "l")
     leg.Draw()
     keep.append(leg)
-    keep.append(sf.cms_label(pad1, year))
+    keep.append(sf.cms_label(pad1, year, full_year=True))
 
     pad2.cd()
     rframe.Draw()
