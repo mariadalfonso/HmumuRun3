@@ -81,7 +81,9 @@ In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
   Bernstein, exponential and power-law sums.
   - The F-test picks one order per family; a goodness-of-fit cut builds the
-    envelope.
+    envelope. Failed fits are dropped.
+  - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
+    is the default (`pdfindex` 0): the Asimov and the yield come from it.
   - The yield is extrapolated over 110–150 GeV.
 - **`makeWorkspaces.py`**: rebuilds both models from the JSONs with Combine's
   classes. Nothing is refitted.
@@ -108,7 +110,6 @@ Expected results for ggHcat, all from Asimov:
 
 The significance scales less than √L between 2024 and Run 3; still to check.
 
-- Failed fits are not yet excluded from the envelope.
 - Bernstein orders stop at 5.
 - `--algo singles` misses the low-side errors; use `--algo grid`.
 - Not part of the chain: `sigFitCond.py`, `sigFitDCBG.py`, `fitEtaBins.py`,

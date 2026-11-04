@@ -18,6 +18,8 @@ Model selection
      parameter is not justified at p < F_THRESHOLD.
   2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.
+  3. Order the survivors by penalised NLL, NLL + 0.5 * npar, as Combine
+     compares them: the lowest is pdfindex 0, the default member.
 
 Everything that survives goes into the RooMultiPdf envelope, which covers
 the ignorance about the shape.
@@ -91,6 +93,10 @@ R_SR = "sr"
 F_THRESHOLD = 0.05
 # Goodness of fit: keep a candidate whose chi2 p-value exceeds this.
 GOF_THRESHOLD = 0.01
+# Penalty per free parameter on the sideband NLL, as RooMultiPdf applies it
+# when Combine profiles pdfindex (its correction factor, 0.5). The envelope
+# member with the lowest penalised NLL becomes pdfindex 0, the default.
+NLL_PENALTY_PER_PAR = 0.5
 
 # Minimum significance data/sqrt(sum err^2) a chi2 bin must reach; bins
 # below it are merged with their neighbours first. Without this, the
@@ -629,7 +635,6 @@ def main():
     envelope = [nm for nm in chosen.values()
                 if fits[nm]["pvalue"] > GOF_THRESHOLD]
     rejected = [nm for nm in chosen.values() if nm not in envelope]
-    envelope = sorted(set(envelope), key=lambda n: -fits[n]["pvalue"])
     print(f"\nGOF cut (p > {GOF_THRESHOLD})")
     for nm in sorted(set(chosen.values())):
         print(f"  {nm:<11} p={fits[nm]['pvalue']:.4f}  "
@@ -637,10 +642,19 @@ def main():
     if not envelope:
         raise SystemExit("no candidate passed the goodness-of-fit cut; "
                          "inspect the fits before lowering GOF_THRESHOLD")
-    # the member with the best goodness-of-fit p-value. It is the
-    # reference for the ratio panel and the source of the extrapolated
-    # norm, but it is NOT 'the' background model: the whole envelope
-    # goes into the multipdf and Combine profiles over pdfindex.
+
+    # ---- default member: lowest penalised NLL --------------------------
+    for f in fits.values():
+        f["nll_pen"] = f["nll"] + NLL_PENALTY_PER_PAR * f["npar"]
+    envelope = sorted(set(envelope), key=lambda n: fits[n]["nll_pen"])
+    print(f"\npenalised NLL = NLL + {NLL_PENALTY_PER_PAR:g} * npar")
+    for nm in envelope:
+        print(f"  {nm:<11} {fits[nm]['nll_pen']:14.2f}  "
+              f"(+{fits[nm]['nll_pen'] - fits[envelope[0]]['nll_pen']:.2f})")
+    # the member Combine would pick on the sideband: pdfindex 0, the source
+    # of the Asimov and of the extrapolated norm, and the reference for the
+    # ratio panel. It is NOT 'the' background model: the whole envelope goes
+    # into the multipdf and Combine profiles over pdfindex.
     best = envelope[0]
     print(f"\nenvelope : {', '.join(envelope)}   (best fit: {best})")
 
@@ -690,6 +704,7 @@ def main():
             "window": [sf.XLOW, sf.XHIGH], "n_bins": nbins,
             "blind_region": [SR_LO, SR_HI],
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
+            "nll_penalty_per_par": NLL_PENALTY_PER_PAR,
             "observable": x.GetName(), "data_file": os.path.basename(datafile),
         },
         "data": {"n_full": n_full, "n_sideband": n_sb,
