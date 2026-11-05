@@ -18,6 +18,15 @@ singularity shell --cleanenv -B /work -B /ceph --nv /work/submit/jaeyserm/softwa
 ```
 Run everything from `parametricfit/`.
 
+## Layout
+
+| where | what |
+|---|---|
+| top level | the chain: `sigFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
+| `fitlib/` | shared code: `pdfDefinitions`, `dyCore`, `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
+| `docs/` | local notes, gitignored |
+
 ## Workflow
 
 Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
@@ -33,7 +42,7 @@ Look for `CHECK THIS FIT` / `<-- check` in the output.
 ```bash
 python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
 ```
-Runs `makeWorkspaces.py`, `bwsHrare.py`, `combineCards.py` and
+Runs `fitlib/makeWorkspaces.py`, `fitlib/bwsHrare.py`, `combineCards.py` and
 `text2workspace.py`, prints the yield table, and prints the commands below.
 `--dry-run` only prints the commands.
 
@@ -61,8 +70,8 @@ In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
 |---|---|---|
 | `Signal_<tag>_params.json` | `sigFit.py` | shape parameters, yield per mode (`yields`) |
 | `Bkg_<tag>_params.json` | `bkgFit.py` | envelope, fits, background yield (`normalization.value`) |
-| `Signal_/Bkg_<tag>_workspace.root` | `makeWorkspaces.py` | models built with Combine's classes |
-| `datacard_<tag>.txt`, `workspace_<tag>_workspace.root` | `bwsHrare.py` | per-bin card |
+| `Signal_/Bkg_<tag>_workspace.root` | `fitlib/makeWorkspaces.py` | models built with Combine's classes |
+| `datacard_<tag>.txt`, `workspace_<tag>_workspace.root` | `fitlib/bwsHrare.py` | per-bin card |
 | `datacard_<name>.txt`, `<name>.root` | `buildWorkspace.py` | combined card and workspace, e.g. `ggHcat_bdt_Run3` |
 | `Yields_<name>.json` | `buildWorkspace.py` | signal per mode and total, background, per bin and summed |
 
@@ -77,7 +86,7 @@ In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
   - `CMS_scale_m` and `CMS_res_m` stay floating as nuisances.
   - The shape is fitted on the 2022–2024 MC. The yield covers every data era:
     2025–2026 use 2024's yield per fb⁻¹ (`signal_yield_scales` in
-    `prepareFits.py`).
+    `fitlib/prepareFits.py`).
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
   Bernstein, exponential and power-law sums, and with a Drell–Yan core
   times exp(Chebyshev) or a power law (`dyexp`, `dypow`).
@@ -86,9 +95,9 @@ In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
     is the default (`pdfindex` 0): the Asimov and the yield come from it.
   - The yield is extrapolated over 110–150 GeV.
-- **`makeWorkspaces.py`**: rebuilds both models from the JSONs with Combine's
+- **`fitlib/makeWorkspaces.py`**: rebuilds both models from the JSONs with Combine's
   classes. Nothing is refitted.
-- **`bwsHrare.py`**: a copy of `analysis/FITS/bwsHrare.py`.
+- **`fitlib/bwsHrare.py`**: a copy of `analysis/FITS/bwsHrare.py`.
   - Signal rates come from the workspace norms; the background is a free
     `rateParam`.
   - It adds the lumi and BR uncertainties, `CMS_scale_m` / `CMS_res_m` as
@@ -113,10 +122,6 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 
 - Bernstein orders stop at 5.
 - `--algo singles` misses the low-side errors; use `--algo grid`.
-- Side studies of the signal shape live in `studies/` (`sigFitCond`,
-  `sigFitDCBG`, `fitEtaBins`, `fitMVABins`, `massResVsMass`). Run them from
-  `parametricfit/` as modules: `python -m studies.fitEtaBins 2024`.
-- `docs/` is for local notes and is gitignored.
 - `analysis/FITS/combineCommand.sh` still uses the old `analysis/FITS/` layout.
 
 ## Options

@@ -51,8 +51,8 @@ Usage
     # fits, plots, JSON -- conda
     python bkgFit.py -c ggHcat -y Run3 -b incl
 
-    # ...then the workspace -- inside the Combine container
-    python makeWorkspaces.py -c ggHcat -y Run3 -b incl
+    # ...then the cards and workspace -- inside the Combine container
+    python buildWorkspace.py -c ggHcat -y Run3 -b incl
 
     python bkgFit.py -c ggHcat -y Run3 -b ""    # VBFcat__Run3 style
 """
@@ -65,7 +65,7 @@ from datetime import datetime, timezone
 import ROOT
 
 import sigFit as sf
-import pdfDefinitions as pdefs
+from fitlib import pdfDefinitions as pdefs
 
 
 ROOT.gROOT.SetBatch(True)
@@ -129,7 +129,7 @@ MAIN_Y_TITLE_OFFSET = 1.45
 
 def load_data(category, binMVA, year, nbins):
     """Full-range data histogram, from prepareFits."""
-    from prepareFits import getHisto
+    from fitlib.prepareFits import getHisto
     h = getHisto(nbins, sf.XLOW, sf.XHIGH, False, category, year,
                  False, binMVA or "incl")
     h.SetDirectory(0)
@@ -730,7 +730,7 @@ def main():
     print(f"wrote {jf}")
     print(f"plots {outbase}_envelope.png")
     bin_arg = args.bin or '""'
-    print(f"\nnext, inside the Combine container:\n  python makeWorkspaces.py "
+    print(f"\nnext, inside the Combine container:\n  python buildWorkspace.py "
           f"-c {args.category} -b {bin_arg} -y {args.year} "
           f"--wsdir {args.wsdir}")
 

@@ -53,7 +53,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import ROOT
 
-import pdfDefinitions as pdefs
+from fitlib import pdfDefinitions as pdefs
 import sigFit as sf
 
 ROOT.gROOT.SetBatch(True)

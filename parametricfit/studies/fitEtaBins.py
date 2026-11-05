@@ -59,7 +59,7 @@ import ROOT
 
 import sigFit as SF
 from sigFit import fit_one, git_commit, XLOW, XHIGH, BINS_PER_GEV
-from prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
+from fitlib.prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
                          SIGNAL_YEAR_GROUPS, expand_year, get_signal_files,
                          normalize_year)
 

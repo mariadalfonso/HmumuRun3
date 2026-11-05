@@ -68,7 +68,7 @@ import ROOT
 
 import sigFit as SF
 from sigFit import git_commit, XLOW, XHIGH
-from prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
+from fitlib.prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
                          SIGNAL_YEAR_GROUPS, expand_year, get_signal_files,
                          normalize_year)
 # The |eta| topology comes from fitEtaBins rather than being redefined

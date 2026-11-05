@@ -3,7 +3,7 @@ import ROOT
 from ROOT import RooRealVar, RooBernstein, RooChebychev
 from ROOT import RooExponential, RooGaussian, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
 
-import dyCore
+from . import dyCore
 
 class PDFDefinitions:
     """Centralized PDF definitions for signal and background fits"""

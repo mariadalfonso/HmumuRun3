@@ -22,8 +22,10 @@ OVERWRITTEN with the container-readable version.
 
 Usage (inside the Combine container, from parametricfit/)
 -----
-    python makeWorkspaces.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
-    python makeWorkspaces.py -c ggHcat -b incl -y 2024 --only bkg
+    python -m fitlib.makeWorkspaces -c ggHcat -b incl -y 2024 --wsdir WS_2024
+    python -m fitlib.makeWorkspaces -c ggHcat -b incl -y 2024 --only bkg
+
+buildWorkspace.py runs it for every bin; call it directly only to debug.
 """
 
 import argparse
@@ -32,7 +34,7 @@ import os
 
 import ROOT
 
-import pdfDefinitions as pdefs
+from . import pdfDefinitions as pdefs
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)

@@ -40,7 +40,7 @@ import ROOT
 
 # The signal model, its bounds and the nuisance sizes are defined once, in
 # pdfDefinitions; re-exported here so sigFitCond/sigFitDCBG can use sf.BOUNDS.
-from pdfDefinitions import (BOUNDS, MH_REF, SCALE_UNC, RES_UNC,  # noqa: F401
+from fitlib.pdfDefinitions import (BOUNDS, MH_REF, SCALE_UNC, RES_UNC,  # noqa: F401
                             create_signal_pdf)
 
 ROOT.gROOT.SetBatch(True)
@@ -187,7 +187,7 @@ def get_lumi(year, full_year=False):
     background fit reads and the signal yield is extrapolated to.
     Imported lazily so --selftest does not pull in prepareFits.
     """
-    from prepareFits import (get_lumi as _get_lumi, SIGNAL_YEAR_GROUPS,
+    from fitlib.prepareFits import (get_lumi as _get_lumi, SIGNAL_YEAR_GROUPS,
                              DATA_YEAR_GROUPS)
     return _get_lumi(year, DATA_YEAR_GROUPS if full_year
                      else SIGNAL_YEAR_GROUPS)
@@ -694,7 +694,7 @@ def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
 def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
                  save_pdf=False):
     # imported late so --selftest runs without prepareFits
-    from prepareFits import (getHistoSignalByEra, normalize_year,
+    from fitlib.prepareFits import (getHistoSignalByEra, normalize_year,
                              signal_yield_scales, expand_year,
                              DATA_YEAR_GROUPS, LUMIS)
 

@@ -55,7 +55,7 @@ import numpy as np
 import ROOT
 
 import sigFit as sf
-from prepareFits import ROOTFILES_DIR, get_selection, get_signal_files
+from fitlib.prepareFits import ROOTFILES_DIR, get_selection, get_signal_files
 
 
 ROOT.gROOT.SetBatch(True)
