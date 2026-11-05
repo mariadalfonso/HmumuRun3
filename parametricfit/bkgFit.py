@@ -64,7 +64,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-import sigFit as sf
+from fitlib import config, style
 from fitlib import pdfDefinitions as pdefs
 
 
@@ -130,7 +130,7 @@ MAIN_Y_TITLE_OFFSET = 1.45
 def load_data(category, binMVA, year, nbins):
     """Full-range data histogram, from prepareFits."""
     from fitlib.prepareFits import getHisto
-    h = getHisto(nbins, sf.XLOW, sf.XHIGH, False, category, year,
+    h = getHisto(nbins, config.XLOW, config.XHIGH, False, category, year,
                  False, binMVA or "incl")
     h.SetDirectory(0)
     return h
@@ -139,9 +139,9 @@ def load_data(category, binMVA, year, nbins):
 def setup_ranges(x):
     """Name the sideband pieces, the SR and the full range; return the
     sideband union as a range list."""
-    x.setRange(R_FULL, sf.XLOW, sf.XHIGH)
-    x.setRange(R_SB_LOW, sf.XLOW, SR_LO)
-    x.setRange(R_SB_HIGH, SR_HI, sf.XHIGH)
+    x.setRange(R_FULL, config.XLOW, config.XHIGH)
+    x.setRange(R_SB_LOW, config.XLOW, SR_LO)
+    x.setRange(R_SB_HIGH, SR_HI, config.XHIGH)
     x.setRange(R_SR, SR_LO, SR_HI)
     # RooFit takes a comma-separated list of named ranges, so the union is
     # expressed at use time rather than as its own range
@@ -153,7 +153,7 @@ def sideband_bins(h):
     out = []
     for i in range(1, h.GetNbinsX() + 1):
         c = h.GetBinCenter(i)
-        if sf.XLOW <= c < SR_LO or SR_HI <= c < sf.XHIGH:
+        if config.XLOW <= c < SR_LO or SR_HI <= c < config.XHIGH:
             out.append(i)
     return out
 
@@ -382,7 +382,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
                 ROOT.RooFit.CutRange(sb_range),
                 ROOT.RooFit.MarkerStyle(DATA_MARKER_STYLE),
-                ROOT.RooFit.MarkerSize(sf.DATA_MARKER_SIZE),
+                ROOT.RooFit.MarkerSize(style.DATA_MARKER_SIZE),
                 ROOT.RooFit.MarkerColor(ROOT.kBlack),
                 ROOT.RooFit.LineColor(ROOT.kBlack),
                 ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2))
@@ -393,7 +393,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         if SR_LO <= hdat.GetPointX(i) < SR_HI:
             hdat.RemovePoint(i)
 
-    cols = [sf.fit_color(), ROOT.kAzure + 2, ROOT.kGreen + 2,
+    cols = [style.fit_color(), ROOT.kAzure + 2, ROOT.kGreen + 2,
             ROOT.kOrange + 7, ROOT.kViolet + 1, ROOT.kTeal + 3]
     for i, nm in enumerate(envelope):
         fits[nm]["pdf"].plotOn(
@@ -409,9 +409,9 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
                                   else ROOT.kDashed),
             ROOT.RooFit.LineWidth(2))
 
-    bw = (sf.XHIGH - sf.XLOW) / nbins
+    bw = (config.XHIGH - config.XLOW) / nbins
     frame.SetTitle(f";;Events / {bw:.2f} GeV")
-    sf._style_ratio_axis(frame.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(frame.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
     frame.GetYaxis().SetTitleOffset(MAIN_Y_TITLE_OFFSET)
     frame.GetXaxis().SetLabelSize(0)
     frame.GetXaxis().SetTitleSize(0)
@@ -433,7 +433,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         g.SetPointError(k, 0.0, ey / f)
         k += 1
     g.SetMarkerStyle(DATA_MARKER_STYLE)
-    g.SetMarkerSize(sf.DATA_MARKER_SIZE)
+    g.SetMarkerSize(style.DATA_MARKER_SIZE)
     g.SetMarkerColor(ROOT.kBlack)
     g.SetLineColor(ROOT.kBlack)
     rgraphs.append(g)
@@ -444,8 +444,8 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         c = frame.getCurve(nm)
         gr = ROOT.TGraph()
         npt = 0
-        xv = sf.XLOW + 0.5 * bw
-        while xv < sf.XHIGH:
+        xv = config.XLOW + 0.5 * bw
+        while xv < config.XHIGH:
             fb = cbest.average(xv - 0.5 * bw, xv + 0.5 * bw)
             fn = c.average(xv - 0.5 * bw, xv + 0.5 * bw)
             if fb > 0:
@@ -457,16 +457,16 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         gr.SetLineWidth(2)
         rgraphs.append(gr)
 
-    rframe = ROOT.TH1F("rframe", "", 1, sf.XLOW, sf.XHIGH)
+    rframe = ROOT.TH1F("rframe", "", 1, config.XLOW, config.XHIGH)
     rframe.SetDirectory(0)
     rframe.SetStats(0)
     rframe.SetMinimum(0.80)
     rframe.SetMaximum(1.20)
     rframe.SetTitle(";m_{#mu#mu} [GeV];Data/Template")
-    sf._style_ratio_axis(rframe.GetXaxis(), sf.RATIO_X_TITLE_OFFSET)
-    sf._style_ratio_axis(rframe.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(rframe.GetXaxis(), style.RATIO_X_TITLE_OFFSET)
+    style._style_ratio_axis(rframe.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
 
-    canvas, outer, pad1, pad2 = sf.make_canvas_pads("c_bkg")
+    canvas, outer, pad1, pad2 = style.make_canvas_pads("c_bkg")
     pad1.cd()
     frame.Draw()
 
@@ -481,18 +481,18 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
-    for i, ln in enumerate(sf.header_lines(label) +
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
+    for i, ln in enumerate(style.header_lines(label) +
                            [f"blinded {SR_LO:g}-{SR_HI:g} GeV"]):
-        latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, ln)
+        latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, ln)
     keep.append(latex)
 
-    leg = ROOT.TLegend(1 - sf.PAD_RIGHT_MARGIN - 0.32,
-                       1 - sf.PAD_TOP_MARGIN - 0.04
+    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.32,
+                       1 - style.PAD_TOP_MARGIN - 0.04
                        - 0.052 * (len(envelope) + 1),
-                       1 - sf.PAD_RIGHT_MARGIN - 0.02,
-                       1 - sf.PAD_TOP_MARGIN - 0.04)
+                       1 - style.PAD_RIGHT_MARGIN - 0.02,
+                       1 - style.PAD_TOP_MARGIN - 0.04)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -503,15 +503,15 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
                      nm + ("  (best fit)" if nm == best else ""), "l")
     leg.Draw()
     keep.append(leg)
-    keep.append(sf.cms_label(pad1, year, full_year=True))
+    keep.append(style.cms_label(pad1, year, full_year=True))
 
     pad2.cd()
     rframe.Draw()
     for gr in rgraphs[1:]:
         gr.Draw("L SAME")
     rgraphs[0].Draw("P SAME")
-    one = ROOT.TLine(sf.XLOW, 1.0, sf.XHIGH, 1.0)
-    one.SetLineColor(sf.fit_color())
+    one = ROOT.TLine(config.XLOW, 1.0, config.XHIGH, 1.0)
+    one.SetLineColor(style.fit_color())
     one.SetLineWidth(2)
     one.Draw("same")
     rbox = ROOT.TBox(SR_LO, 0.80, SR_HI, 1.20)
@@ -536,7 +536,7 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-c", "--category", default="ggHcat",
-                    choices=sorted(sf.MC_LIST))
+                    choices=sorted(config.MC_LIST))
     ap.add_argument("-b", "--bin", default="incl",
                     help="BDT bin label; pass \"\" to reproduce the "
                          "double-underscore tag the existing datacards use")
@@ -552,10 +552,10 @@ def main():
     ap.add_argument("--bins-per-gev", type=float, default=None)
     args = ap.parse_args()
 
-    sf.setup_style()
+    style.setup_style()
     if args.bins_per_gev:
-        sf.BINS_PER_GEV = args.bins_per_gev
-    nbins = int((sf.XHIGH - sf.XLOW) * sf.BINS_PER_GEV)
+        config.BINS_PER_GEV = args.bins_per_gev
+    nbins = int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
 
     # exactly bwsHrare's tag, double underscore and all
     tag = f"{args.category}_{args.bin}_{args.year}"
@@ -565,14 +565,14 @@ def main():
           f"\nbin      : {args.bin or '(empty)'}"
           f"\nyear     : {args.year}"
           f"\ntag      : {tag}"
-          f"\nwindow   : {sf.XLOW:g}-{sf.XHIGH:g} GeV, {nbins} bins"
+          f"\nwindow   : {config.XLOW:g}-{config.XHIGH:g} GeV, {nbins} bins"
           f"\nblinded  : {SR_LO:g}-{SR_HI:g} GeV"
-          f"\nsideband : {sf.XLOW:g}-{SR_LO:g} + {SR_HI:g}-{sf.XHIGH:g} GeV")
+          f"\nsideband : {config.XLOW:g}-{SR_LO:g} + {SR_HI:g}-{config.XHIGH:g} GeV")
 
     # ---- data ----------------------------------------------------------
     h = load_data(args.category, args.bin, args.year, nbins)
     x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}",
-                        sf.XLOW, sf.XHIGH)
+                        config.XLOW, config.XHIGH)
     sb_range = setup_ranges(x)
     data = ROOT.RooDataHist(f"datahist_{tag}", "data",
                             ROOT.RooArgList(x), h)
@@ -699,10 +699,10 @@ def main():
         "provenance": {
             "written_utc": datetime.now(timezone.utc)
                            .isoformat(timespec="seconds"),
-            "git_commit": sf.git_commit(),
+            "git_commit": config.git_commit(),
             "category": args.category, "bin": args.bin,
             "year": args.year, "tag": tag,
-            "window": [sf.XLOW, sf.XHIGH], "n_bins": nbins,
+            "window": [config.XLOW, config.XHIGH], "n_bins": nbins,
             "blind_region": [SR_LO, SR_HI],
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
             "nll_penalty_per_par": NLL_PENALTY_PER_PAR,

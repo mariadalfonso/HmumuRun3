@@ -54,7 +54,8 @@ from datetime import datetime, timezone
 import numpy as np
 import ROOT
 
-import sigFit as sf
+from fitlib import config, signal, style
+from fitlib import pdfDefinitions as pdefs
 from fitlib.prepareFits import ROOTFILES_DIR, get_selection, get_signal_files
 
 
@@ -112,7 +113,7 @@ KAPPA_START, KAPPA_LO, KAPPA_HI = 1.0, 0.3, 3.0
 # though it has the same number of parameters. A significant c says so.
 OFFSET_START, OFFSET_LO, OFFSET_HI = 0.3, 0.0, 2.0
 
-MODES = sf.MC_LIST
+MODES = config.MC_LIST
 
 # ratio panel range, as in sigFit
 RATIO_Y_RANGE = (0.0, 2.0)
@@ -152,7 +153,7 @@ def load_dataset(x, r, w, category, binMVA, year, sig, max_events, seed=0):
     # exactly the 1D fit's selection ...
     df = (df.Filter("mc >= 10 && mc <= 15", "signal MC")
             .Filter(f"!std::isnan({MASSCOL})", "valid mass")
-            .Filter(f"{MASSCOL} >= {sf.XLOW} && {MASSCOL} < {sf.XHIGH}",
+            .Filter(f"{MASSCOL} >= {config.XLOW} && {MASSCOL} < {config.XHIGH}",
                     "fit window"))
     if cut != "true":
         df = df.Filter(cut, "bdt bin")
@@ -278,23 +279,23 @@ def make_cond_pdf(x, r, tag, scale_unc=None, res_unc=None,
     the conditional PDF's normalisation would itself depend on m and the fit
     would be silently wrong.
     """
-    scale_unc = sf.SCALE_UNC if scale_unc is None else scale_unc
-    res_unc = sf.RES_UNC if res_unc is None else res_unc
+    scale_unc = pdefs.SCALE_UNC if scale_unc is None else scale_unc
+    res_unc = pdefs.RES_UNC if res_unc is None else res_unc
 
     nom = {
         "mu": ROOT.RooRealVar(f"cb_mu_{tag}", "cb_mu",
-                              *sf.BOUNDS["mu"]),
+                              *pdefs.BOUNDS["mu"]),
         "kappa": ROOT.RooRealVar(f"cb_kappa_{tag}", "kappa",
                                  KAPPA_START, KAPPA_LO, KAPPA_HI),
         "alphaL": ROOT.RooRealVar(f"cb_alphaL_{tag}", "cb_alphaL",
-                                  *sf.BOUNDS["alphaL"]),
-        "nL": ROOT.RooRealVar(f"cb_nL_{tag}", "cb_nL", *sf.BOUNDS["nL"]),
+                                  *pdefs.BOUNDS["alphaL"]),
+        "nL": ROOT.RooRealVar(f"cb_nL_{tag}", "cb_nL", *pdefs.BOUNDS["nL"]),
         "alphaR": ROOT.RooRealVar(f"cb_alphaR_{tag}", "cb_alphaR",
-                                  *sf.BOUNDS["alphaR"]),
-        "nR": ROOT.RooRealVar(f"cb_nR_{tag}", "cb_nR", *sf.BOUNDS["nR"]),
+                                  *pdefs.BOUNDS["alphaR"]),
+        "nR": ROOT.RooRealVar(f"cb_nR_{tag}", "cb_nR", *pdefs.BOUNDS["nR"]),
     }
 
-    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", sf.MH_REF,
+    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", pdefs.MH_REF,
                          120.0, 130.0)
     mh.setConstant(True)
 
@@ -308,7 +309,7 @@ def make_cond_pdf(x, r, tag, scale_unc=None, res_unc=None,
 
     mean = ROOT.RooFormulaVar(
         f"cb_mean_{tag}", "mean",
-        f"(@0 + @1 - {sf.MH_REF})*(1 + {scale_unc}*@2)",
+        f"(@0 + @1 - {pdefs.MH_REF})*(1 + {scale_unc}*@2)",
         ROOT.RooArgList(nom["mu"], mh, nuis["scale"]))
 
     if offset:
@@ -333,7 +334,7 @@ def make_cond_pdf(x, r, tag, scale_unc=None, res_unc=None,
     return pdf, {"nom": nom, "nuis": nuis, "mh": mh,
                  "func": {"mean": mean, "sigma": sigma},
                  "cfg": {"scale_unc": scale_unc, "res_unc": res_unc,
-                         "correlated": correlated, "mh_ref": sf.MH_REF,
+                         "correlated": correlated, "mh_ref": pdefs.MH_REF,
                          "offset": offset,
                          "model": ("conditional DSCB, sigma = "
                                    + ("sqrt((kappa*r*MH)^2 + c0^2)"
@@ -382,8 +383,8 @@ def mass_histo(m_values, w_values, name, nbins=None):
     then see identical events with identical weights, so chi2/ndf is
     comparable without either having to run at full statistics.
     """
-    nbins = nbins or int((sf.XHIGH - sf.XLOW) * sf.BINS_PER_GEV)
-    h = ROOT.TH1D(name, "", nbins, sf.XLOW, sf.XHIGH)
+    nbins = nbins or int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
+    h = ROOT.TH1D(name, "", nbins, config.XLOW, config.XHIGH)
     h.SetDirectory(0)
     h.Sumw2()
     for mi, wi in zip(m_values, w_values):
@@ -395,12 +396,12 @@ def fit_1d_reference(x1d, m_values, w_values, tag, label, plotdir, year,
                      save_pdf):
     """sigFit's ordinary binned 1D fit, on the same subsample.
 
-    Uses sigFit.fit_one unchanged, so the reference really is the 1D model
+    Uses signal.fit_one unchanged, so the reference really is the 1D model
     and not a reimplementation of it. A separate observable and a distinct
     tag keep the RooFit names from clashing with the conditional model's.
     """
     h = mass_histo(m_values, w_values, f"h1d_{tag}")
-    out = sf.fit_one(x1d, h, f"{tag}_1d", label, plotdir,
+    out = signal.fit_one(x1d, h, f"{tag}_1d", label, plotdir,
                      freeze=False, year=year, save_pdf=save_pdf)
     if out is None:
         return None
@@ -471,7 +472,7 @@ def mismatch_metrics(data_y, data_e, fit_y):
 
 def binned_expectation(hist, pdf, x, norm):
     """Expected counts per bin for an ordinary 1D pdf, for the metrics."""
-    b_lo, b_hi = sf.range_bins(hist)
+    b_lo, b_hi = signal.range_bins(hist)
     nset = ROOT.RooArgSet(x)
     saved = x.getVal()
     xs, ys, es, fs = [], [], [], []
@@ -494,26 +495,26 @@ def plot_ratio_overlay(cond, ref1d, label, outbase, year, save_pdf):
     """
     keep = []
     frame = ROOT.TH1F("ovr_frame", ";m_{#mu#mu} [GeV];Template/Fit",
-                      1, sf.XLOW, sf.XHIGH)
+                      1, config.XLOW, config.XHIGH)
     frame.SetDirectory(0)
     frame.SetStats(0)
     frame.SetMinimum(0.80)
     frame.SetMaximum(1.20)
-    sf._style_ratio_axis(frame.GetXaxis(), 1.15)
-    sf._style_ratio_axis(frame.GetYaxis(), 1.60)
+    style._style_ratio_axis(frame.GetXaxis(), 1.15)
+    style._style_ratio_axis(frame.GetYaxis(), 1.60)
 
     c = _single_canvas("c_ratio_overlay")
     frame.Draw()
 
-    leg = ROOT.TLegend(sf.PAD_LEFT_MARGIN + 0.04, 0.72,
-                       sf.PAD_LEFT_MARGIN + 0.46, 0.86)
+    leg = ROOT.TLegend(style.PAD_LEFT_MARGIN + 0.04, 0.72,
+                       style.PAD_LEFT_MARGIN + 0.46, 0.86)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
     leg.SetTextSize(0.028)
 
     for (xs, ys, es, fs), col, name in (
-            (cond, sf.fit_color(), "conditional"),
+            (cond, style.fit_color(), "conditional"),
             (ref1d, ROOT.kAzure + 2, "binned 1D")):
         g = ROOT.TGraphErrors()
         k = 0
@@ -523,28 +524,28 @@ def plot_ratio_overlay(cond, ref1d, label, outbase, year, save_pdf):
             g.SetPoint(k, xv, d / f)
             g.SetPointError(k, 0.0, e / f)
             k += 1
-        g.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-        g.SetMarkerSize(sf.DATA_MARKER_SIZE)
+        g.SetMarkerStyle(style.DATA_MARKER_STYLE)
+        g.SetMarkerSize(style.DATA_MARKER_SIZE)
         g.SetMarkerColor(col)
         g.SetLineColor(col)
         g.Draw("P SAME")
         leg.AddEntry(g, name, "p")
         keep.append(g)
 
-    one = ROOT.TLine(sf.XLOW, 1.0, sf.XHIGH, 1.0)
+    one = ROOT.TLine(config.XLOW, 1.0, config.XHIGH, 1.0)
     one.SetLineColor(ROOT.kBlack)
     one.SetLineWidth(2)
     one.Draw("same")
     leg.Draw()
-    keep += [frame, leg, one, sf.cms_label(c, year)]
+    keep += [frame, leg, one, style.cms_label(c, year)]
 
     tex = ROOT.TLatex()
     tex.SetNDC()
     tex.SetTextFont(42)
-    tex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
-    for i, ln in enumerate(sf.header_lines(label)):
-        tex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.04, 0.88 - i * dy, ln)
+    tex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
+    for i, ln in enumerate(style.header_lines(label)):
+        tex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04, 0.88 - i * dy, ln)
     keep.append(tex)
 
     c.SaveAs(f"{outbase}_ratio_overlay.png")
@@ -558,11 +559,11 @@ def plot_ratio_overlay(cond, ref1d, label, outbase, year, save_pdf):
 # ---------------------------------------------------------------------------
 
 def _single_canvas(name, right=None):
-    c = ROOT.TCanvas(name, "", sf.CANVAS_W, sf.CANVAS_H)
-    c.SetTopMargin(sf.PAD_TOP_MARGIN)
-    c.SetBottomMargin(sf.PAD_BOTTOM_MARGIN)
-    c.SetLeftMargin(sf.PAD_LEFT_MARGIN)
-    c.SetRightMargin(sf.PAD_RIGHT_MARGIN if right is None else right)
+    c = ROOT.TCanvas(name, "", style.CANVAS_W, style.CANVAS_H)
+    c.SetTopMargin(style.PAD_TOP_MARGIN)
+    c.SetBottomMargin(style.PAD_BOTTOM_MARGIN)
+    c.SetLeftMargin(style.PAD_LEFT_MARGIN)
+    c.SetRightMargin(style.PAD_RIGHT_MARGIN if right is None else right)
     c.SetTickx()
     c.SetTicky()
     return c
@@ -581,19 +582,19 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
     normalisation by hand, and avoids the bin/curve-point misalignment that
     indexing into the curve would risk.
     """
-    nbins = nbins or int((sf.XHIGH - sf.XLOW) * sf.BINS_PER_GEV)
+    nbins = nbins or int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
     x.setBins(nbins)
 
     frame = x.frame(ROOT.RooFit.Title(""))
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
-                ROOT.RooFit.MarkerStyle(sf.DATA_MARKER_STYLE),
-                ROOT.RooFit.MarkerSize(sf.DATA_MARKER_SIZE),
+                ROOT.RooFit.MarkerStyle(style.DATA_MARKER_STYLE),
+                ROOT.RooFit.MarkerSize(style.DATA_MARKER_SIZE),
                 ROOT.RooFit.MarkerColor(ROOT.kBlack),
                 ROOT.RooFit.LineColor(ROOT.kBlack),
                 ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2))
     pdf.plotOn(frame, ROOT.RooFit.Name("fit"),
                ROOT.RooFit.ProjWData(ROOT.RooArgSet(r), data),
-               ROOT.RooFit.LineColor(sf.fit_color()),
+               ROOT.RooFit.LineColor(style.fit_color()),
                ROOT.RooFit.LineWidth(2))
 
     n_float = sum(0 if v.isConstant() else 1 for v in nom.values())
@@ -601,10 +602,10 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
 
     h = frame.getHist("dat")
     curve = frame.getCurve("fit")
-    bw = (sf.XHIGH - sf.XLOW) / nbins
+    bw = (config.XHIGH - config.XLOW) / nbins
 
     ratio = ROOT.TH1D(f"ratio_{outbase.split('/')[-1]}", "",
-                      nbins, sf.XLOW, sf.XHIGH)
+                      nbins, config.XLOW, config.XHIGH)
     ratio.SetDirectory(0)
     # GetPointX/GetPointY rather than GetPoint(i, x&, y&): the
     # pass-by-reference form needs ctypes.c_double in PyROOT and is easy
@@ -627,22 +628,22 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
         ratio.SetBinContent(b, yv / f)
         ratio.SetBinError(b, ey / f)
 
-    ratio.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    ratio.SetMarkerSize(sf.DATA_MARKER_SIZE)
+    ratio.SetMarkerStyle(style.DATA_MARKER_STYLE)
+    ratio.SetMarkerSize(style.DATA_MARKER_SIZE)
     ratio.SetMarkerColor(ROOT.kBlack)
     ratio.SetLineColor(ROOT.kBlack)
     ratio.GetYaxis().SetRangeUser(*RATIO_Y_RANGE)
     ratio.SetTitle(";m_{#mu#mu} [GeV];Template/Fit")
-    sf._style_ratio_axis(ratio.GetXaxis(), sf.RATIO_X_TITLE_OFFSET)
-    sf._style_ratio_axis(ratio.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(ratio.GetXaxis(), style.RATIO_X_TITLE_OFFSET)
+    style._style_ratio_axis(ratio.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
 
     pull_frame = x.frame(ROOT.RooFit.Title(""))
     ph = frame.pullHist("dat", "fit")
     for i in range(ph.GetN() - 1, -1, -1):
         if ph.GetErrorYhigh(i) <= 0 and ph.GetErrorYlow(i) <= 0:
             ph.RemovePoint(i)
-    ph.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    ph.SetMarkerSize(sf.DATA_MARKER_SIZE)
+    ph.SetMarkerStyle(style.DATA_MARKER_STYLE)
+    ph.SetMarkerSize(style.DATA_MARKER_SIZE)
     ph.SetMarkerColor(ROOT.kBlack)
     ph.SetLineColor(ROOT.kBlack)
     pull_frame.addPlotable(ph, "P")
@@ -652,37 +653,37 @@ def plot_mass_projection(x, r, data, pdf, nom, label, outbase, year,
     # glance rather than needing the axis read each time
     pull_frame.GetYaxis().SetTitle("#frac{Template#minusFit}{#deltaTemplate}")
     pull_frame.GetXaxis().SetTitle("m_{#mu#mu} [GeV]")
-    sf._style_ratio_axis(pull_frame.GetXaxis(), sf.RATIO_X_TITLE_OFFSET)
-    sf._style_ratio_axis(pull_frame.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(pull_frame.GetXaxis(), style.RATIO_X_TITLE_OFFSET)
+    style._style_ratio_axis(pull_frame.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
 
     frame.SetTitle(f";;Events / {bw:.2f} GeV")
-    sf._style_ratio_axis(frame.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(frame.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
     frame.GetXaxis().SetLabelSize(0)
     frame.GetXaxis().SetTitleSize(0)
     frame.SetMaximum(1.1 * frame.GetMaximum()) # headroom
 
     os.makedirs(os.path.dirname(outbase), exist_ok=True)
     for kind, lower, central, guides, draw in (
-            ("ratio", ratio, 1.0, sf.RATIO_GUIDES, "pe"),
-            ("pull", pull_frame, 0.0, sf.PULL_GUIDES, "")):
-        canvas, outer, pad1, pad2 = sf.make_canvas_pads(f"c_cond_{kind}")
+            ("ratio", ratio, 1.0, style.RATIO_GUIDES, "pe"),
+            ("pull", pull_frame, 0.0, style.PULL_GUIDES, "")):
+        canvas, outer, pad1, pad2 = style.make_canvas_pads(f"c_cond_{kind}")
         pad1.cd()
         frame.Draw()
         keep_txt = _annotate(nom, chi2_ndf, data.sumEntries(),
                              data.numEntries(), n_eff, label)
-        keep_cms = sf.cms_label(pad1, year)
-        keep_leg = sf.fit_legend(frame,
+        keep_cms = style.cms_label(pad1, year)
+        keep_leg = signal.fit_legend(frame,
                                  model="DSCB model (#sigma = #kappa r M_{H})")
 
         pad2.cd()
         lower.Draw(draw)
-        l0 = ROOT.TLine(sf.XLOW, central, sf.XHIGH, central)
-        l0.SetLineColor(sf.fit_color())
+        l0 = ROOT.TLine(config.XLOW, central, config.XHIGH, central)
+        l0.SetLineColor(style.fit_color())
         l0.SetLineWidth(2)
         l0.Draw("same")
         lines = [l0]
         for gy in guides:
-            ln = ROOT.TLine(sf.XLOW, gy, sf.XHIGH, gy)
+            ln = ROOT.TLine(config.XLOW, gy, config.XHIGH, gy)
             ln.SetLineColor(11)
             ln.SetLineStyle(ROOT.kDashed)
             ln.Draw("same")
@@ -702,19 +703,19 @@ def _annotate(nom, chi2_ndf, yield_, n_mc, n_eff, label):
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    left = sf.PAD_LEFT_MARGIN + 0.05
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
-    for i, line in enumerate(sf.header_lines(label)):
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    left = style.PAD_LEFT_MARGIN + 0.05
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
+    for i, line in enumerate(style.header_lines(label)):
         latex.DrawLatex(left, 0.85 - i * dy, line)
 
     labels = {"kappa": ("#kappa", ""), "c0": ("c_{0}", "GeV"),
               "mu": ("#mu", "GeV"),
               "alphaL": ("#alpha_{lo}", ""), "nL": ("n_{lo}", ""),
               "alphaR": ("#alpha_{high}", ""), "nR": ("n_{high}", "")}
-    latex.SetTextSize(sf.PARAM_TEXT_SIZE)
+    latex.SetTextSize(style.PARAM_TEXT_SIZE)
     latex.SetTextAlign(12)
-    right = 1.0 - sf.PAD_RIGHT_MARGIN - 0.36
+    right = 1.0 - style.PAD_RIGHT_MARGIN - 0.36
     # three different things, and they are easy to confuse:
     #   yield  sum of weights = expected signal events (NOT fitted: this
     #          fit is not extended)
@@ -728,12 +729,12 @@ def _annotate(nom, chi2_ndf, yield_, n_mc, n_eff, label):
     for k in order:
         v = nom[k]
         lab, unit = labels[k]
-        txt = sf.fmt_with_unc(lab, v.getVal(), v.getError(), unit)
-        if sf.near_bound(v):
+        txt = signal.fmt_with_unc(lab, v.getVal(), v.getError(), unit)
+        if signal.near_bound(v):
             txt += " #color[2]{(bound)}"
         lines.append(txt)
     lines.append(f"#chi^{{2}}/ndf = {chi2_ndf:.2f}")
-    pdy = sf.LINE_SPACING * sf.PARAM_TEXT_SIZE
+    pdy = style.LINE_SPACING * style.PARAM_TEXT_SIZE
     for i, line in enumerate(lines):
         latex.DrawLatex(right, 0.86 - i * pdy, line)
     return latex
@@ -770,13 +771,13 @@ def plot_resolution(r, r_values, w_values, keys, label, outbase, year,
     if h.Integral() > 0:
         h.Scale(1.0 / h.Integral() / h.GetBinWidth(1))   # -> density
 
-    h.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    h.SetMarkerSize(sf.DATA_MARKER_SIZE)
+    h.SetMarkerStyle(style.DATA_MARKER_STYLE)
+    h.SetMarkerSize(style.DATA_MARKER_SIZE)
     h.SetMarkerColor(ROOT.kBlack)
     h.SetLineColor(ROOT.kBlack)
     h.SetTitle(";#sigma_{m}/m;probability density")
-    sf._style_ratio_axis(h.GetXaxis(), 1.15)
-    sf._style_ratio_axis(h.GetYaxis(), 1.60)
+    style._style_ratio_axis(h.GetXaxis(), 1.15)
+    style._style_ratio_axis(h.GetYaxis(), 1.60)
     h.GetXaxis().SetRangeUser(R_LO, R_PLOT_HI)   # zoom, do not renormalise
 
     # the kernel, evaluated point by point
@@ -792,7 +793,7 @@ def plot_resolution(r, r_values, w_values, keys, label, outbase, year,
         g.SetPoint(i, v, y)
         ymax = max(ymax, y)
     r.setVal(saved)
-    g.SetLineColor(sf.fit_color())
+    g.SetLineColor(style.fit_color())
     g.SetLineWidth(3)
 
     h.SetMaximum(1.35 * ymax)
@@ -801,8 +802,8 @@ def plot_resolution(r, r_values, w_values, keys, label, outbase, year,
     h.Draw("pe")
     g.Draw("L SAME")
 
-    leg = ROOT.TLegend(1.0 - sf.PAD_RIGHT_MARGIN - 0.42, 0.68,
-                       1.0 - sf.PAD_RIGHT_MARGIN - 0.03, 0.80)
+    leg = ROOT.TLegend(1.0 - style.PAD_RIGHT_MARGIN - 0.42, 0.68,
+                       1.0 - style.PAD_RIGHT_MARGIN - 0.03, 0.80)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -814,12 +815,12 @@ def plot_resolution(r, r_values, w_values, keys, label, outbase, year,
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
     med = float(np.median(r_values))
-    for i, line in enumerate(sf.header_lines(label) +
+    for i, line in enumerate(style.header_lines(label) +
                              [f"median = {med:.5f}"]):
-        latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, line)
+        latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, line)
 
     os.makedirs(os.path.dirname(outbase), exist_ok=True)
     c.SaveAs(f"{outbase}_resolution.png")
@@ -905,7 +906,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    sf.setup_style()
+    style.setup_style()
     sig = args.sig or MODES[args.category][0]
     tag = f"{args.category}_{args.bin}_{args.year}_{sig}"
     label = f"{args.category} {args.bin} {sig}"
@@ -920,8 +921,8 @@ def main():
 
     # ---- observables --------------------------------------------------
     x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}",
-                        sf.XLOW, sf.XHIGH)
-    x.setRange("full", sf.XLOW, sf.XHIGH)
+                        config.XLOW, config.XHIGH)
+    x.setRange("full", config.XLOW, config.XHIGH)
     r = ROOT.RooRealVar("massRelErr", "#sigma_{m}/m", R_LO, R_HI)
     w = ROOT.RooRealVar("wgt", "weight", 1.0, -1e9, 1e9)
 
@@ -1001,7 +1002,7 @@ def main():
         result = pdf.fitTo(data, *fitopts)
         status, cov, edm = result.status(), result.covQual(), result.edm()
         parked = [k for k, v in nom.items()
-                  if not v.isConstant() and sf.near_bound(v)]
+                  if not v.isConstant() and signal.near_bound(v)]
         ok = status == 0 and cov == 3 and not parked
 
     print(f"\n  kappa  = {nom['kappa'].getVal():7.4f} "
@@ -1029,7 +1030,7 @@ def main():
         "provenance": {
             "written_utc": datetime.now(timezone.utc)
                            .isoformat(timespec="seconds"),
-            "git_commit": sf.git_commit(),
+            "git_commit": config.git_commit(),
             "category": args.category, "bin": args.bin,
             "year": args.year, "sig": sig, "files": files,
             "mass_column": MASSCOL, "relerr_column": RELERRCOL,
@@ -1042,7 +1043,7 @@ def main():
         "shape_model": bundle["cfg"],
         "parameters": {k: {"value": v.getVal(), "error": v.getError(),
                            "min": v.getMin(), "max": v.getMax(),
-                           "at_bound": sf.near_bound(v)}
+                           "at_bound": signal.near_bound(v)}
                        for k, v in nom.items()},
         "normalization": {"sum_weights": data.sumEntries(),
                           "n_mc": data.numEntries(),
@@ -1083,8 +1084,8 @@ def main():
     if not args.no_1d:
         print("\n--- binned 1D reference (same subsample) ---")
         x1d = ROOT.RooRealVar(f"mh{args.category}_1d", "m_{#mu#mu}",
-                              sf.XLOW, sf.XHIGH)
-        x1d.setRange("full", sf.XLOW, sf.XHIGH)
+                              config.XLOW, config.XHIGH)
+        x1d.setRange("full", config.XLOW, config.XHIGH)
         ref = fit_1d_reference(x1d, m_all, w_all, tag, label, plotdir,
                                args.year, args.pdf)
 
@@ -1094,7 +1095,7 @@ def main():
         # the closest comparable number.
         kap = nom["kappa"].getVal()
         r_med = float(np.median(r_all))
-        sig_eff = kap * r_med * sf.MH_REF
+        sig_eff = kap * r_med * pdefs.MH_REF
         if "c0" in nom:
             sig_eff = (sig_eff ** 2 + nom["c0"].getVal() ** 2) ** 0.5
         print("\n" + "=" * 62)
@@ -1112,7 +1113,7 @@ def main():
               f"{ref['chi2_ndf']:>18.3f}")
         print("=" * 62)
         print(f"conditional width = kappa * median(r) * MH "
-              f"= {kap:.4f} * {r_med:.5f} * {sf.MH_REF:g}")
+              f"= {kap:.4f} * {r_med:.5f} * {pdefs.MH_REF:g}")
         # ---- the metrics that answer the actual question -------------
         mc_ = mismatch_metrics(cond_bins[1], cond_bins[2], cond_bins[3])
         m1_ = mismatch_metrics(ref["bins"][1], ref["bins"][2],
