@@ -113,8 +113,10 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 
 - Bernstein orders stop at 5.
 - `--algo singles` misses the low-side errors; use `--algo grid`.
-- Not part of the chain: `sigFitCond.py`, `sigFitDCBG.py`, `fitEtaBins.py`,
-  `fitMVABins.py`, `massResVsMass.py`.
+- Side studies of the signal shape live in `studies/` (`sigFitCond`,
+  `sigFitDCBG`, `fitEtaBins`, `fitMVABins`, `massResVsMass`). Run them from
+  `parametricfit/` as modules: `python -m studies.fitEtaBins 2024`.
+- `docs/` is for local notes and is gitignored.
 - `analysis/FITS/combineCommand.sh` still uses the old `analysis/FITS/` layout.
 
 ## Options

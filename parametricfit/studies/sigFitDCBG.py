@@ -33,8 +33,8 @@ contract with bwsHrare.py still holds.
 
 Usage
 -----
-    python sigFitDCBG.py --selftest
-    python sigFitDCBG.py -c ggHcat -y 2024 -b incl -s ggH
+    python -m studies.sigFitDCBG --selftest
+    python -m studies.sigFitDCBG -c ggHcat -y 2024 -b incl -s ggH
 
     # then compare against the single-CB fit
     python sigFit.py     -c ggHcat -y 2024 -b incl -s ggH

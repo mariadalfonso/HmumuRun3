@@ -42,10 +42,10 @@ file rather than by command-line options.
 
 Usage
 -----
-    python fitEtaBins.py 2024
-    python fitEtaBins.py 2024 --cell-plots
-    python fitEtaBins.py Run3 --sig VH --category VHcat
-    python fitEtaBins.py 22022 --file <snapshot> [<snapshot> ...]
+    python -m studies.fitEtaBins 2024
+    python -m studies.fitEtaBins 2024 --cell-plots
+    python -m studies.fitEtaBins Run3 --sig VH --category VHcat
+    python -m studies.fitEtaBins 22022 --file <snapshot> [<snapshot> ...]
 """
 
 import argparse

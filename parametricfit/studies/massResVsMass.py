@@ -50,12 +50,12 @@ and the residual oscillation in the single-DSCB pull may be partly this.
 
 Usage
 -----
-    python massResVsMass.py 2024                      # both variants
-    python massResVsMass.py 2024 --sig ggH qqH VH ttH
-    python massResVsMass.py 2024 --variant postFSR
-    python massResVsMass.py Run3 --sig ggH --category VBFcat
-    python massResVsMass.py 2024 --absolute
-    python massResVsMass.py 2024 --file <snapshot> [<snapshot> ...]
+    python -m studies.massResVsMass 2024                      # both variants
+    python -m studies.massResVsMass 2024 --sig ggH qqH VH ttH
+    python -m studies.massResVsMass 2024 --variant postFSR
+    python -m studies.massResVsMass Run3 --sig ggH --category VBFcat
+    python -m studies.massResVsMass 2024 --absolute
+    python -m studies.massResVsMass 2024 --file <snapshot> [<snapshot> ...]
 """
 
 import argparse
@@ -75,7 +75,7 @@ from prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
 # here, so BB/BE/EE mean exactly the same thing in both scripts and
 # changing ETA_EDGES changes both. Importing it is safe: everything in
 # that module is behind a __main__ guard.
-from fitEtaBins import ETA_EDGES, eta_bins
+from studies.fitEtaBins import ETA_EDGES, eta_bins
 
 ROOT.gROOT.SetBatch(True)
 ROOT.TH1.SetDefaultSumw2(True)

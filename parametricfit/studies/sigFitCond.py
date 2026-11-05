@@ -41,9 +41,9 @@ it and this does not fix it.
 
 Usage
 -----
-    python sigFitCond.py -c ggHcat -y 2024 -b incl -s ggH
-    python sigFitCond.py -c ggHcat -y 2024 -b incl -s ggH --max-events 200000
-    python sigFitCond.py -c VBFcat -y Run3 -b incl -s qqH --pdf
+    python -m studies.sigFitCond -c ggHcat -y 2024 -b incl -s ggH
+    python -m studies.sigFitCond -c ggHcat -y 2024 -b incl -s ggH --max-events 200000
+    python -m studies.sigFitCond -c VBFcat -y Run3 -b incl -s qqH --pdf
 """
 
 import argparse

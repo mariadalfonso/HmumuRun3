@@ -23,9 +23,9 @@ N = 200 gave sigma anywhere from 1.58 to 2.32 GeV). Watch N_eff and the
 
 Usage
 -----
-    python fitMVABins.py -c ggHcat -y 2024 -s ggH
-    python fitMVABins.py -c ggHcat -y 2024 -s ggH --fix-tails
-    python fitMVABins.py -c VBFcat -y Run3 -s qqH --edges 0 0.3 0.6 0.8 1.0
+    python -m studies.fitMVABins -c ggHcat -y 2024 -s ggH
+    python -m studies.fitMVABins -c ggHcat -y 2024 -s ggH --fix-tails
+    python -m studies.fitMVABins -c VBFcat -y Run3 -s qqH --edges 0 0.3 0.6 0.8 1.0
 """
 
 import argparse
