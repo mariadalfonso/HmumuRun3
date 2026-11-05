@@ -5,7 +5,7 @@ data sidebands, and the Combine inputs built from them.
 
 ## Environments
 
-| | fits (`sigFit.py`, `bkgFit.py`) | everything else |
+| | fits (`sigFit.py`, `mcCoreFit.py`, `bkgFit.py`) | everything else |
 |---|---|---|
 | where | conda (`pyenv`) | Combine container (v9.2.1) |
 | why | needs ROOT ≥ 6.28 | needs the Combine libraries (ROOT 6.22) |
@@ -22,8 +22,8 @@ Run everything from `parametricfit/`.
 
 | where | what |
 |---|---|
-| top level | the chain: `sigFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `mcCore`, `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
@@ -33,8 +33,11 @@ Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
 **1. Fits** (conda)
 ```bash
 python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
+python mcCoreFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
 for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3; done
 ```
+`mcCoreFit.py` is optional: without its output `bkgFit.py` prints a note and
+leaves out the `mcexp`/`mcpow`/`mcdy` families (`--no-mc-core` also does).
 Look for `CHECK THIS FIT` / `<-- check` in the output.
 
 **2. Cards and workspace** (container)
@@ -69,6 +72,7 @@ reads and writes there unless `--wsdir` says otherwise.
 | file | from | content |
 |---|---|---|
 | `Signal_<tag>_params.json` | `sigFit.py` | shape parameters, yield per mode (`yields`) |
+| `MCcore_<tag>.json` | `mcCoreFit.py` | frozen MC cores, fit quality, MC tags per era |
 | `Bkg_<tag>_params.json` | `bkgFit.py` | envelope, fits, background yield (`normalization.value`) |
 | `Signal_/Bkg_<tag>_workspace.root` | `fitlib/makeWorkspaces.py` | models built with Combine's classes |
 | `datacard_<tag>.txt`, `workspace_<tag>_workspace.root` | `fitlib/bwsHrare.py` | per-bin card |
@@ -77,7 +81,8 @@ reads and writes there unless `--wsdir` says otherwise.
 
 - Combine writes `higgsCombine*.root` to `parametricfit/`.
 - The bias study writes to `BIAS/<tag>/`.
-- Plots go to `~/public_html/HmumuFits/{signal_fits,bkg_fits,bias}/<category>/`.
+- Plots go to `~/public_html/HmumuFits/{signal_fits,bkg_fits,bias}/<category>/`,
+  and `~/public_html/HmumuFits/mc_core/` for `mcCoreFit.py`.
 
 ## What the scripts do
 
@@ -87,9 +92,14 @@ reads and writes there unless `--wsdir` says otherwise.
   - The shape is fitted on the 2022–2024 MC. The yield covers every data era:
     2025–2026 use 2024's yield per fb⁻¹ (`signal_yield_scales` in
     `fitlib/prepareFits.py`).
+- **`mcCoreFit.py`**: fits the weighted background MC of each bin
+  (`BKG_MC_TAGS` in `fitlib/prepareFits.py`) over 110–150 GeV with three
+  smooth cores, as flashgg does for ggH: 2Exp, 2Pow, and the LO DY core ×
+  (1 + Cheb3). The values are frozen; only the shape is used.
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
-  Bernstein, exponential and power-law sums, and with a Drell–Yan core
-  times exp(Chebyshev) or a power law (`dyexp`, `dypow`).
+  Bernstein, exponential and power-law sums, with a Drell–Yan core
+  times exp(Chebyshev) or a power law (`dyexp`, `dypow`), and with each
+  frozen MC core times exp(Chebyshev) (`mcexp`, `mcpow`, `mcdy`).
   - The F-test picks one order per family; a goodness-of-fit cut builds the
     envelope. Failed fits are dropped.
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,

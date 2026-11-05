@@ -114,9 +114,10 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile):
     prov = rec["provenance"]
     x = observable(category, prov["window"])
 
+    mc_core = (rec.get("mc_core") or {}).get("cores")   # mc* members
     keep, store = [], ROOT.RooArgList()
     for nm in rec["envelope"]:
-        pdf, k = pdefs.create_bkg_pdf(x, tag, nm)
+        pdf, k = pdefs.create_bkg_pdf(x, tag, nm, mc_core)
         fitted = rec["candidates"][nm]["params"]
         for p in k["params"]:
             if p.GetName() not in fitted:

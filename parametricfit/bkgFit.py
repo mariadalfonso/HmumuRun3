@@ -14,9 +14,10 @@ Model selection
 ---------------
 
   1. F-test within each nested family (bernstein, exponential, power,
-     and the DY-core families dyexp and dypow; BKG_FAMILIES in
-     pdfDefinitions.py): take the lowest order where adding the next
-     parameter is not justified at p < F_THRESHOLD.
+     the DY-core families dyexp and dypow, and -- when mcCoreFit.py has
+     written MCcore_<tag>.json -- the MC-tuned-core families mcexp, mcpow
+     and mcdy; BKG_FAMILIES in pdfDefinitions.py): take the lowest order
+     where adding the next parameter is not justified at p < F_THRESHOLD.
   2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.
   3. Order the survivors by penalised NLL, NLL + 0.5 * npar, as Combine
@@ -48,7 +49,7 @@ the double underscore ("VBFcat__Run3") that the existing datacards have.
 
 Usage
 -----
-    # fits, plots, JSON -- conda
+    # fits, plots, JSON -- conda (mcCoreFit.py first, for the mc* families)
     python bkgFit.py -c ggHcat -y Run3 -b incl
 
     # ...then the cards and workspace -- inside the Combine container
@@ -64,7 +65,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-from fitlib import config, style
+from fitlib import config, mcCore, style
 from fitlib import pdfDefinitions as pdefs
 
 
@@ -173,14 +174,14 @@ def full_yield(n_sb, fit):
 # fitting
 # ---------------------------------------------------------------------------
 
-def fit_candidate(x, data, name, tag, sb_range):
+def fit_candidate(x, data, name, tag, sb_range, mc_core=None):
     """Fit one candidate on the sideband only.
 
     Returns a dict with the masked NLL (for the F-test), the sideband
     chi2 and its p-value (for the GOF cut), and the fraction of the PDF
     that lies in the sideband (for the normalisation extrapolation).
     """
-    pdf, keep = pdefs.create_bkg_pdf(x, tag, name)
+    pdf, keep = pdefs.create_bkg_pdf(x, tag, name, mc_core)
     npar = pdefs.BKG_NPAR[name]
 
     opts = [ROOT.RooFit.Minimizer("Minuit2"), ROOT.RooFit.Strategy(2),
@@ -546,6 +547,11 @@ def main():
                          "pdfDefinitions)")
     ap.add_argument("--wsdir", default=None,
                     help="fit JSONs and workspaces (default WS_<year>)")
+    ap.add_argument("--mc-core", default=None,
+                    help="frozen MC cores from mcCoreFit.py (default "
+                         "<wsdir>/MCcore_<tag>.json, if it exists)")
+    ap.add_argument("--no-mc-core", action="store_true",
+                    help="leave out the mcexp/mcpow/mcdy families")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
                         "~/public_html/HmumuFits/bkg_fits"))
@@ -586,15 +592,38 @@ def main():
           f"sideband ({100 * n_sb / n_full:.1f} %)")
     print(f"sideband bins used for chi2: {len(sb_idx)} of {nbins}")
 
+    # ---- MC-tuned cores (mcCoreFit.py) ---------------------------------
+    mc_file = args.mc_core or os.path.join(args.wsdir, f"MCcore_{tag}.json")
+    mc_core = None
+    if args.no_mc_core:
+        print("\nMC cores : off (--no-mc-core)")
+    elif os.path.isfile(mc_file):
+        with open(mc_file) as fh:
+            mc_core = json.load(fh)["cores"] or None
+        print(f"\nMC cores : {', '.join(mc_core or []) or 'none'} "
+              f"from {mc_file}")
+    elif args.mc_core:
+        raise SystemExit(f"--mc-core {args.mc_core}: no such file")
+    else:
+        print(f"\nMC cores : none ({mc_file} not found; run mcCoreFit.py "
+              f"for the mcexp/mcpow/mcdy families)")
+
     # ---- fit every candidate -------------------------------------------
+    def available(nm):
+        return not mcCore.is_member(nm) or \
+            nm.rstrip("0123456789") in (mc_core or {})
     names = args.candidates or sorted(pdefs.BKG_NPAR)
+    absent = [nm for nm in names if not available(nm)]
+    if args.candidates and absent:
+        raise SystemExit(f"no MC core for {absent}; run mcCoreFit.py")
+    names = [nm for nm in names if available(nm)]
     print(f"\nfitting {len(names)} candidates on the sideband")
     print(f"{'model':<11}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")
     fits, failed = {}, {}
     for nm in names:
         try:
-            f = fit_candidate(x, data, nm, tag, sb_range)
+            f = fit_candidate(x, data, nm, tag, sb_range, mc_core)
         except Exception as exc:
             print(f"{nm:<11}  failed: {exc}")
             continue
@@ -721,6 +750,9 @@ def main():
         "envelope": envelope,
         "rejected_by_gof": rejected,
         "best": best,
+        # the frozen cores the mc* candidates were built on, so that
+        # makeWorkspaces.py rebuilds them without the MC
+        "mc_core": {"file": mc_file, "cores": mc_core} if mc_core else None,
         "normalization": {"value": norm_val, "sideband_count": n_sb,
                           "sb_fraction": f_sb, "norm_range": NORM_RANGE,
                           "envelope_spread": [min(spread), max(spread)]

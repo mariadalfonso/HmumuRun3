@@ -3,7 +3,7 @@ import ROOT
 from ROOT import RooRealVar, RooBernstein
 from ROOT import RooExponential, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
 
-from . import dyCore
+from . import dyCore, mcCore
 
 class PDFDefinitions:
     """Centralized PDF definitions for signal and background fits"""
@@ -30,9 +30,12 @@ class PDFDefinitions:
         }
 
     @staticmethod
-    def create_bkg_pdfs(x, tag):
+    def create_bkg_pdfs(x, tag, mc_core=None):
         """
         Create all background PDFs - KEEP ALL OBJECTS IN MEMORY!
+
+        mc_core: the frozen MC cores ({model: {param: value}}, from
+        mcCoreFit.py); without it the mcexp/mcpow/mcdy families are absent.
         
         Returns dict with:
             - 'pdfs': final PDF objects to use
@@ -132,6 +135,12 @@ class PDFDefinitions:
         pdfs.update(dy_pdfs)
         params.update(dy_params)
 
+        # ===== MC-TUNED CORE x CORRECTION PDFs (mcCore.py) =====
+        if mc_core:
+            mc_pdfs, mc_params = mcCore.create_pdfs(x, tag, mc_core)
+            pdfs.update(mc_pdfs)
+            params.update(mc_params)
+
         # Return EVERYTHING to keep all references alive
         return {
             'pdfs': pdfs,
@@ -167,6 +176,7 @@ BKG_NPAR = {
     **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
     **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
     **dyCore.NPAR,
+    **mcCore.NPAR,                      # only with an MC core file
 }
 
 # candidates that are nested within one another, for the F-test
@@ -175,6 +185,7 @@ BKG_FAMILIES = {
     "exponential": [f"exp{n}" for n in (1, 2, 3)],
     "power": [f"pow{n}" for n in (1, 2, 3)],
     **dyCore.FAMILIES,                  # dyexp, dypow
+    **mcCore.FAMILIES,                  # mcexp, mcpow, mcdy
 }
 
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
@@ -258,15 +269,20 @@ def create_signal_pdf(x, tag, scale_unc=None, res_unc=None, correlated=True):
                  "keep": out}
 
 
-def create_bkg_pdf(x, tag, name):
+def create_bkg_pdf(x, tag, name, mc_core=None):
     """One background candidate by name, with its own (fresh) parameters.
+
+    mc_core: the frozen MC cores, needed for the mcexp/mcpow/mcdy members.
 
     Returns (pdf, keep); keep["params"] are its FLOATING parameters.
     """
     if name not in BKG_NPAR:
         raise KeyError(f"unknown background model '{name}'; "
                        f"known: {sorted(BKG_NPAR)}")
-    out = PDFDefinitions.create_bkg_pdfs(x, tag)
+    out = PDFDefinitions.create_bkg_pdfs(x, tag, mc_core)
+    if name not in out['pdfs']:
+        raise KeyError(f"'{name}' needs its MC core (mcCoreFit.py), "
+                       f"which was not given")
     pdf = out['pdfs'][name]
     free = {p.GetName() for p in pdf.getParameters(ROOT.RooArgSet(x))
             if not p.isConstant()}

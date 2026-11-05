@@ -83,6 +83,18 @@ DATA_TAGS = {
     "2026" : [str(i) for i in range(-81, -89, -1)],  # -81 ... -88
 }
 
+# background MC for the frozen-core fit (mcCoreFit.py), file tags per MC
+# era ("*" = every era without its own entry). Non-overlapping samples only,
+# so the weighted sum is the background: the extra DY slices (108-110) and
+# the MiNNLO alternative (126-128) overlap the inclusive DY and are left
+# out, as are the EWK alternatives 98/99 (overlap 101).
+_BKG_OTHER = ["101",                        # DY EWK
+              "140", "105", "106", "107",   # tt2l, tt1l, tW
+              "201", "202", "203", "204", "205", "206"]  # VV
+_BKG_GGH = {"2024": ["103", "104"] + _BKG_OTHER,   # DY -> mumu, tautau
+            "*":    ["100"] + _BKG_OTHER}          # DY -> ll
+BKG_MC_TAGS = {"ggHcat": _BKG_GGH, "VBFcat": _BKG_GGH}
+
 # Composite years expand into the concrete eras whose snapshots exist on disk.
 # Any year not listed here is used as-is (e.g. '2024' -> ['2024']).
 RUN3_SIGNAL_ERAS = ["12022", "22022", "12023", "22023", "2024"]
@@ -199,6 +211,17 @@ def get_signal_files(sig, category, year, rootfiles_dir=ROOTFILES_DIR):
     eras = list(signal_yield_scales(year))   # MC eras; proxied eras -> 2024
     return _collect_files([(era, SIGNAL_TAGS[sig]) for era in eras],
                           category, rootfiles_dir)
+
+
+def get_bkg_mc_files(category, era, rootfiles_dir=ROOTFILES_DIR):
+    """Background MC snapshot files of ONE concrete MC era; see BKG_MC_TAGS."""
+    if category not in BKG_MC_TAGS:
+        raise ValueError(f"no background MC list for {category} "
+                         f"(have {sorted(BKG_MC_TAGS)}); add it to "
+                         f"BKG_MC_TAGS in prepareFits.py")
+    per_era = BKG_MC_TAGS[category]
+    tags = per_era.get(era, per_era["*"])
+    return _collect_files([(era, tags)], category, rootfiles_dir)
 
 
 def get_data_files(year, category, rootfiles_dir=ROOTFILES_DIR):
@@ -389,3 +412,36 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig='',
     # --- Histogram creation ---
     return fill_mass_histo(df_sel, f"h_{category}_{year}", f"{category} {year}",
                            nbin, low, high)
+
+
+def getHistoBkgMC(nbin, low, high, category, year, binMVA,
+                  rootfiles_dir=ROOTFILES_DIR):
+    """Weighted background-MC mass histogram, for the frozen-core fit.
+
+    Summed over the MC eras of `year` with the same factors as the signal
+    (signal_yield_scales): an era without MC of its own (2025, 2026) is
+    represented by its proxy, so the era mix follows the data. Only the
+    SHAPE is used downstream. Returns (TH1, {era: (factor, n_files)}).
+    """
+    year = normalize_year(year)
+    sel = get_selection(category, binMVA)
+    total, info = None, {}
+    for era, factor in signal_yield_scales(year).items():
+        files = get_bkg_mc_files(category, era, rootfiles_dir)
+        df = ROOT.RDataFrame("events", files)
+        df = df.Filter(sel, "selection cut")
+        df = df.Filter("!isnan(HiggsCandCorrMass)", "Valid mass")
+        df = df.Filter("mc > 15", "background MC")
+        h = fill_mass_histo(df, f"h_bkgmc_{category}_{binMVA}_{era}",
+                            f"{category} {era} background MC",
+                            nbin, low, high)
+        h.Scale(factor)
+        print(f"✅ background MC {era}: {len(files)} file(s), "
+              f"x {factor:.3f}, sum w = {h.Integral():.1f}")
+        info[era] = (factor, len(files))
+        if total is None:
+            total = h.Clone(f"h_bkgmc_{category}_{binMVA}_{year}")
+            total.SetDirectory(0)
+        else:
+            total.Add(h)
+    return total, info

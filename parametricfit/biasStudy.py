@@ -78,11 +78,14 @@ PULL_GAUS_RGB = (153, 0, 13)       # dark red
 SUMMARY_BAND_RGB = (217, 217, 217)  # light grey
 # one colour and marker per background family in the summary over BDT bins
 FAMILY_RGB = [(42, 120, 214), (235, 104, 52), (27, 175, 122), (237, 161, 0),
-              (140, 86, 192)]
-FAMILY_MARKERS = [20, 21, 22, 23, 33]
+              (140, 86, 192), (196, 61, 140), (102, 102, 102), (23, 162, 184)]
+FAMILY_MARKERS = [20, 21, 22, 23, 33, 29, 34, 47]
 FAMILY_LABEL = {"bern": "Bernstein", "exp": "exponential sum",
                 "pow": "power-law sum", "dyexp": "DY #times exp(Chebyshev)",
-                "dypow": "DY #times power law"}
+                "dypow": "DY #times power law",
+                "mcexp": "MC 2Exp #times exp(Chebyshev)",
+                "mcpow": "MC 2Pow #times exp(Chebyshev)",
+                "mcdy": "MC DY core #times exp(Chebyshev)"}
 
 # r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
 # that the 1 sigma interval of a toy never reaches the edge; --algo singles
