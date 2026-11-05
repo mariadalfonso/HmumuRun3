@@ -1,7 +1,7 @@
 # pdfDefinitions.py
 import ROOT
-from ROOT import RooRealVar, RooBernstein, RooChebychev
-from ROOT import RooExponential, RooGaussian, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
+from ROOT import RooRealVar, RooBernstein
+from ROOT import RooExponential, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
 
 from . import dyCore
 
@@ -54,8 +54,6 @@ class PDFDefinitions:
         params['bern_c4'] = RooRealVar(f'bern_c4_{tag}', 'bern_c4', 1., -10., 10.)
         params['bern_c5'] = RooRealVar(f'bern_c5_{tag}', 'bern_c5', 1., -10., 10.)
 
-        pdfs['bern0'] = RooBernstein(f'bern0_{tag}', 'bern0', x, 
-                                      RooArgList(params['bern_c0']))
         pdfs['bern1'] = RooBernstein(f'bern1_{tag}', 'bern1', x, 
                                       RooArgList(params['bern_c0'], params['bern_c1']))
         pdfs['bern2'] = RooBernstein(f'bern2_{tag}', 'bern2', x, 
@@ -70,27 +68,6 @@ class PDFDefinitions:
                                       RooArgList(params['bern_c0'], params['bern_c1'], 
                                                 params['bern_c2'], params['bern_c3'], 
                                                 params['bern_c4'], params['bern_c5']))
-
-        # ===== CHEBYCHEV PDFs =====
-        params['chebychev_c0'] = RooRealVar(f'chebychev_c0_{tag}', 'chebychev_c0', 1.08, -1.1, 10.)
-        params['chebychev_c1'] = RooRealVar(f'chebychev_c1_{tag}', 'chebychev_c1', 0.4, -1., 1.)
-        params['chebychev_c2'] = RooRealVar(f'chebychev_c2_{tag}', 'chebychev_c2', 0.01, -1., 1.)
-        params['chebychev_c3'] = RooRealVar(f'chebychev_c3_{tag}', 'chebychev_c3', 0., -1., 1.)
-
-        pdfs['chebychev1'] = RooChebychev(f'chebychev1_{tag}', 'chebychev1', x,
-                                          RooArgList(params['chebychev_c0'], params['chebychev_c1']))
-        pdfs['chebychev2'] = RooChebychev(f'chebychev2_{tag}', 'chebychev2', x,
-                                          RooArgList(params['chebychev_c0'], params['chebychev_c1'], 
-                                                    params['chebychev_c2']))
-        pdfs['chebychev3'] = RooChebychev(f'chebychev3_{tag}', 'chebychev3', x,
-                                          RooArgList(params['chebychev_c0'], params['chebychev_c1'], 
-                                                    params['chebychev_c2'], params['chebychev_c3']))
-
-        # ===== GAUSSIAN PDF =====
-        params['gauss_mu'] = RooRealVar(f'gauss_mu{tag}', 'gauss_mu', 120, 100, 140)
-        params['gauss_sigma'] = RooRealVar(f'gauss_sigma{tag}', 'gauss_sigma', 30, 20, 40)
-        pdfs['gauss'] = RooGaussian(f'gauss{tag}', 'gauss', x, 
-                                     params['gauss_mu'], params['gauss_sigma'])
 
         # ===== EXPONENTIAL PDFs =====
         params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -10., 10.)

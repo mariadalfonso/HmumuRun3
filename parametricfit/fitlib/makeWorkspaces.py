@@ -34,6 +34,7 @@ import os
 
 import ROOT
 
+from . import config
 from . import pdfDefinitions as pdefs
 
 ROOT.gROOT.SetBatch(True)
@@ -165,10 +166,12 @@ def main():
     ap.add_argument("-b", "--bin", default="incl",
                     help="BDT bin label, as given to sigFit/bkgFit")
     ap.add_argument("-y", "--year", default="Run3")
-    ap.add_argument("--wsdir", default="WS_LOCAL",
-                    help="where the JSONs are, and the workspaces go")
+    ap.add_argument("--wsdir", default=None,
+                    help="where the JSONs are, and the workspaces go "
+                         "(default WS_<year>)")
     ap.add_argument("--only", choices=("signal", "bkg"), default=None)
     args = ap.parse_args()
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
     # before writing anything: the workspaces must be built with Combine's classes
     if not pdefs.load_combine(quiet=True):

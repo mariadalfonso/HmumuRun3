@@ -33,14 +33,14 @@ Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
 
 **1. Fits** (conda)
 ```bash
-python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
-for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3 --wsdir WS_Run3; done
+python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
+for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3; done
 ```
 Look for `CHECK THIS FIT` / `<-- check` in the output.
 
 **2. Cards and workspace** (container)
 ```bash
-python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
+python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
 ```
 Runs `fitlib/makeWorkspaces.py`, `fitlib/bwsHrare.py`, `combineCards.py` and
 `text2workspace.py`, prints the yield table, and prints the commands below.
@@ -64,7 +64,8 @@ python biasStudy.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --only report   # replot
 
 ## Outputs
 
-In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
+In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`. Every script
+reads and writes there unless `--wsdir` says otherwise.
 
 | file | from | content |
 |---|---|---|
@@ -130,7 +131,7 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `-c`, `-b`, `-s`: categories, bins and modes. All modes by default; keep it
   that way for the chain.
 - `-y`: era or group, e.g. `2024`, `Run3`.
-- `--wsdir`, `--plotdir`, `--pdf`.
+- `--wsdir` (default `WS_<year>`), `--plotdir`, `--pdf`.
 - `--no-freeze`: leave the shape floating.
 - `--selftest`: closure test.
 

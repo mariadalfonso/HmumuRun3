@@ -29,6 +29,8 @@ import re
 import subprocess
 import sys
 
+from fitlib import config
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 MH = "125"
@@ -249,7 +251,7 @@ def main():
     args = ap.parse_args()
 
     args.wsdir = os.path.abspath(os.path.join(
-        HERE, args.wsdir or f"WS_{args.year}"))
+        HERE, args.wsdir or config.default_wsdir(args.year)))
     if not in_container() and not args.dry_run:
         raise SystemExit(
             "run this inside the Combine container (leave conda first):\n"

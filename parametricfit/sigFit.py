@@ -254,7 +254,8 @@ def main():
     ap.add_argument("-y", "--year", default="Run3",
                     help="concrete era (12022, 2024, ...) or group "
                          "(2022, 2023, Run3)")
-    ap.add_argument("--wsdir", default="WS_LOCAL")
+    ap.add_argument("--wsdir", default=None,
+                    help="fit JSONs and workspaces (default WS_<year>)")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
                         "~/public_html/HmumuFits/signal_fits"),
@@ -270,6 +271,7 @@ def main():
     ap.add_argument("--ngen", type=int, default=500000,
                     help="events generated for --selftest")
     args = ap.parse_args()
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
     if args.bins_per_gev:
         config.BINS_PER_GEV = args.bins_per_gev

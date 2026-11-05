@@ -54,7 +54,7 @@ from concurrent.futures import ThreadPoolExecutor
 import ROOT
 
 from fitlib import pdfDefinitions as pdefs
-from fitlib import style
+from fitlib import config, style
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -837,7 +837,7 @@ def main():
                     help="also write PDF alongside the PNG")
     args = ap.parse_args()
     if args.carddir is None:
-        args.carddir = os.path.join(HERE, f"WS_{args.year}")
+        args.carddir = os.path.join(HERE, config.default_wsdir(args.year))
 
     tags = [f"{c}_{b}_{args.year}" for c in args.category for b in args.bins]
     if args.only != "report":

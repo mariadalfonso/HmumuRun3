@@ -544,13 +544,15 @@ def main():
     ap.add_argument("--candidates", nargs="+", default=None,
                     help="restrict the candidate list (default: all in "
                          "pdfDefinitions)")
-    ap.add_argument("--wsdir", default="WS_BKG")
+    ap.add_argument("--wsdir", default=None,
+                    help="fit JSONs and workspaces (default WS_<year>)")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
                         "~/public_html/HmumuFits/bkg_fits"))
     ap.add_argument("--pdf", action="store_true")
     ap.add_argument("--bins-per-gev", type=float, default=None)
     args = ap.parse_args()
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
     style.setup_style()
     if args.bins_per_gev:

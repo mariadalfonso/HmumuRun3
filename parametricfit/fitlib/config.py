@@ -41,6 +41,12 @@ def get_lumi(year, full_year=False):
                      else SIGNAL_YEAR_GROUPS)
 
 
+def default_wsdir(year):
+    """WS_<year>: where every step of the chain reads and writes for a year
+    when --wsdir is not given, e.g. WS_Run3, WS_2024."""
+    return f"WS_{str(year).lstrip('_')}"
+
+
 def git_commit():
     try:
         return subprocess.check_output(
