@@ -25,7 +25,6 @@ Run everything from `parametricfit/`.
 | top level | the chain: `sigFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
 | `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
-| `docs/` | local notes, gitignored |
 
 ## Workflow
 
