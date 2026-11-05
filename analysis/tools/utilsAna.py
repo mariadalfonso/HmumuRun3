@@ -44,11 +44,13 @@ btagPNetBL={
     '22022':0.0499,
     '12023':0.0358,
     '22023':0.0359,
-    '2024':0.047, # found only UparT https://btv-wiki.docs.cern.ch/ScaleFactors/Run3Summer24/#general-remarks
+    '2024':0.047, # found only UparT
     '2025':0.047, # copy the 2024 value
     '2026':0.047, # copy the 2024 value
 }
 
+# https://btv-wiki.docs.cern.ch/ScaleFactors/Run3Summer24/#general-remarks
+# robustParticleTransformer for 22-23 and UparT for 24-25-26
 btagParTL={
     '12022':0.0849,
     '22022':0.0897,
@@ -68,7 +70,6 @@ btagParTM={
     '2025':0.1272, # copy the 2024 value
     '2026':0.1272, # copy the 2024 value
 }
-
 
 xsecRun2={
     'ggH':48580,

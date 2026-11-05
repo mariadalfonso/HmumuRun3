@@ -230,8 +230,8 @@ MyCorrections::MyCorrections(int year) {
   if ( year == 2025 ) fileNameJetID = dirName+"JME/"+"Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/"+"jetid.json.gz";  // to be fixed when available
 
   auto csetJetID = correction::CorrectionSet::from_file(fileNameJetID);
-  //  const std::string tagNameJetID = "AK4PUPPI_Tight";
-  const std::string tagNameJetID = "AK4PUPPI_TightLeptonVeto";
+  const std::string tagNameJetID = "AK4PUPPI_Tight";
+  //  const std::string tagNameJetID = "AK4PUPPI_TightLeptonVeto";
   jetID_ = csetJetID->at(tagNameJetID);
 
   // veto Map the jet
@@ -289,7 +289,7 @@ MyCorrections::MyCorrections(int year) {
 
 double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc) {
 
-  // add clipping (is done only in some era in correctionLib)
+  // add clipping everywhere (is done only in some era in correctionLib)
   pt = std::max(pt,30.000);
 
   if (year == "22023" or year == "2024" or year == "2025" or year == "2026") {
