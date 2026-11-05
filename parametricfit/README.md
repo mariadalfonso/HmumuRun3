@@ -79,7 +79,8 @@ In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
     2025–2026 use 2024's yield per fb⁻¹ (`signal_yield_scales` in
     `prepareFits.py`).
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
-  Bernstein, exponential and power-law sums.
+  Bernstein, exponential and power-law sums, and with a Drell–Yan core
+  times exp(Chebyshev) or a power law (`dyexp`, `dypow`).
   - The F-test picks one order per family; a goodness-of-fit cut builds the
     envelope. Failed fits are dropped.
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,

@@ -148,6 +148,37 @@ class PDFDefinitions:
                                            components['pdf_pow3_comp']),
                                  RooArgList(formulas['pow_frac1'], formulas['pow_frac2']))
 
+        # ===== DY CORE x CORRECTION PDFs =====
+        # core(m) is the fixed leading-order DY shape (dy_core_expr); only
+        # the correction floats. All coefficients start at 0, the pure core.
+        #   dyexp<n>: core * exp(a1*T1(t) + ... + an*Tn(t))
+        #   dypow<n>: core * (m/125)^(a0 + a1*t + ... + a(n-1)*t^(n-1))
+        # with t = the window mapped onto [-1, 1]. The core is written into
+        # each formula, so members of both families can share a workspace.
+        core = dy_core_expr("@0")
+        lo, hi = x.getMin(), x.getMax()
+        t = f"((2*@0-{lo + hi!r})/{hi - lo!r})"
+        cheb = [t, f"(2*{t}*{t}-1)", f"(4*{t}*{t}*{t}-3*{t})",
+                f"(8*{t}*{t}*{t}*{t}-8*{t}*{t}+1)"]
+        for n in range(1, DY_MAX_ORDER + 1):
+            params[f'dyexp_a{n}'] = RooRealVar(f'dyexp_a{n}_{tag}', f'dyexp_a{n}', 0., -10., 10.)
+            params[f'dypow_a{n - 1}'] = RooRealVar(f'dypow_a{n - 1}_{tag}', f'dypow_a{n - 1}', 0., -10., 10.)
+        for n in range(1, DY_MAX_ORDER + 1):
+            coefs = RooArgList(x)
+            for i in range(1, n + 1):
+                coefs.add(params[f'dyexp_a{i}'])
+            arg = " + ".join(f"@{i}*{cheb[i - 1]}" for i in range(1, n + 1))
+            pdfs[f'dyexp{n}'] = RooGenericPdf(f'dyexp{n}_{tag}', f'dyexp{n}',
+                                              f"{core}*exp({arg})", coefs)
+
+            coefs = RooArgList(x)
+            for i in range(n):
+                coefs.add(params[f'dypow_a{i}'])
+            expo = " + ".join(f"@{i + 1}" + f"*{t}" * i for i in range(n))
+            pdfs[f'dypow{n}'] = RooGenericPdf(f'dypow{n}_{tag}', f'dypow{n}',
+                                              f"{core}*TMath::Power(@0/{DY_MREF!r},{expo})",
+                                              coefs)
+
         # Return EVERYTHING to keep all references alive
         return {
             'pdfs': pdfs,
@@ -177,11 +208,119 @@ BOUNDS = {
     "nR":     (5.0,      0.1,  50.0),
 }
 
+# ---------------------------------------------------------------------------
+# Drell-Yan core of the dyexp / dypow families
+# ---------------------------------------------------------------------------
+# The leading-order q qbar -> gamma*/Z -> mu mu cross section for u, d and s
+# quarks, each weighted by its parton luminosity: a degree-6 Chebyshev series
+# over 70-190 GeV. Ported verbatim from flashggFinalFit,
+# DYCore/src/RooDYCore.cc (its RooDYCore::evaluate). That repository does not
+# record the beam energy or PDF set behind the luminosity coefficients; the
+# fitted correction absorbs slow differences. No detector smearing.
+#
+# Written as a formula string rather than a compiled class, so the same
+# function works in conda, in the Combine container and inside Combine.
+DY_MAX_ORDER = 4           # dyexp1-4, dypow1-4
+DY_MREF = 125.0            # the core is divided by its value here
+DY_LUMI_RANGE = (70.0, 190.0)
+# quark: (charge Q, weak isospin T3, Chebyshev coefficients of its luminosity)
+DY_QUARKS = {
+    "u": (2. / 3., 0.5, [5.65683e+06, -203204, 1628.22, -7.19829, 0.0182027,
+                         -2.47312e-05, 1.40276e-08]),
+    "d": (-1. / 3., -0.5, [4.62365e+06, -166744, 1337.52, -5.91684, 0.0149719,
+                           -2.03548e-05, 1.15522e-08]),
+    "s": (-1. / 3., -0.5, [2.68735e+06, -100109, 816.659, -3.64815,
+                           0.00928968, -1.26864e-05, 7.22469e-09]),
+}
+DY_ALPHA = 1. / 137.035999
+DY_GF = 1.1663787e-5
+DY_MZ = 91.1876
+DY_GZ = 2.4952
+DY_SW2 = 0.23126
+
+
+def _dy_kappa():
+    return 2 ** 0.5 * DY_GF * DY_MZ ** 2 / (4 * 3.141592653589793 * DY_ALPHA)
+
+
+def _dy_couplings(q, t3):
+    """(photon, interference, Z) coefficients of one quark's cross section."""
+    vq, aq = t3 - 2 * DY_SW2 * q, t3
+    vl, al = -0.5 + 2 * DY_SW2, -0.5
+    return q * q, -2 * q * vl * vq, (al * al + vl * vl) * (aq * aq + vq * vq)
+
+
+def dy_core_value(m):
+    """The core at mass m, unnormalised, line by line as
+    RooDYCore::evaluate(). The reference dy_core_expr is checked against."""
+    import math
+    lo, hi = DY_LUMI_RANGE
+    u = (2 * m - (lo + hi)) / (hi - lo)
+    s = m * m
+    d = (s - DY_MZ ** 2) ** 2 + DY_GZ ** 2 * DY_MZ ** 2
+    k = _dy_kappa()
+    chi_z, chi_int = k * k * s * s / d, k * s * (s - DY_MZ ** 2) / d
+    val = 0.0
+    for q, t3, c in DY_QUARKS.values():
+        lum = sum(ci * math.cos(i * math.acos(u)) for i, ci in enumerate(c))
+        a, b, z = _dy_couplings(q, t3)
+        # the common prefactor 4 pi alpha^2 / (3 Nc) is dropped: it cancels
+        # in the normalisation
+        val += lum * (a + b * chi_int + z * chi_z) / s
+    return val if val > 0 else 1e-12
+
+
+def _cheb_to_power(c):
+    """Chebyshev series coefficients -> power-series coefficients."""
+    t = [[1.0], [0.0, 1.0]]
+    while len(t) < len(c):          # T(n+1) = 2x T(n) - T(n-1)
+        nxt = [0.0] + [2 * v for v in t[-1]]
+        for i, v in enumerate(t[-2]):
+            nxt[i] -= v
+        t.append(nxt)
+    out = [0.0] * len(c)
+    for ci, tn in zip(c, t):
+        for k, v in enumerate(tn):
+            out[k] += ci * v
+    return out
+
+
+def _horner(coefs, var):
+    s = repr(coefs[-1])
+    for c in reversed(coefs[:-1]):
+        s = f"({c!r}+{var}*{s})"
+    return s
+
+
+def dy_core_expr(m="@0"):
+    """The core as a formula string in the mass `m`, normalised to 1 at
+    DY_MREF. The three quark luminosities are summed per coupling into one
+    polynomial each, so the string holds three polynomials, not nine."""
+    lo, hi = DY_LUMI_RANGE
+    u = f"((2*{m}-{lo + hi!r})/{hi - lo!r})"
+    per_coupling = [[0.0] * 7 for _ in range(3)]
+    for q, t3, c in DY_QUARKS.values():
+        pw = _cheb_to_power(c)
+        for j, g in enumerate(_dy_couplings(q, t3)):
+            for k, v in enumerate(pw):
+                per_coupling[j][k] += g * v
+    p_gam, p_int, p_z = (_horner(p, u) for p in per_coupling)
+    mz2, k = DY_MZ ** 2, _dy_kappa()
+    s = f"({m}*{m})"
+    d = f"(({s}-{mz2!r})*({s}-{mz2!r})+{DY_GZ ** 2 * mz2!r})"
+    chi_int = f"({k!r}*{s}*({s}-{mz2!r})/{d})"
+    chi_z = f"({k * k!r}*{s}*{s}/{d})"
+    norm = dy_core_value(DY_MREF)
+    return f"(({p_gam}+{p_int}*{chi_int}+{p_z}*{chi_z})/{s}/{norm!r})"
+
+
 # background candidates and their number of FREE parameters (F-test, ndf)
 BKG_NPAR = {
     **{f"bern{o}": o for o in range(1, 6)},        # bern_c0 is constant
     **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
     **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
+    **{f"dyexp{n}": n for n in range(1, DY_MAX_ORDER + 1)},
+    **{f"dypow{n}": n for n in range(1, DY_MAX_ORDER + 1)},
 }
 
 # candidates that are nested within one another, for the F-test
@@ -189,6 +328,8 @@ BKG_FAMILIES = {
     "bernstein": [f"bern{o}" for o in range(1, 6)],
     "exponential": [f"exp{n}" for n in (1, 2, 3)],
     "power": [f"pow{n}" for n in (1, 2, 3)],
+    "dyexp": [f"dyexp{n}" for n in range(1, DY_MAX_ORDER + 1)],
+    "dypow": [f"dypow{n}" for n in range(1, DY_MAX_ORDER + 1)],
 }
 
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
