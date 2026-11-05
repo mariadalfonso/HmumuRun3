@@ -154,8 +154,8 @@ def doCategories(df,mc,year):
 
     # --- Common jet selections ---
     if year == '2024' or year == '2025' or year == '2026':
-        BJETSmedium = selections["BJETS"].format("UParTAK4B>"+str(btagPNetBM[year]))
-        BJETSloose  = selections["BJETS"].format("UParTAK4B>"+str(btagPNetBL[year]))
+        BJETSmedium = selections["BJETS"].format("UParTAK4B>"+str(btagParTM[year]))
+        BJETSloose  = selections["BJETS"].format("UParTAK4B>"+str(btagParTL[year]))
     else:
         BJETSmedium = selections["BJETS"].format("PNetB>"+str(btagPNetBM[year]))
         BJETSloose  = selections["BJETS"].format("PNetB>"+str(btagPNetBL[year]))
@@ -441,7 +441,7 @@ def doCategories(df,mc,year):
             1: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2)",                                  # W→e  (TTH semilep)
             2: f"({n_goodEle}>0 && {n_looseEle}==2 && {q_looseEle}==0 && {n_goodMu}==2 && {q_goodMu}==0 && {n_looseMu}==2) && {freeOfZee}", # 2W→e  (TTH dilep)
             3: f"({n_looseEle}==0 && {n_goodMu}==3 && abs({q_goodMu})==1 && {n_looseMu}==3 && {freeOfZ})",                                  # W→μ  (TTH semilep)
-            4: f"({n_looseEle}==0 && {n_goodMu}>=2 && {n_looseMu}==4 && {q_looseMu}==0 && {freeOfZ})",                                      # 2W→μ (TTH dilep)
+            4: f"({n_looseEle}==0 && {n_goodMu}>=3 && {n_looseMu}==4 && {q_looseMu}==0 && {freeOfZ})",                                      # 2W→μ (TTH dilep)
             5: f"({n_looseEle}==1 && {n_goodEle}==1 && {n_goodMu}>=2 && {n_looseMu}==3 && abs({q_looseMu})==1 && {freeOfZ})",               # W→eW→μ (TTH dilep)
         }
 
