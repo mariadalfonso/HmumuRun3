@@ -5,7 +5,7 @@ data sidebands, and the Combine inputs built from them.
 
 ## Environments
 
-| | fits (`sigFit.py`, `bkgFit.py`) | everything else |
+| | fits (`sigFit.py`, `mcCoreFit.py`, `bkgFit.py`) | everything else |
 |---|---|---|
 | where | conda (`pyenv`) | Combine container (v9.2.1) |
 | why | needs ROOT ≥ 6.28 | needs the Combine libraries (ROOT 6.22) |
@@ -18,22 +18,33 @@ singularity shell --cleanenv -B /work -B /ceph --nv /work/submit/jaeyserm/softwa
 ```
 Run everything from `parametricfit/`.
 
+## Layout
+
+| where | what |
+|---|---|
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
+
 ## Workflow
 
 Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
 
 **1. Fits** (conda)
 ```bash
-python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
-for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3 --wsdir WS_Run3; done
+python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
+python mcCoreFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
+for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3; done
 ```
+`mcCoreFit.py` is optional: without its output `bkgFit.py` prints a note and
+leaves out the `mcexp`/`mcpow`/`mcdy` families (`--no-mc-core` also does).
 Look for `CHECK THIS FIT` / `<-- check` in the output.
 
 **2. Cards and workspace** (container)
 ```bash
-python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3
+python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
 ```
-Runs `makeWorkspaces.py`, `bwsHrare.py`, `combineCards.py` and
+Runs `fitlib/makeWorkspaces.py`, `fitlib/bwsHrare.py`, `combineCards.py` and
 `text2workspace.py`, prints the yield table, and prints the commands below.
 `--dry-run` only prints the commands.
 
@@ -55,20 +66,23 @@ python biasStudy.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --only report   # replot
 
 ## Outputs
 
-In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
+In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`. Every script
+reads and writes there unless `--wsdir` says otherwise.
 
 | file | from | content |
 |---|---|---|
 | `Signal_<tag>_params.json` | `sigFit.py` | shape parameters, yield per mode (`yields`) |
+| `MCcore_<tag>.json` | `mcCoreFit.py` | frozen MC cores, fit quality, MC tags per era |
 | `Bkg_<tag>_params.json` | `bkgFit.py` | envelope, fits, background yield (`normalization.value`) |
-| `Signal_/Bkg_<tag>_workspace.root` | `makeWorkspaces.py` | models built with Combine's classes |
-| `datacard_<tag>.txt`, `workspace_<tag>_workspace.root` | `bwsHrare.py` | per-bin card |
+| `Signal_/Bkg_<tag>_workspace.root` | `fitlib/makeWorkspaces.py` | models built with Combine's classes |
+| `datacard_<tag>.txt`, `workspace_<tag>_workspace.root` | `fitlib/bwsHrare.py` | per-bin card |
 | `datacard_<name>.txt`, `<name>.root` | `buildWorkspace.py` | combined card and workspace, e.g. `ggHcat_bdt_Run3` |
 | `Yields_<name>.json` | `buildWorkspace.py` | signal per mode and total, background, per bin and summed |
 
 - Combine writes `higgsCombine*.root` to `parametricfit/`.
 - The bias study writes to `BIAS/<tag>/`.
-- Plots go to `~/public_html/HmumuFits/{signal_fits,bkg_fits,bias}/<category>/`.
+- Plots go to `~/public_html/HmumuFits/{signal_fits,bkg_fits,bias}/<category>/`,
+  and `~/public_html/HmumuFits/mc_core/` for `mcCoreFit.py`.
 
 ## What the scripts do
 
@@ -77,15 +91,29 @@ In `WS_<year>/`, with `<tag>` = `<category>_<bin>_<year>`:
   - `CMS_scale_m` and `CMS_res_m` stay floating as nuisances.
   - The shape is fitted on the 2022–2024 MC. The yield covers every data era:
     2025–2026 use 2024's yield per fb⁻¹ (`signal_yield_scales` in
-    `prepareFits.py`).
+    `fitlib/prepareFits.py`).
+- **`mcCoreFit.py`**: fits the weighted Drell–Yan MC of each bin
+  (`BKG_DY_TAGS` in `fitlib/prepareFits.py`: QCD DY, plus EWK Z in VBF,
+  from samples generated with 105 < m_μμ < 160 GeV) over 110–150 GeV with three smooth cores, as flashgg does for ggH: 2Exp,
+  2Pow, and the LO DY core × (1 + Cheb3). The values are frozen; only the
+  shape is used.
+  - `--all-bkg-mc` fits the total background MC (`BKG_MC_TAGS`) instead.
+  - A core is frozen only if it passes a goodness-of-fit test against the
+    MC: χ² with bins merged to ~9 effective entries each, p > 0.01 (the
+    same test and cut as `bkgFit.py` on data, `fitlib/gof.py`). A bin with
+    too little MC to test gets no MC cores.
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
-  Bernstein, exponential and power-law sums.
+  Bernstein, exponential and power-law sums, with a Drell–Yan core
+  times exp(Chebyshev) or a power law (`dyexp`, `dypow`), and with each
+  frozen MC core times exp(Chebyshev) (`mcexp`, `mcpow`, `mcdy`).
   - The F-test picks one order per family; a goodness-of-fit cut builds the
-    envelope.
+    envelope. Failed fits are dropped.
+  - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
+    is the default (`pdfindex` 0): the Asimov and the yield come from it.
   - The yield is extrapolated over 110–150 GeV.
-- **`makeWorkspaces.py`**: rebuilds both models from the JSONs with Combine's
+- **`fitlib/makeWorkspaces.py`**: rebuilds both models from the JSONs with Combine's
   classes. Nothing is refitted.
-- **`bwsHrare.py`**: a copy of `analysis/FITS/bwsHrare.py`.
+- **`fitlib/bwsHrare.py`**: a copy of `analysis/FITS/bwsHrare.py`.
   - Signal rates come from the workspace norms; the background is a free
     `rateParam`.
   - It adds the lumi and BR uncertainties, `CMS_scale_m` / `CMS_res_m` as
@@ -108,11 +136,8 @@ Expected results for ggHcat, all from Asimov:
 
 The significance scales less than √L between 2024 and Run 3; still to check.
 
-- Failed fits are not yet excluded from the envelope.
 - Bernstein orders stop at 5.
 - `--algo singles` misses the low-side errors; use `--algo grid`.
-- Not part of the chain: `sigFitCond.py`, `sigFitDCBG.py`, `fitEtaBins.py`,
-  `fitMVABins.py`, `massResVsMass.py`.
 - `analysis/FITS/combineCommand.sh` still uses the old `analysis/FITS/` layout.
 
 ## Options
@@ -121,7 +146,7 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `-c`, `-b`, `-s`: categories, bins and modes. All modes by default; keep it
   that way for the chain.
 - `-y`: era or group, e.g. `2024`, `Run3`.
-- `--wsdir`, `--plotdir`, `--pdf`.
+- `--wsdir` (default `WS_<year>`), `--plotdir`, `--pdf`.
 - `--no-freeze`: leave the shape floating.
 - `--selftest`: closure test.
 

@@ -42,10 +42,10 @@ file rather than by command-line options.
 
 Usage
 -----
-    python fitEtaBins.py 2024
-    python fitEtaBins.py 2024 --cell-plots
-    python fitEtaBins.py Run3 --sig VH --category VHcat
-    python fitEtaBins.py 22022 --file <snapshot> [<snapshot> ...]
+    python -m studies.fitEtaBins 2024
+    python -m studies.fitEtaBins 2024 --cell-plots
+    python -m studies.fitEtaBins Run3 --sig VH --category VHcat
+    python -m studies.fitEtaBins 22022 --file <snapshot> [<snapshot> ...]
 """
 
 import argparse
@@ -57,9 +57,10 @@ from datetime import datetime, timezone
 
 import ROOT
 
-import sigFit as SF
-from sigFit import fit_one, git_commit, XLOW, XHIGH, BINS_PER_GEV
-from prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
+from fitlib import config, signal, style
+from fitlib.signal import fit_one
+from fitlib.config import git_commit, XLOW, XHIGH, BINS_PER_GEV
+from fitlib.prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
                          SIGNAL_YEAR_GROUPS, expand_year, get_signal_files,
                          normalize_year)
 
@@ -72,7 +73,7 @@ MASSCOL = "HiggsCandCorrMass"
 
 # overlay colours; the first is sigFit's fit colour
 PALETTE_RGB = [
-    SF.FIT_COLOR_RGB,   # red
+    style.FIT_COLOR_RGB,   # red
     (31, 78, 158),      # blue
     (34, 139, 34),      # green
     (230, 159, 0),      # orange
@@ -283,16 +284,16 @@ def color(i):
 
 def make_canvas(name):
     """Single-pad canvas with sigFit's geometry."""
-    c = ROOT.TCanvas(name, "", SF.CANVAS_W, SF.CANVAS_H)
-    c.SetLeftMargin(SF.PAD_LEFT_MARGIN)
-    c.SetRightMargin(SF.PAD_RIGHT_MARGIN)
-    c.SetTopMargin(SF.PAD_TOP_MARGIN)
-    c.SetBottomMargin(SF.PAD_BOTTOM_MARGIN)
+    c = ROOT.TCanvas(name, "", style.CANVAS_W, style.CANVAS_H)
+    c.SetLeftMargin(style.PAD_LEFT_MARGIN)
+    c.SetRightMargin(style.PAD_RIGHT_MARGIN)
+    c.SetTopMargin(style.PAD_TOP_MARGIN)
+    c.SetBottomMargin(style.PAD_BOTTOM_MARGIN)
     return c
 
 
 def cms_label(pad, year):
-    """sigFit.cms_label, with the "Internal" offset scaled to this pad.
+    """style.cms_label, with the "Internal" offset scaled to this pad.
 
     sigFit puts the extra text a fixed 0.10 NDC after "CMS", which suits its
     600x420 upper pad. ROOT scales text by a pad's SHORTER side while NDC x
@@ -305,7 +306,7 @@ def cms_label(pad, year):
     l = pad.GetLeftMargin()
     r = pad.GetRightMargin()
     y = 1 - t + 0.2 * t
-    cms_size = SF.CMS_TEXT_SIZE_FRAC * t
+    cms_size = style.CMS_TEXT_SIZE_FRAC * t
 
     latex = ROOT.TLatex()
     latex.SetNDC()
@@ -315,27 +316,27 @@ def cms_label(pad, year):
     latex.SetTextFont(61)
     latex.SetTextAlign(11)
     latex.SetTextSize(cms_size)
-    latex.DrawLatex(l, y, SF.CMS_TEXT)
+    latex.DrawLatex(l, y, style.CMS_TEXT)
 
-    if SF.CMS_EXTRA_TEXT:
+    if style.CMS_EXTRA_TEXT:
         w_px = pad.GetWw() * pad.GetAbsWNDC()
         h_px = pad.GetWh() * pad.GetAbsHNDC()
         dx = (CMS_EXTRA_OFFSET * cms_size * min(w_px, h_px) / w_px
               if w_px > 0 else 0.10)
         latex.SetTextFont(52)
-        latex.SetTextSize(SF.EXTRA_OVER_CMS_TEXT_SIZE * cms_size)
-        latex.DrawLatex(l + dx, y, SF.CMS_EXTRA_TEXT)
+        latex.SetTextSize(style.EXTRA_OVER_CMS_TEXT_SIZE * cms_size)
+        latex.DrawLatex(l + dx, y, style.CMS_EXTRA_TEXT)
 
-    lumi = SF.get_lumi(year) if year else 0.0
+    lumi = config.get_lumi(year) if year else 0.0
     if lumi <= 0:
         print(f"warning: no luminosity found for year tag '{year}'")
     latex.SetTextFont(42)
     latex.SetTextAlign(31)
-    latex.SetTextSize(SF.LUMI_TEXT_SIZE_FRAC * t)
+    latex.SetTextSize(style.LUMI_TEXT_SIZE_FRAC * t)
     if lumi > 0:
-        txt = "%.1f fb^{-1} (%.1f TeV)" % (lumi, SF.SQRT_S_TEV)
+        txt = "%.1f fb^{-1} (%.1f TeV)" % (lumi, style.SQRT_S_TEV)
     else:
-        txt = "(%.1f TeV)" % SF.SQRT_S_TEV
+        txt = "(%.1f TeV)" % style.SQRT_S_TEV
     latex.DrawLatex(1 - r, y, txt)
     return latex
 
@@ -365,7 +366,7 @@ def overlay_pdfs(x, fits, plotdir, year, group, save_pdf=False):
     for i, f in enumerate(legs):
         f["pdf"].plotOn(frame, ROOT.RooFit.Name(f["tag"]),
                         ROOT.RooFit.LineColor(color(i)),
-                        ROOT.RooFit.LineWidth(SF.DATA_LINE_WIDTH))
+                        ROOT.RooFit.LineWidth(style.DATA_LINE_WIDTH))
         curve = frame.findObject(f["tag"])
         if curve:
             ys = curve.GetY()
@@ -375,10 +376,10 @@ def overlay_pdfs(x, fits, plotdir, year, group, save_pdf=False):
     ncol = 1 if len(legs) <= 3 else 2
     ts = OVERLAY_TEXT_SIZE * (1.0 if ncol == 1 else 0.85)   # columns are narrow
     nrow = -(-len(legs) // ncol)
-    row_h = 2 * SF.LINE_SPACING * ts            # two text lines per entry
-    left = SF.PAD_LEFT_MARGIN + 0.02
-    right = 1 - SF.PAD_RIGHT_MARGIN - 0.02
-    top = 1 - SF.PAD_TOP_MARGIN - 0.02
+    row_h = 2 * style.LINE_SPACING * ts            # two text lines per entry
+    left = style.PAD_LEFT_MARGIN + 0.02
+    right = 1 - style.PAD_RIGHT_MARGIN - 0.02
+    top = 1 - style.PAD_TOP_MARGIN - 0.02
     bottom = top - nrow * row_h
 
     leg = ROOT.TLegend(left, bottom, right, top)
@@ -397,8 +398,8 @@ def overlay_pdfs(x, fits, plotdir, year, group, save_pdf=False):
                          "l")
 
     # headroom: the tallest curve must end OVERLAY_GAP below the legend
-    plot_h = 1 - SF.PAD_TOP_MARGIN - SF.PAD_BOTTOM_MARGIN
-    usable = (bottom - OVERLAY_GAP - SF.PAD_BOTTOM_MARGIN) / plot_h
+    plot_h = 1 - style.PAD_TOP_MARGIN - style.PAD_BOTTOM_MARGIN
+    usable = (bottom - OVERLAY_GAP - style.PAD_BOTTOM_MARGIN) / plot_h
     if ymax > 0:
         frame.SetMinimum(0.0)
         frame.SetMaximum(ymax / max(usable, 0.3))
@@ -425,9 +426,9 @@ def summary_graph(fits, plotdir, year, group, axis, save_pdf=False):
         for i, f in enumerate(legs):
             g.SetPoint(i, i + 0.5, f[key])
             g.SetPointError(i, 0.0, f[key + "Err"])
-        g.SetMarkerStyle(SF.DATA_MARKER_STYLE)
-        g.SetMarkerSize(SF.DATA_MARKER_SIZE)
-        g.SetLineWidth(SF.DATA_LINE_WIDTH)
+        g.SetMarkerStyle(style.DATA_MARKER_STYLE)
+        g.SetMarkerSize(style.DATA_MARKER_SIZE)
+        g.SetLineWidth(style.DATA_LINE_WIDTH)
 
         c = make_canvas(f"c_{key}_{group}")
         # labelled frame: one bin per category
@@ -507,7 +508,7 @@ def resolution_map(cells, plotdir, year, eta_short, label, key, ytit,
     latex.SetNDC()
     latex.SetTextFont(42)
     latex.SetTextSize(0.032)
-    x0 = SF.PAD_LEFT_MARGIN + 0.04
+    x0 = style.PAD_LEFT_MARGIN + 0.04
     latex.DrawLatex(x0, 0.86, f"{label}")
     latex.DrawLatex(x0, 0.81, f"|#eta| topology: {eta_short}")
     if any(c.get("open_x") or c.get("open_y") for c in cells):
@@ -552,18 +553,18 @@ def resolution_maps(fits, plotdir, year, label, save_pdf=False):
 def fit_cell(x, hist, tag, min_entries):
     """Fit one map cell WITHOUT writing canvases.
 
-    sigFit.fit_one always draws the ratio and pull panels, which is right
+    signal.fit_one always draws the ratio and pull panels, which is right
     for a handful of bins and wrong for ~21 map cells per eta region. This
     does the same two-pass Minuit2 fit with the same pinned nuisances and
     returns just the numbers.
     """
-    norm = SF.range_integral(hist)
-    n_eff = SF.effective_entries(hist)
+    norm = signal.range_integral(hist)
+    n_eff = signal.effective_entries(hist)
     if hist.GetEntries() < min_entries or norm <= 0:
         return None
 
     data = ROOT.RooDataHist(f"dh_{tag}", "data", ROOT.RooArgList(x), hist)
-    pdf, bundle = SF.make_signal_pdf(x, tag)
+    pdf, bundle = signal.make_signal_pdf(x, tag)
     nom, nuis = bundle["nom"], bundle["nuis"]
     for v in nuis.values():
         v.setVal(0.0)
@@ -575,7 +576,7 @@ def fit_cell(x, hist, tag, min_entries):
     pdf.fitTo(data, *opts)
     res = pdf.fitTo(data, *opts)
 
-    parked = [k for k, v in nom.items() if SF.near_bound(v)]
+    parked = [k for k, v in nom.items() if signal.near_bound(v)]
     ok = res.status() == 0 and res.covQual() == 3 and not parked
     return {"mu": nom["mu"].getVal(), "muErr": nom["mu"].getError(),
             "sigma": nom["sigma"].getVal(),
@@ -606,7 +607,7 @@ def main():
         if not hasattr(ROOT, args.palette):
             raise SystemExit(f"ROOT has no palette named {args.palette}")
         MAP_PALETTE = getattr(ROOT, args.palette)
-    SF.setup_style()
+    style.setup_style()
     year = normalize_year(args.year)
 
     files = input_files(args, year)

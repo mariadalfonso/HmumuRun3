@@ -6,8 +6,8 @@ buildWorkspace.py -- from the fit JSONs to the Combine workspace, in one go.
 Steps 3-5 of the chain (README), inside the Combine container, after sigFit.py
 and bkgFit.py have run in conda:
 
-  1. makeWorkspaces.py for each bin
-  2. bwsHrare.py for each bin: <wsdir>/datacard_<tag>.txt and
+  1. fitlib/makeWorkspaces.py for each bin
+  2. fitlib/bwsHrare.py for each bin: <wsdir>/datacard_<tag>.txt and
      <wsdir>/workspace_<tag>_workspace.root
   3. combineCards.py over the bins (more than one bin only):
      <wsdir>/datacard_<name>.txt
@@ -28,6 +28,8 @@ import os
 import re
 import subprocess
 import sys
+
+from fitlib import config
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -82,7 +84,7 @@ def run(cmd, args, cwd=HERE, stdout=None):
 
 def make_workspaces(args):
     for b in args.bins:
-        run([sys.executable, "makeWorkspaces.py", "-c", args.category,
+        run([sys.executable, "-m", "fitlib.makeWorkspaces", "-c", args.category,
              "-b", b, "-y", args.year, "--wsdir", args.wsdir], args)
 
 
@@ -90,7 +92,7 @@ def make_cards(args):
     ws = rel(args.wsdir)
     for b, tag in zip(args.bins, tags(args)):
         # --output goes into the shapes lines as given: relative to here
-        run([sys.executable, "bwsHrare.py",
+        run([sys.executable, "-m", "fitlib.bwsHrare",
              f"--whichCat={args.category}", f"--whichBIN={b}",
              f"--whichYear={args.year}",
              f"--inputFileSig={ws}/Signal_{tag}_workspace.root",
@@ -249,7 +251,7 @@ def main():
     args = ap.parse_args()
 
     args.wsdir = os.path.abspath(os.path.join(
-        HERE, args.wsdir or f"WS_{args.year}"))
+        HERE, args.wsdir or config.default_wsdir(args.year)))
     if not in_container() and not args.dry_run:
         raise SystemExit(
             "run this inside the Combine container (leave conda first):\n"

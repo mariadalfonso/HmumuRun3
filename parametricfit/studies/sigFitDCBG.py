@@ -33,8 +33,8 @@ contract with bwsHrare.py still holds.
 
 Usage
 -----
-    python sigFitDCBG.py --selftest
-    python sigFitDCBG.py -c ggHcat -y 2024 -b incl -s ggH
+    python -m studies.sigFitDCBG --selftest
+    python -m studies.sigFitDCBG -c ggHcat -y 2024 -b incl -s ggH
 
     # then compare against the single-CB fit
     python sigFit.py     -c ggHcat -y 2024 -b incl -s ggH
@@ -45,7 +45,9 @@ import sys
 
 import ROOT
 
-import sigFit as sf
+from fitlib import signal, style
+from fitlib import pdfDefinitions as pdefs
+import sigFit
 
 
 # ---------------------------------------------------------------------------
@@ -72,22 +74,22 @@ PARAM_ORDER = ("mu", "sigma", "alphaL", "nL", "alphaR", "nR",
 # the PDF
 # ---------------------------------------------------------------------------
 
-def make_signal_pdf(x, tag, scale_unc=sf.SCALE_UNC, res_unc=sf.RES_UNC,
+def make_signal_pdf(x, tag, scale_unc=pdefs.SCALE_UNC, res_unc=pdefs.RES_UNC,
                     correlated=True):
     """DSCB + wider Gaussian, sharing the mean and the resolution nuisance.
 
-    Same signature and same (pdf, bundle) contract as sigFit.make_signal_pdf,
-    so sigFit.fit_one can call this unchanged.
+    Same signature and same (pdf, bundle) contract as signal.make_signal_pdf,
+    so signal.fit_one can call this unchanged.
     """
     # --- shape parameters measured from MC ---
     nom = {}
-    for k, (start, lo, hi) in sf.BOUNDS.items():
+    for k, (start, lo, hi) in pdefs.BOUNDS.items():
         nom[k] = ROOT.RooRealVar(f"cb_{k}_{tag}", f"cb_{k}", start, lo, hi)
     for k, (start, lo, hi) in EXTRA_BOUNDS.items():
         nom[k] = ROOT.RooRealVar(f"cb_{k}_{tag}", f"cb_{k}", start, lo, hi)
 
     # --- mass hypothesis (see sigFit) ---
-    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", sf.MH_REF, 120.0, 130.0)
+    mh = ROOT.RooRealVar("MH", "Higgs mass hypothesis", pdefs.MH_REF, 120.0, 130.0)
     mh.setConstant(True)
 
     # --- nuisance parameters ---
@@ -99,7 +101,7 @@ def make_signal_pdf(x, tag, scale_unc=sf.SCALE_UNC, res_unc=sf.RES_UNC,
 
     mean = ROOT.RooFormulaVar(
         f"cb_mean_{tag}", "mean",
-        f"(@0 + @1 - {sf.MH_REF})*(1 + {scale_unc}*@2)",
+        f"(@0 + @1 - {pdefs.MH_REF})*(1 + {scale_unc}*@2)",
         ROOT.RooArgList(nom["mu"], mh, nuis["scale"]),
     )
     sigma = ROOT.RooFormulaVar(
@@ -138,31 +140,31 @@ def make_signal_pdf(x, tag, scale_unc=sf.SCALE_UNC, res_unc=sf.RES_UNC,
         # components must stay referenced or PyROOT collects them
         "components": {"core": core, "wide": wide},
         "cfg": {"scale_unc": scale_unc, "res_unc": res_unc,
-                "correlated": correlated, "mh_ref": sf.MH_REF,
+                "correlated": correlated, "mh_ref": pdefs.MH_REF,
                 "model": "DSCB + Gaussian"},
     }
     return pdf, bundle
 
 
 # ---------------------------------------------------------------------------
-# annotation: sigFit._annotate iterates a hardcoded six-parameter tuple
+# annotation: signal._annotate iterates a hardcoded six-parameter tuple
 # ---------------------------------------------------------------------------
 
 def _annotate(nom, chi2_ndf, norm, n_eff, label):
-    """sigFit._annotate, extended to the two extra parameters."""
+    """signal._annotate, extended to the two extra parameters."""
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
 
-    left = sf.PAD_LEFT_MARGIN + 0.05
-    y0, dy = 0.85, sf.LINE_SPACING * sf.ANN_TEXT_SIZE
-    for i, line in enumerate(sf.header_lines(label)):
+    left = style.PAD_LEFT_MARGIN + 0.05
+    y0, dy = 0.85, style.LINE_SPACING * style.ANN_TEXT_SIZE
+    for i, line in enumerate(style.header_lines(label)):
         latex.DrawLatex(left, y0 - i * dy, line)
 
-    latex.SetTextSize(sf.PARAM_TEXT_SIZE)
+    latex.SetTextSize(style.PARAM_TEXT_SIZE)
     latex.SetTextAlign(12)
-    right = 1.0 - sf.PAD_RIGHT_MARGIN - 0.36
+    right = 1.0 - style.PAD_RIGHT_MARGIN - 0.36
     y = 0.85
     lines = [f"yield = {norm:.1f}", f"N_{{eff}} = {n_eff:.0f}"]
     for k in PARAM_ORDER:
@@ -170,31 +172,32 @@ def _annotate(nom, chi2_ndf, norm, n_eff, label):
             continue
         v = nom[k]
         lab, unit = LABELS[k]
-        txt = sf.fmt_with_unc(lab, v.getVal(), v.getError(), unit)
-        if sf.near_bound(v):
+        txt = signal.fmt_with_unc(lab, v.getVal(), v.getError(), unit)
+        if signal.near_bound(v):
             txt += " #color[2]{(bound)}"
         lines.append(txt)
     lines.append(f"#chi^{{2}}/ndf = {chi2_ndf:.2f}")
-    pdy = sf.LINE_SPACING * sf.PARAM_TEXT_SIZE
+    pdy = style.LINE_SPACING * style.PARAM_TEXT_SIZE
     for i, line in enumerate(lines):
         latex.DrawLatex(right, y - i * pdy, line)
 
     return latex
 
 
-LABELS = dict(sf.PARAM_LABEL)
+LABELS = dict(signal.PARAM_LABEL)
 LABELS.update(EXTRA_LABELS)
 
 
 # ---------------------------------------------------------------------------
 # install the overrides
 # ---------------------------------------------------------------------------
-# sigFit.fit_one and sigFit._annotate resolve these as module globals at call
-# time, so reassigning the module attributes is enough -- no edit to
-# sigFit.py. This must run before any fit, which it does: import time.
-sf.make_signal_pdf = make_signal_pdf
-sf._annotate = _annotate
-sf.PARAM_LABEL = LABELS
+# fitlib.signal.fit_one and fitlib.signal.plot_fit resolve these as module
+# globals at call time, so reassigning the module attributes is enough --
+# no edit to fitlib/signal.py. This must run before any fit, which it
+# does: import time.
+signal.make_signal_pdf = make_signal_pdf
+signal._annotate = _annotate
+signal.PARAM_LABEL = LABELS
 
 
 def _default_arg(flag, value):
@@ -210,5 +213,5 @@ if __name__ == "__main__":
                  os.path.expanduser("~/public_html/HmumuFits/signal_fits_dscbg"))
     print("model: DSCB + wider Gaussian "
           "(8 free parameters; sigFit.py is 6)")
-    sf.setup_style()
-    sf.main()
+    style.setup_style()
+    sigFit.main()

@@ -23,9 +23,9 @@ N = 200 gave sigma anywhere from 1.58 to 2.32 GeV). Watch N_eff and the
 
 Usage
 -----
-    python fitMVABins.py -c ggHcat -y 2024 -s ggH
-    python fitMVABins.py -c ggHcat -y 2024 -s ggH --fix-tails
-    python fitMVABins.py -c VBFcat -y Run3 -s qqH --edges 0 0.3 0.6 0.8 1.0
+    python -m studies.fitMVABins -c ggHcat -y 2024 -s ggH
+    python -m studies.fitMVABins -c ggHcat -y 2024 -s ggH --fix-tails
+    python -m studies.fitMVABins -c VBFcat -y Run3 -s qqH --edges 0 0.3 0.6 0.8 1.0
 """
 
 import argparse
@@ -36,26 +36,26 @@ import os
 
 import ROOT
 
-import sigFit as sf
+from fitlib import config, signal, style
 
 # sigFit.plot_fit gained an optional `result` argument when the fit-error
 # band was added, and that patch may or may not be in the copy on disk.
 # Check once rather than assuming either way.
 _PLOT_FIT_TAKES_RESULT = (
-    "result" in inspect.signature(sf.plot_fit).parameters)
+    "result" in inspect.signature(signal.plot_fit).parameters)
 
 
 # ---------------------------------------------------------------------------
 # multi-line annotation header, without touching sigFit.py
 # ---------------------------------------------------------------------------
-# sigFit._annotate renders its header via sigFit.header_lines(label), which
+# signal._annotate renders its header via sigFit.header_lines(label), which
 # accepts only a string -- so an MVA bin would end up as one over-long line.
 # Rather than edit sigFit.py, extend the function here: a list is taken as
 # the lines themselves, anything else falls through to the original.
 #
 # This has to be installed before any plot_fit call, which it is: the
 # assignment runs at import.
-_sf_header_lines = sf.header_lines
+_sf_header_lines = style.header_lines
 
 
 def _header_lines(label):
@@ -64,7 +64,7 @@ def _header_lines(label):
     return _sf_header_lines(label)
 
 
-sf.header_lines = _header_lines
+style.header_lines = _header_lines
 
 
 # Signal MC codes, matching prepareFits.signal_files
@@ -127,7 +127,7 @@ def mva_histo(files, lo, hi, mvavar, nbins, name, last=False):
             .Filter("!isnan(HiggsCandCorrMass)", "valid mass")
             .Filter(f"{mvavar} >= {lo} && {mvavar} {upper} {hi}", "mva bin")
             .Define("weight", "w_allSF"))
-    h = df.Histo1D((name, "", nbins, sf.XLOW, sf.XHIGH),
+    h = df.Histo1D((name, "", nbins, config.XLOW, config.XHIGH),
                    "HiggsCandCorrMass", "weight").GetValue()
     h.SetDirectory(0)
     return h
@@ -138,19 +138,19 @@ def mva_histo(files, lo, hi, mvavar, nbins, name, last=False):
 # ---------------------------------------------------------------------------
 
 def fit_bin(x, hist, tag, label, plotdir, year, save_pdf, fixed_tails=None):
-    """Fit one MVA slice. Mirrors sigFit.fit_one, with the option to hold the
+    """Fit one MVA slice. Mirrors signal.fit_one, with the option to hold the
     tail parameters at values measured on the inclusive sample.
 
     Returns a dict, or None if the slice is empty.
     """
-    norm = sf.range_integral(hist)
-    n_eff = sf.effective_entries(hist)
+    norm = signal.range_integral(hist)
+    n_eff = signal.effective_entries(hist)
     if norm <= 0:
         print(f"  !! empty slice for {tag}, skipping")
         return None, None
 
     data = ROOT.RooDataHist(f"datahist_{tag}", "data", ROOT.RooArgList(x), hist)
-    pdf, bundle = sf.make_signal_pdf(x, tag)
+    pdf, bundle = signal.make_signal_pdf(x, tag)
     nom, nuis = bundle["nom"], bundle["nuis"]
 
     # nuisances are degenerate with cb_mu / cb_sigma: pin them for the fit
@@ -178,7 +178,7 @@ def fit_bin(x, hist, tag, label, plotdir, year, save_pdf, fixed_tails=None):
     plot_kw = {"year": year, "save_pdf": save_pdf}
     if _PLOT_FIT_TAKES_RESULT:
         plot_kw["result"] = result
-    chi2_ndf = sf.plot_fit(x, data, pdf, nom, hist, label,
+    chi2_ndf = signal.plot_fit(x, data, pdf, nom, hist, label,
                            f"{plotdir}/signal_{tag}", n_float, norm, n_eff,
                            **plot_kw)
     if isinstance(chi2_ndf, tuple):        # some versions also return the
@@ -186,7 +186,7 @@ def fit_bin(x, hist, tag, label, plotdir, year, save_pdf, fixed_tails=None):
 
     status, cov = result.status(), result.covQual()
     parked = [k for k, v in nom.items() if not v.isConstant()
-              and sf.near_bound(v)]
+              and signal.near_bound(v)]
     ok = (status == 0 and cov == 3 and not parked)
 
     flag = "" if ok else "   <-- CHECK"
@@ -200,7 +200,7 @@ def fit_bin(x, hist, tag, label, plotdir, year, save_pdf, fixed_tails=None):
     record = {
         "params": {k: {"value": v.getVal(), "error": v.getError(),
                        "fixed": v.isConstant(),
-                       "at_bound": (not v.isConstant()) and sf.near_bound(v)}
+                       "at_bound": (not v.isConstant()) and signal.near_bound(v)}
                    for k, v in nom.items()},
         "yield": norm,
         "n_eff": n_eff,
@@ -223,7 +223,7 @@ def fit_bin(x, hist, tag, label, plotdir, year, save_pdf, fixed_tails=None):
 # ---------------------------------------------------------------------------
 
 def cms_label(pad, year):
-    """sigFit.cms_label, with the "Internal" offset scaled to this pad.
+    """style.cms_label, with the "Internal" offset scaled to this pad.
 
     sigFit puts the extra text a fixed 0.10 NDC after "CMS", which suits its
     600x420 upper pad. ROOT scales text by a pad's SHORTER side while NDC x
@@ -236,7 +236,7 @@ def cms_label(pad, year):
     l = pad.GetLeftMargin()
     r = pad.GetRightMargin()
     y = 1 - t + 0.2 * t
-    cms_size = sf.CMS_TEXT_SIZE_FRAC * t
+    cms_size = style.CMS_TEXT_SIZE_FRAC * t
 
     latex = ROOT.TLatex()
     latex.SetNDC()
@@ -246,27 +246,27 @@ def cms_label(pad, year):
     latex.SetTextFont(61)
     latex.SetTextAlign(11)
     latex.SetTextSize(cms_size)
-    latex.DrawLatex(l, y, sf.CMS_TEXT)
+    latex.DrawLatex(l, y, style.CMS_TEXT)
 
-    if sf.CMS_EXTRA_TEXT:
+    if style.CMS_EXTRA_TEXT:
         w_px = pad.GetWw() * pad.GetAbsWNDC()
         h_px = pad.GetWh() * pad.GetAbsHNDC()
         dx = (CMS_EXTRA_OFFSET * cms_size * min(w_px, h_px) / w_px
               if w_px > 0 else 0.10)
         latex.SetTextFont(52)
-        latex.SetTextSize(sf.EXTRA_OVER_CMS_TEXT_SIZE * cms_size)
-        latex.DrawLatex(l + dx, y, sf.CMS_EXTRA_TEXT)
+        latex.SetTextSize(style.EXTRA_OVER_CMS_TEXT_SIZE * cms_size)
+        latex.DrawLatex(l + dx, y, style.CMS_EXTRA_TEXT)
 
-    lumi = sf.get_lumi(year) if year else 0.0
+    lumi = config.get_lumi(year) if year else 0.0
     if lumi <= 0:
         print(f"warning: no luminosity found for year tag '{year}'")
     latex.SetTextFont(42)
     latex.SetTextAlign(31)
-    latex.SetTextSize(sf.LUMI_TEXT_SIZE_FRAC * t)
+    latex.SetTextSize(style.LUMI_TEXT_SIZE_FRAC * t)
     if lumi > 0:
-        txt = "%.1f fb^{-1} (%.1f TeV)" % (lumi, sf.SQRT_S_TEV)
+        txt = "%.1f fb^{-1} (%.1f TeV)" % (lumi, style.SQRT_S_TEV)
     else:
-        txt = "(%.1f TeV)" % sf.SQRT_S_TEV
+        txt = "(%.1f TeV)" % style.SQRT_S_TEV
     latex.DrawLatex(1 - r, y, txt)
     return latex
 
@@ -275,12 +275,12 @@ def _single_canvas(name, right_margin=None, width=None):
     """`right_margin` widens the space to the right of the frame, so a
     legend can sit OUTSIDE the plot rather than on top of the data.
     `width` overrides the canvas width in pixels."""
-    c = ROOT.TCanvas(name, "", sf.CANVAS_W if width is None else width,
-                     sf.CANVAS_H)
-    c.SetTopMargin(sf.PAD_TOP_MARGIN)
-    c.SetBottomMargin(sf.PAD_BOTTOM_MARGIN)
-    c.SetLeftMargin(sf.PAD_LEFT_MARGIN)
-    c.SetRightMargin(sf.PAD_RIGHT_MARGIN if right_margin is None
+    c = ROOT.TCanvas(name, "", style.CANVAS_W if width is None else width,
+                     style.CANVAS_H)
+    c.SetTopMargin(style.PAD_TOP_MARGIN)
+    c.SetBottomMargin(style.PAD_BOTTOM_MARGIN)
+    c.SetLeftMargin(style.PAD_LEFT_MARGIN)
+    c.SetRightMargin(style.PAD_RIGHT_MARGIN if right_margin is None
                      else right_margin)
     c.SetTickx()
     c.SetTicky()
@@ -292,11 +292,11 @@ def _trend_graph(centres, widths, vals, errs):
     n = len(centres)
     g = ROOT.TGraphErrors(n, array('d', centres), array('d', vals),
                           array('d', widths), array('d', errs))
-    g.SetMarkerStyle(sf.DATA_MARKER_STYLE)
-    g.SetMarkerSize(sf.DATA_MARKER_SIZE)
+    g.SetMarkerStyle(style.DATA_MARKER_STYLE)
+    g.SetMarkerSize(style.DATA_MARKER_SIZE)
     g.SetMarkerColor(ROOT.kBlack)
     g.SetLineColor(ROOT.kBlack)
-    g.SetLineWidth(sf.DATA_LINE_WIDTH)
+    g.SetLineWidth(style.DATA_LINE_WIDTH)
     return g
 
 
@@ -349,8 +349,8 @@ def overlay_models(x, objs, results, edges, label, outbase, year, save_pdf):
                      f"[{lo}, {hi}]:  {sig_v:.3f}", "l")
 
     frame.SetTitle(";m_{#mu#mu} [GeV];a.u. (unit area)")
-    sf._style_ratio_axis(frame.GetXaxis(), 1.15)
-    sf._style_ratio_axis(frame.GetYaxis(), 1.60)
+    style._style_ratio_axis(frame.GetXaxis(), 1.15)
+    style._style_ratio_axis(frame.GetYaxis(), 1.60)
 
     c = _single_canvas("c_overlay_models")
     frame.Draw()
@@ -360,11 +360,11 @@ def overlay_models(x, objs, results, edges, label, outbase, year, save_pdf):
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
     for i, ln in enumerate(["H #rightarrow #mu#mu", label,
                             "fitted models, unit area"]):
-        latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.05, 0.86 - i * dy, ln)
+        latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.86 - i * dy, ln)
     keep.append(latex)
 
     c.Update()
@@ -381,7 +381,7 @@ def _native_pulls(x, objs, k):
     rather than drawn at zero, which would read as perfect agreement.
     """
     hist, pdf, norm = objs[k]["hist"], objs[k]["pdf"], objs[k]["norm"]
-    b_lo, b_hi = sf.range_bins(hist)
+    b_lo, b_hi = signal.range_bins(hist)
     nset = ROOT.RooArgSet(x)
     saved = x.getVal()
     cs, ps = [], []
@@ -435,12 +435,12 @@ def overlay_pulls(x, objs, edges, label, outbase, year, save_pdf,
         graphs.append((k, g))
 
     bw = objs[keys[0]]["hist"].GetBinWidth(1)
-    frame = ROOT.TH2F("ovpull_frame", "", 10, sf.XLOW, sf.XHIGH,
+    frame = ROOT.TH2F("ovpull_frame", "", 10, config.XLOW, config.XHIGH,
                       10, -pull_max, pull_max)
     frame.SetStats(0)
     frame.SetTitle(";m_{#mu#mu} [GeV];Pull")
-    sf._style_ratio_axis(frame.GetXaxis(), 1.15)
-    sf._style_ratio_axis(frame.GetYaxis(), 1.60)
+    style._style_ratio_axis(frame.GetXaxis(), 1.15)
+    style._style_ratio_axis(frame.GetYaxis(), 1.60)
 
     # Legend outside the frame: with ten series there is no clear patch of
     # canvas left inside it.
@@ -458,7 +458,7 @@ def overlay_pulls(x, objs, edges, label, outbase, year, save_pdf,
     # A pull has unit error BY CONSTRUCTION: (data - fit)/sigma_data, so its
     # own uncertainty is sigma/sigma = 1. Every point's error bar would be
     # +/-1; this band is that statement drawn once instead of 4000 times.
-    band = ROOT.TBox(sf.XLOW, -1.0, sf.XHIGH, 1.0)
+    band = ROOT.TBox(config.XLOW, -1.0, config.XHIGH, 1.0)
     band.SetFillColorAlpha(ROOT.kGray + 1, 0.35)
     band.SetLineWidth(0)
     band.Draw("same")
@@ -471,7 +471,7 @@ def overlay_pulls(x, objs, edges, label, outbase, year, save_pdf,
         leg.AddEntry(g, f"[{lo}, {hi}]", "p")
 
     for y in (0.0, 2.0, -2.0):
-        ln = ROOT.TLine(sf.XLOW, y, sf.XHIGH, y)
+        ln = ROOT.TLine(config.XLOW, y, config.XHIGH, y)
         ln.SetLineColor(ROOT.kBlack if y == 0 else 11)
         ln.SetLineStyle(ROOT.kSolid if y == 0 else ROOT.kDashed)
         ln.SetLineWidth(2 if y == 0 else 1)
@@ -485,11 +485,11 @@ def overlay_pulls(x, objs, edges, label, outbase, year, save_pdf,
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
     for i, ln in enumerate(["H #rightarrow #mu#mu", label,
                             f"raw pull, {bw:.2f} GeV bins"]):
-        latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln)
+        latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln)
     keep.append(latex)
 
     c.Update()
@@ -547,8 +547,8 @@ def pull_map(x, objs, edges, label, outbase, year, save_pdf,
     h2.SetTitle(";m_{#mu#mu} [GeV];MVA score;pull")
     h2.SetMinimum(-zmax)
     h2.SetMaximum(zmax)
-    sf._style_ratio_axis(h2.GetXaxis(), 1.15)
-    sf._style_ratio_axis(h2.GetYaxis(), 1.60)
+    style._style_ratio_axis(h2.GetXaxis(), 1.15)
+    style._style_ratio_axis(h2.GetYaxis(), 1.60)
     h2.GetZaxis().SetLabelFont(43)      # absolute px, as _style_ratio_axis
     h2.GetZaxis().SetLabelSize(16)
 
@@ -562,11 +562,11 @@ def pull_map(x, objs, edges, label, outbase, year, save_pdf,
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
     for i, ln in enumerate(["H #rightarrow #mu#mu", label,
                             f"pull, {ref.GetBinWidth(1):.2f} GeV bins"]):
-        latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln)
+        latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln)
     keep.append(latex)
 
     c.Update()
@@ -653,8 +653,8 @@ def plot_oscillation(osc, edges, label, outbase, year, save_pdf):
         c = _single_canvas(f"c_osc_{name}")
         g = _trend_graph(centres, widths, vals, [0.0] * len(keys))
         g.SetTitle(f";MVA score;{ytitle}")
-        sf._style_ratio_axis(g.GetXaxis(), 1.15)
-        sf._style_ratio_axis(g.GetYaxis(), 1.60)
+        style._style_ratio_axis(g.GetXaxis(), 1.15)
+        style._style_ratio_axis(g.GetYaxis(), 1.60)
         g.GetXaxis().SetLimits(edges[0], edges[-1])
         g.SetMinimum(0.0)
         g.Draw("ap")
@@ -663,13 +663,13 @@ def plot_oscillation(osc, edges, label, outbase, year, save_pdf):
         latex = ROOT.TLatex()
         latex.SetNDC()
         latex.SetTextFont(42)
-        latex.SetTextSize(sf.ANN_TEXT_SIZE)
-        dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
+        latex.SetTextSize(style.ANN_TEXT_SIZE)
+        dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
         note = ("statistics subtracted; comparable across bins"
                 if name == "fracrms"
                 else "grows as #sqrt{N_{eff}}; not comparable")
         for i, ln in enumerate(["H #rightarrow #mu#mu", label, note]):
-            latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.05, 0.86 - i * dy, ln)
+            latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.86 - i * dy, ln)
         keep.append(latex)
 
         c.Update()
@@ -716,8 +716,8 @@ def plot_trends(results, edges, mvavar, label, outbase, year, save_pdf,
         c = _single_canvas(f"c_{name}")
         g = _trend_graph(centres, widths, vals, errs)
         g.SetTitle(f";{mvavar};{ytitle}")
-        sf._style_ratio_axis(g.GetXaxis(), 1.15)
-        sf._style_ratio_axis(g.GetYaxis(), 1.60)
+        style._style_ratio_axis(g.GetXaxis(), 1.15)
+        style._style_ratio_axis(g.GetYaxis(), 1.60)
         g.GetXaxis().SetLimits(edges[0], edges[-1])
         g.Draw("ap")
         keep.append(g)
@@ -726,7 +726,7 @@ def plot_trends(results, edges, mvavar, label, outbase, year, save_pdf,
         if inclusive and name in ("sigma", "mu"):
             ref = inclusive["params"][name]["value"]
             line = ROOT.TLine(edges[0], ref, edges[-1], ref)
-            line.SetLineColor(sf.fit_color())
+            line.SetLineColor(style.fit_color())
             line.SetLineStyle(ROOT.kDashed)
             line.SetLineWidth(2)
             line.Draw("same")
@@ -736,9 +736,9 @@ def plot_trends(results, edges, mvavar, label, outbase, year, save_pdf,
         latex = ROOT.TLatex()
         latex.SetNDC()
         latex.SetTextFont(42)
-        latex.SetTextSize(sf.ANN_TEXT_SIZE)
-        dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
-        left = sf.PAD_LEFT_MARGIN + 0.05
+        latex.SetTextSize(style.ANN_TEXT_SIZE)
+        dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
+        left = style.PAD_LEFT_MARGIN + 0.05
         lines = ["H #rightarrow #mu#mu", label]
         if inclusive and name in ("sigma", "mu"):
             lines.append("#color[2]{dashed: inclusive fit}")
@@ -760,7 +760,7 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-c", "--category", default="ggHcat",
-                    choices=sorted(sf.MC_LIST))
+                    choices=sorted(config.MC_LIST))
     ap.add_argument("-s", "--sig", default=None,
                     help="production mode; default = the dominant one for "
                          "the category")
@@ -787,8 +787,8 @@ def main():
     ap.add_argument("--pull-width", type=int, default=PULL_CANVAS_W,
                     help=f"canvas width in px for the pull overlay "
                          f"(default {PULL_CANVAS_W}; the square plots stay "
-                         f"at {{sf.CANVAS_W}})".replace(
-                             "{sf.CANVAS_W}", str(sf.CANVAS_W)))
+                         f"at {{style.CANVAS_W}})".replace(
+                             "{style.CANVAS_W}", str(style.CANVAS_W)))
     ap.add_argument("--pull-lines", action="store_true",
                     help="connect the pull points with lines (off by "
                          "default: 400 noisy points per series is "
@@ -804,9 +804,9 @@ def main():
     args = ap.parse_args()
 
     if args.bins_per_gev:
-        sf.BINS_PER_GEV = args.bins_per_gev
+        config.BINS_PER_GEV = args.bins_per_gev
 
-    sig = args.sig or sf.MC_LIST[args.category][0]
+    sig = args.sig or config.MC_LIST[args.category][0]
     # round: 0.1*i gives 0.30000000000000004, which is ugly in the printed
     # edge list and in any downstream cut string
     edges = args.edges if args.edges else [round(0.1 * i, 10) for i in range(11)]
@@ -814,7 +814,7 @@ def main():
     if len(edges) < 2:
         raise SystemExit("need at least two edges")
 
-    nbins = int((sf.XHIGH - sf.XLOW) * sf.BINS_PER_GEV)
+    nbins = int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
     files = collect_files(args.category, sig, args.year, args.basedir)
     print(f"{len(files)} file(s) for {args.category} {sig} {args.year}")
     print(f"MVA variable: {args.mvavar}")
@@ -822,8 +822,8 @@ def main():
 
     catdir = os.path.join(args.plotdir, args.category)
     os.makedirs(catdir, exist_ok=True)
-    x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}", sf.XLOW, sf.XHIGH)
-    x.setRange("full", sf.XLOW, sf.XHIGH)
+    x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}", config.XLOW, config.XHIGH)
+    x.setRange("full", config.XLOW, config.XHIGH)
 
     base_tag = f"{args.category}_{args.year}_{sig}"
 
@@ -831,8 +831,8 @@ def main():
     print(f"\n--- inclusive ({edges[0]} <= {args.mvavar} < {edges[-1]}) ---")
     h_incl = mva_histo(files, edges[0], edges[-1], args.mvavar, nbins,
                        f"h_{base_tag}_incl", last=True)
-    cat_lab = sf.CAT_LABEL.get(args.category, args.category)
-    sig_lab = sf.MODE_LABEL.get(sig, sig)
+    cat_lab = style.CAT_LABEL.get(args.category, args.category)
+    sig_lab = style.MODE_LABEL.get(sig, sig)
 
     objs = {}
     inclusive, obj_incl = fit_bin(x, h_incl, f"{base_tag}_mvaincl",
@@ -944,5 +944,5 @@ def main():
 
 
 if __name__ == "__main__":
-    sf.setup_style()
+    style.setup_style()
     main()

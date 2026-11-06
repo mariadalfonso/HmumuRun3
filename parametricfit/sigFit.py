@@ -33,679 +33,29 @@ Usage
 import argparse
 import json
 import os
-import subprocess
 from datetime import datetime, timezone
 
 import ROOT
 
-# The signal model, its bounds and the nuisance sizes are defined once, in
-# pdfDefinitions; re-exported here so sigFitCond/sigFitDCBG can use sf.BOUNDS.
-from pdfDefinitions import (BOUNDS, MH_REF, SCALE_UNC, RES_UNC,  # noqa: F401
-                            create_signal_pdf)
-
-ROOT.gROOT.SetBatch(True)
-ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
-# Empty tail bins have zero error, so their pull is undefined
-# Supress these erros for EVERY stream
-for _i in range(ROOT.RooMsgService.instance().numStreams()):
-    ROOT.RooMsgService.instance().getStream(_i).removeTopic(ROOT.RooFit.Plotting)
-ROOT.TH1.SetDefaultSumw2(True)
-
-# ---------------------------------------------------------------------------
-# configuration
-# ---------------------------------------------------------------------------
-
-XLOW, XHIGH = 110.0, 150.0
-BINS_PER_GEV = 10         # 0.1 GeV bins, matching SIGfits.py and fitBkg.
-                          # Checked with a closure-test scan (see README):
-                          # unbiased at -0.11% +/- 0.25% on sigma. Anything
-                          # from 0.1 to 0.5 GeV is fine; 1.0 GeV biases sigma
-                          # by +2%. Override with --bins-per-gev.
-
-# ---------------------------------------------------------------------------
-# Plot style.
-# ---------------------------------------------------------------------------
-CMS_TEXT = "CMS"
-CMS_EXTRA_TEXT = "Internal"      # drawn in font 52 (italic)
-SQRT_S_TEV = 13.6
-
-# Official CMS label size formulas: size = FRAC * pad top margin.
-CMS_TEXT_SIZE_FRAC = 0.75
-EXTRA_OVER_CMS_TEXT_SIZE = 0.76
-LUMI_TEXT_SIZE_FRAC = 0.6
-
-# Integrated luminosity: LUMIS and the era groups live in prepareFits.py,
-# so the label is always computed from the same eras the files come from.
-
-# canvas / pad geometry (plot_style values)
-CANVAS_W, CANVAS_H = 600, 600
-RATIO_SPLIT = 0.30
-# Dashed guide lines
-RATIO_GUIDES = (1.2, 0.8)   # Template/Fit, +/-0.2 around 1
-PULL_GUIDES = (2.0, -2.0)   # +/-2 sigma
-PAD_TOP_MARGIN = 0.08
-PAD_BOTTOM_MARGIN = 0.13
-PAD_LEFT_MARGIN = 0.15
-PAD_RIGHT_MARGIN = 0.05
-
-# Lower-pad text in ABSOLUTE pixel sizes (font code ending in 3), so it
-# renders consistently despite the pad's small height.
-RATIO_X_TITLE_OFFSET = 1.0
-RATIO_Y_TITLE_OFFSET = 1.4
-
-# On-plot annotation. Sizes are fractions of the UPPER pad's height (font 42),
-# so they scale with RATIO_SPLIT. Line spacing is derived from the text size
-# rather than fixed, so raising the size does not make the lines overlap.
-ANN_TEXT_SIZE = 0.040        # left block: "H -> mumu" and the category
-PARAM_TEXT_SIZE = 0.040      # right block: yield, N_eff, fitted parameters
-LINE_SPACING = 1.35          # dy = LINE_SPACING * text size
-PARAM_BLOCK_WIDTH = 0.42     # left edge of the right block, from the frame's
-                             # right edge. Widen if long lines get clipped.
-
-DATA_MARKER_STYLE = 24
-DATA_MARKER_SIZE = 0.8
-DATA_LINE_WIDTH = 1
-
-FIT_COLOR_RGB = (237, 41, 57)     # plot_style "redMed"
-
-MC_LIST = {
-    "ggHcat":  ["ggH", "qqH", "VH", "ttH"],
-    "VBFcat":  ["ggH", "qqH", "VH", "ttH"],
-    "Zinvcat": ["qqH", "VH", "ttH"],
-    "VLcat":   ["VH", "ttH"],
-    "VHcat":   ["VH", "ttH"],
-    "TTLcat":  ["VH", "ttH"],
-    "TTHcat":  ["VH", "ttH"],
-}
-CAT_LABEL = {
-    "ggHcat":  "ggH cat.",
-    "VBFcat":  "VBF cat.",
-    "VHcat":   "VH cat.",
-    "VLcat":   "V+lepton cat.",
-    "Zinvcat": "Z(#nu#nu) cat.",
-    "TTHcat":  "t#bar{t}H cat.",
-    "TTLcat":  "t#bar{t}+lepton cat.",
-}
-BIN_LABEL = {
-    "incl": "inclusive",
-    "bdt0": "BDT bin 0",
-    "bdt1": "BDT bin 1",
-    "bdt2": "BDT bin 2",
-    "":     "inclusive",
-}
-MODE_LABEL = {
-    "ggH": "ggH",
-    "qqH": "VBF",       # mc=10 sample, confirmed VBF
-    "VH":  "VH",
-    "ttH": "t#bar{t}H",
-}
-
-
-def header_lines(label):
-    """Readable annotation header from a terse "{cat} {bin} {sig}" label."""
-    parts = label.split()
-    if (len(parts) == 3 and parts[0] in CAT_LABEL
-            and parts[1] in BIN_LABEL and parts[2] in MODE_LABEL):
-        cat, binMVA, sig = parts
-        return [
-            "H #rightarrow #mu#mu",
-            f"{CAT_LABEL[cat]} {BIN_LABEL[binMVA]}",
-            f"Signal: {MODE_LABEL[sig]}",
-        ]
-    return ["H #rightarrow #mu#mu", label]
-
-
-# ---------------------------------------------------------------------------
-# PDF
-# ---------------------------------------------------------------------------
-
-def make_signal_pdf(x, tag, scale_unc=SCALE_UNC, res_unc=RES_UNC,
-                    correlated=True):
-    """The DSCB with MH hypothesis + scale/resolution nuisance hooks, from
-    pdfDefinitions.create_signal_pdf -- the same model makeWorkspaces.py
-    rebuilds in the Combine container.
-
-    Kept as a module-level name because fit_one calls it through this
-    module: fitEtaBins/fitMVABins use it, and sigFitDCBG swaps in its own
-    model by assigning sf.make_signal_pdf.
-
-    Returns (pdf, bundle).
-    """
-    return create_signal_pdf(x, tag, scale_unc=scale_unc, res_unc=res_unc,
-                             correlated=correlated)
-
-
-# ---------------------------------------------------------------------------
-# diagnostics
-# ---------------------------------------------------------------------------
-
-def get_lumi(year, full_year=False):
-    """Integrated luminosity (fb^-1) for a year.
-
-    By default that of the signal MC, so Run3 -> 2022 + 2023 + 2024 only.
-    full_year=True gives that of the data (Run3 -> 2022 ... 2026), which the
-    background fit reads and the signal yield is extrapolated to.
-    Imported lazily so --selftest does not pull in prepareFits.
-    """
-    from prepareFits import (get_lumi as _get_lumi, SIGNAL_YEAR_GROUPS,
-                             DATA_YEAR_GROUPS)
-    return _get_lumi(year, DATA_YEAR_GROUPS if full_year
-                     else SIGNAL_YEAR_GROUPS)
-
-
-def fit_color():
-    """ROOT colour index for the fit curve."""
-    return ROOT.TColor.GetColor(*FIT_COLOR_RGB)
-
-
-def setup_style():
-    """Minimal global style: no stat box, no title, ticks on all four sides."""
-    ROOT.gStyle.SetOptStat(0)
-    ROOT.gStyle.SetOptTitle(0)
-    ROOT.gStyle.SetPadTickX(1)
-    ROOT.gStyle.SetPadTickY(1)
-    ROOT.gStyle.SetLabelFont(42, "xyz")
-    ROOT.gStyle.SetTitleFont(42, "xyz")
-    ROOT.gStyle.SetLegendBorderSize(0)
-    ROOT.gStyle.SetHistLineColor(ROOT.kBlack)
-    ROOT.gStyle.SetMarkerColor(ROOT.kBlack)
-    ROOT.gStyle.SetLineColor(ROOT.kBlack)
-
-
-def cms_label(pad, year, full_year=False):
-    """CMS + extra text top-left, lumi + energy top-right, above the frame.
-    full_year: label the data luminosity instead of the signal MC's."""
-    pad.cd()
-    t = pad.GetTopMargin()
-    l = pad.GetLeftMargin()
-    r = pad.GetRightMargin()
-    y = 1 - t + 0.2 * t
-
-    latex = ROOT.TLatex()
-    latex.SetNDC()
-    latex.SetTextAngle(0)
-    latex.SetTextColor(ROOT.kBlack)
-
-    latex.SetTextFont(61)
-    latex.SetTextAlign(11)
-    latex.SetTextSize(CMS_TEXT_SIZE_FRAC * t)
-    latex.DrawLatex(l, y, CMS_TEXT)
-
-    if CMS_EXTRA_TEXT:
-        latex.SetTextFont(52)
-        latex.SetTextSize(EXTRA_OVER_CMS_TEXT_SIZE * CMS_TEXT_SIZE_FRAC * t)
-        latex.DrawLatex(l + 0.10, y, CMS_EXTRA_TEXT)
-
-    lumi = get_lumi(year, full_year) if year else 0.0
-    if lumi <= 0:
-        print(f"warning: no luminosity found for year tag '{year}'")
-    latex.SetTextFont(42)
-    latex.SetTextAlign(31)
-    latex.SetTextSize(LUMI_TEXT_SIZE_FRAC * t)
-    if lumi > 0:
-        txt = "%.1f fb^{-1} (%.1f TeV)" % (lumi, SQRT_S_TEV)
-    else:
-        txt = "(%.1f TeV)" % SQRT_S_TEV      # e.g. the closure test
-    latex.DrawLatex(1 - r, y, txt)
-    return latex
-
-
-def make_canvas_pads(name):
-    """Canvas with upper (fit) and lower (ratio/pull) pads glued together"""
-    c = ROOT.TCanvas(name, "", CANVAS_W, CANVAS_H)
-    outer = ROOT.TPad(f"outer_{name}", "", 0, 0, 1, 1)
-    outer.SetTickx(False)
-    outer.SetTicky(False)
-    outer.Draw()
-    outer.cd()
-
-    pad1 = ROOT.TPad(f"upper_{name}", "", 0.0, RATIO_SPLIT, 1.0, 1.0)
-    pad1.SetTopMargin(PAD_TOP_MARGIN)
-    pad1.SetBottomMargin(0.0)
-    pad1.SetLeftMargin(PAD_LEFT_MARGIN)
-    pad1.SetRightMargin(PAD_RIGHT_MARGIN)
-
-    pad2 = ROOT.TPad(f"lower_{name}", "", 0.0, 0.0, 1.0, RATIO_SPLIT)
-    pad2.SetTopMargin(0.0)
-    pad2.SetBottomMargin(PAD_BOTTOM_MARGIN / RATIO_SPLIT)
-    pad2.SetLeftMargin(PAD_LEFT_MARGIN)
-    pad2.SetRightMargin(PAD_RIGHT_MARGIN)
-
-    pad1.Draw()
-    pad2.Draw()
-    return c, outer, pad1, pad2
-
-
-def _style_ratio_axis(axis, offset):
-    """Absolute-pixel lower-pad text."""
-    axis.SetTitleFont(43)
-    axis.SetLabelFont(43)
-    axis.SetTitleSize(24)
-    axis.SetLabelSize(20)
-    axis.SetTitleOffset(offset)
-
-
-def _style_lower_marker(obj):
-    """Black points for a lower-pad plottable."""
-    obj.SetMarkerStyle(DATA_MARKER_STYLE)
-    obj.SetMarkerSize(DATA_MARKER_SIZE)
-    obj.SetMarkerColor(ROOT.kBlack)
-    obj.SetLineColor(ROOT.kBlack)
-    obj.SetLineWidth(DATA_LINE_WIDTH)
-
-
-def near_bound(var, tol=0.01):
-    """True if a floating parameter ended up parked on a limit."""
-    lo, hi = var.getMin(), var.getMax()
-    if hi <= lo:
-        return False
-    frac = (var.getVal() - lo) / (hi - lo)
-    return frac < tol or frac > (1.0 - tol)
-
-
-PARAM_LABEL = {
-    "mu":     ("#mu",            "GeV"),
-    "sigma":  ("#sigma",         "GeV"),
-    "alphaL": ("#alpha_{lo}",    ""),
-    "nL":     ("n_{lo}",         ""),
-    "alphaR": ("#alpha_{high}",  ""),
-    "nR":     ("n_{high}",       ""),
-}
-
-
-def fmt_with_unc(label, val, unc, unit=""):
-    """value +/- uncertainty with precision matched to the uncertainty.
-
-    TODO: Check this later
-    """
-    if unc < 0.025:
-        s = f"{label} = {val:.3f} #pm {unc:.3f}"
-    elif unc < 0.250:
-        s = f"{label} = {val:.2f} #pm {unc:.2f}"
-    elif unc < 2.500:
-        s = f"{label} = {val:.1f} #pm {unc:.1f}"
-    else:
-        s = f"{label} = {val:.0f} #pm {unc:.0f}"
-    return s + (f" {unit}" if unit else "")
-
-
-def _make_ratio(hist, pdf, x, norm):
-    """Template/Fit per bin, inside the fit window.
-
-    The expected count in a bin is norm * (normalised density at the bin
-    centre) * (bin width).
-    """
-    b_lo, b_hi = range_bins(hist)
-    ratio = ROOT.TH1D(f"ratio_{hist.GetName()}", "",
-                      b_hi - b_lo + 1,
-                      hist.GetBinLowEdge(b_lo),
-                      hist.GetBinLowEdge(b_hi) + hist.GetBinWidth(b_hi))
-    ratio.SetDirectory(0)
-    nset = ROOT.RooArgSet(x)
-
-    saved = x.getVal()
-    for i in range(b_lo, b_hi + 1):
-        j = i - b_lo + 1
-        content = hist.GetBinContent(i)
-        x.setVal(hist.GetBinCenter(i))
-        expected = norm * pdf.getVal(nset) * hist.GetBinWidth(i)
-
-        # Empty data bin set to off-scale so nothing is drawn.
-        if content <= 0 or expected <= 0:
-            ratio.SetBinContent(j, -999.0)
-            ratio.SetBinError(j, 0.0)
-            continue
-
-        ratio.SetBinContent(j, content / expected)
-        ratio.SetBinError(j, hist.GetBinError(i) / expected)
-
-    x.setVal(saved)          # getVal() mutated x; restore it
-    return ratio
-
-
-def _annotate(nom, chi2_ndf, norm, n_eff, label):
-    """Category / yield / fitted-parameter block on the upper pad.
-
-    Returned so the caller keeps the TLatex alive until the canvas is written
-    """
-    latex = ROOT.TLatex()
-    latex.SetNDC()
-    latex.SetTextFont(42)
-    latex.SetTextSize(ANN_TEXT_SIZE)
-
-    left = PAD_LEFT_MARGIN + 0.05
-    y0, dy = 0.85, LINE_SPACING * ANN_TEXT_SIZE
-    for i, line in enumerate(header_lines(label)):
-        latex.DrawLatex(left, y0 - i * dy, line)
-
-    # right-hand column: yield and fit parameters
-    latex.SetTextSize(PARAM_TEXT_SIZE)
-    latex.SetTextAlign(12)
-    right = 1.0 - PAD_RIGHT_MARGIN - 0.36
-    y = 0.85
-    lines = [f"yield = {norm:.1f}", f"N_{{eff}} = {n_eff:.0f}"]
-    for k in ("mu", "sigma", "alphaL", "nL", "alphaR", "nR"):
-        v = nom[k]
-        lab, unit = PARAM_LABEL[k]
-        txt = fmt_with_unc(lab, v.getVal(), v.getError(), unit)
-        if near_bound(v):
-            txt += " #color[2]{(bound)}"
-        lines.append(txt)
-    lines.append(f"#chi^{{2}}/ndf = {chi2_ndf:.2f}")
-    pdy = LINE_SPACING * PARAM_TEXT_SIZE
-    for i, line in enumerate(lines):
-        latex.DrawLatex(right, y - i * pdy, line)
-
-    return latex
-
-def fit_legend(frame, x1=None, y1=None, x2=None, y2=None,
-               model="DSCB model", data="Simulation"):
-    """Legend for a mass-fit panel: the points, then the curve.
-
-    Takes the drawn objects off the RooPlot by the names given to
-    plotOn ("dat", "fit"), so the marker and line styles in the legend are
-    whatever was actually drawn rather than a second set that can drift.
-    """
-    x1 = PAD_LEFT_MARGIN + 0.03 if x1 is None else x1
-    x2 = PAD_LEFT_MARGIN + 0.25 if x2 is None else x2
-    y2 = 0.65 if y2 is None else y2
-    y1 = 0.5 if y1 is None else y1
-
-    leg = ROOT.TLegend(x1, y1, x2, y2)
-    leg.SetBorderSize(0)
-    leg.SetFillStyle(0)
-    leg.SetTextFont(42)
-    leg.SetTextSize(0.034)
-    d = frame.findObject("dat")
-    f = frame.findObject("fit")
-    if d:
-        leg.AddEntry(d, data, "pe")
-    if f:
-        leg.AddEntry(f, model, "l")
-    leg.Draw()
-    return leg
-
-
-def plot_fit(x, data, pdf, nom, hist, label, outbase, n_float, norm, n_eff,
-             year=None, save_pdf=False, scale=1.0):
-    """Write two 2-panel canvases and return chi2/ndf.
-
-    <outbase>_ratio.pdf/.png   fit + Template/Fit
-    <outbase>_pull.pdf/.png    fit + pull
-
-    scale: the full-year yield over the MC integral. When it is not 1 the
-    template is drawn scaled by it and labelled with the data luminosity,
-    so the plot shows the yield the workspace carries; the pulls, ratio and
-    chi2 do not change under a constant scale.
-    """
-    if scale != 1.0:
-        hist = hist.Clone(f"{hist.GetName()}_full_year")
-        hist.SetDirectory(0)
-        hist.Scale(scale)
-        data = ROOT.RooDataHist(f"{data.GetName()}_full_year", "data",
-                                ROOT.RooArgList(x), hist)
-        norm *= scale
-    frame = x.frame(ROOT.RooFit.Title(""))
-    data.plotOn(frame, ROOT.RooFit.Name("dat"),
-                ROOT.RooFit.MarkerStyle(DATA_MARKER_STYLE),
-                ROOT.RooFit.MarkerSize(DATA_MARKER_SIZE),
-                ROOT.RooFit.MarkerColor(ROOT.kBlack),
-                ROOT.RooFit.LineColor(ROOT.kBlack),
-                ROOT.RooFit.LineWidth(DATA_LINE_WIDTH),
-                ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2))
-    pdf.plotOn(frame, ROOT.RooFit.Name("fit"),
-               ROOT.RooFit.LineColor(fit_color()),
-               ROOT.RooFit.LineWidth(2))
-
-    chi2_ndf = frame.chiSquare("fit", "dat", n_float)
-
-    frame.SetTitle(f";;Events / {hist.GetBinWidth(1):.2f} GeV")
-    # Absolute fonts on both pads, with the same y title offset.
-    _style_ratio_axis(frame.GetYaxis(), RATIO_Y_TITLE_OFFSET)
-    frame.GetXaxis().SetLabelSize(0)      # shared axis: labels on lower pad
-    frame.GetXaxis().SetTitleSize(0)
-    frame.SetMaximum(1.1 * frame.GetMaximum())   # headroom
-
-    ratio = _make_ratio(hist, pdf, x, norm)
-    _style_lower_marker(ratio)
-    ratio.GetYaxis().SetTitle("Template/Fit")
-    ratio.GetXaxis().SetTitle("m_{#mu#mu} [GeV]")
-    ratio.GetYaxis().SetRangeUser(0.0, 2.0)
-    ratio.GetYaxis().SetNdivisions(505)
-    _style_ratio_axis(ratio.GetXaxis(), RATIO_X_TITLE_OFFSET)
-    _style_ratio_axis(ratio.GetYaxis(), RATIO_Y_TITLE_OFFSET)
-
-    pull_frame = x.frame(ROOT.RooFit.Title(""))
-    pull_hist = frame.pullHist("dat", "fit")
-
-    # An empty data bin has zero error, so its pull is undefined
-    # RooFit sets these points to 0, removed from ther plot.
-    for _i in range(pull_hist.GetN() - 1, -1, -1):
-        if (pull_hist.GetErrorYhigh(_i) <= 0.0
-                and pull_hist.GetErrorYlow(_i) <= 0.0):
-            pull_hist.RemovePoint(_i)
-    _style_lower_marker(pull_hist)
-    pull_frame.addPlotable(pull_hist, "P")
-    pull_frame.SetMinimum(-6.0)
-    pull_frame.SetMaximum(6.0)
-    pull_frame.GetYaxis().SetTitle("#frac{Template#minusFit}{#deltaTemplate}")
-    pull_frame.GetXaxis().SetTitle("m_{#mu#mu} [GeV]")
-    pull_frame.GetYaxis().SetNdivisions(409)
-    _style_ratio_axis(pull_frame.GetXaxis(), RATIO_X_TITLE_OFFSET)
-    _style_ratio_axis(pull_frame.GetYaxis(), RATIO_Y_TITLE_OFFSET)
-
-    os.makedirs(os.path.dirname(outbase), exist_ok=True)
-
-    for kind, lower, central, guides, draw in (
-            ("ratio", ratio,      1.0, RATIO_GUIDES, "pe"),
-            ("pull",  pull_frame, 0.0, PULL_GUIDES,  "")):
-
-        canvas, outer, pad1, pad2 = make_canvas_pads(f"c_{kind}")
-
-        pad1.cd()
-        frame.Draw()
-        keep_txt = _annotate(nom, chi2_ndf, norm, n_eff, label)
-        keep_cms = cms_label(pad1, year, full_year=(scale != 1.0))
-        keep_leg = fit_legend(frame)
-
-        pad2.cd()
-        lower.Draw(draw)
-
-        up, down = guides
-        l0 = ROOT.TLine(XLOW, central, XHIGH, central)
-        l0.SetLineColor(fit_color())
-        l0.SetLineWidth(2)
-        lu = ROOT.TLine(XLOW, up, XHIGH, up)
-        ld = ROOT.TLine(XLOW, down, XHIGH, down)
-        for ln in (lu, ld):
-            ln.SetLineColor(11)
-            ln.SetLineWidth(1)
-            ln.SetLineStyle(ROOT.kDashed)
-        l0.Draw("same")
-        lu.Draw("same")
-        ld.Draw("same")
-
-        canvas.Update()
-        canvas.SaveAs(f"{outbase}_{kind}.png")
-        if save_pdf:
-            canvas.SaveAs(f"{outbase}_{kind}.pdf")
-        del keep_txt, keep_cms, keep_leg, pad1, pad2, outer, canvas
-
-    return chi2_ndf
-
-
-def git_commit():
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL).decode().strip()
-    except Exception:
-        return "unknown"
-
-
-# ---------------------------------------------------------------------------
-# the fit
-# ---------------------------------------------------------------------------
-
-def range_bins(hist, lo=XLOW, hi=XHIGH):
-    """First and last bin strictly inside [lo, hi).
-
-    The +/-1e-6 avoids the off-by-one at the edges: FindBin(hi) returns the
-    bin *starting* at hi, which is outside the window.
-    """
-    return hist.FindBin(lo + 1e-6), hist.FindBin(hi - 1e-6)
-
-
-def range_integral(hist, lo=XLOW, hi=XHIGH):
-    """Integral strictly inside [lo, hi).
-
-    Avoids GetSumOfWeights() silently including anything outside the fit
-    window if the histogram axis is ever wider than the fit range.
-    """
-    b_lo, b_hi = range_bins(hist, lo, hi)
-    return hist.Integral(b_lo, b_hi)
-
-
-def effective_entries(hist, lo=XLOW, hi=XHIGH):
-    """N_eff = (sum content)^2 / sum(error^2), inside the fit window.
-
-    Computed from bin errors rather than TH1::GetEffectiveEntries(), which
-    relies on ROOT's internal sum-of-weights bookkeeping. That bookkeeping
-    is only filled by Fill(); a histogram built with SetBinContent (e.g.
-    RooAbsData::createHistogram) reports a meaningless value.
-    """
-    b_lo, b_hi = range_bins(hist, lo, hi)
-    s = sum(hist.GetBinContent(i) for i in range(b_lo, b_hi + 1))
-    s2 = sum(hist.GetBinError(i) ** 2 for i in range(b_lo, b_hi + 1))
-    return (s * s / s2) if s2 > 0 else 0.0
-
-
-def fit_one(x, hist, tag, title, plotdir, freeze=True, year=None,
-            save_pdf=False, yield_info=None):
-    """Fit one histogram. Returns (pdf, bundle, norm_var, record) or None.
-
-    `yield_info` (from run_category) carries the signal yield extrapolated
-    to the full year; it replaces the MC integral in the norm and the JSON,
-    and the plot draws the template scaled to it.
-    """
-    norm = range_integral(hist)
-    n_eff = effective_entries(hist)
-    if norm <= 0:
-        print(f"  !! empty histogram for {tag}, skipping")
-        return None
-
-    data = ROOT.RooDataHist(f"datahist_{tag}", "data", ROOT.RooArgList(x), hist)
-    pdf, bundle = make_signal_pdf(x, tag)
-    nom, nuis = bundle["nom"], bundle["nuis"]
-
-    # Nuisances pinned at nominal: they are exactly degenerate with
-    # cb_mu / cb_sigma, so letting them float here would make the fit
-    # wander along a flat direction and report meaningless errors.
-    for v in nuis.values():
-        v.setVal(0.0)
-        v.setConstant(True)
-
-    fitopts = [
-        ROOT.RooFit.Minimizer("Minuit2"),
-        ROOT.RooFit.Strategy(2),
-        ROOT.RooFit.Save(True),
-        ROOT.RooFit.Range("full"),
-        # Correct errors for weighted BINNED data. AsymptoticError is for
-        # weighted *unbinned* fits and RooFit warns if used on a RooDataHist.
-        ROOT.RooFit.SumW2Error(True),
-        ROOT.RooFit.PrintLevel(-1),
-    ]
-    pdf.fitTo(data, *fitopts)                # first pass
-    result = pdf.fitTo(data, *fitopts)       # refit from the result
-
-    n_float = sum(0 if v.isConstant() else 1 for v in nom.values())
-    sig_yield = norm if yield_info is None else yield_info["value"]
-    chi2_ndf = plot_fit(x, data, pdf, nom, hist, title,
-                        f"{plotdir}/signal_{tag}", n_float, norm, n_eff,
-                        year=year, save_pdf=save_pdf, scale=sig_yield / norm)
-
-    status, cov, edm = result.status(), result.covQual(), result.edm()
-    parked = [k for k, v in nom.items() if near_bound(v)]
-    ok = (status == 0 and cov == 3 and not parked)
-
-    print(f"  mu     = {nom['mu'].getVal():7.3f} +/- {nom['mu'].getError():.3f}")
-    print(f"  sigma  = {nom['sigma'].getVal():7.3f} +/- {nom['sigma'].getError():.3f}")
-    print(f"  norm   = {norm:10.2f}   (N_eff = {n_eff:.1f})")
-    if yield_info is not None:
-        print(f"  yield  = {sig_yield:10.2f}   extrapolated to {year} "
-              f"(x{sig_yield / norm:.3f})")
-    print(f"  chi2/ndf = {chi2_ndf:6.3f}   status={status} covQual={cov} "
-          f"edm={edm:.2e}")
-    if parked:
-        print(f"  !! parameters at bound: {', '.join(parked)}")
-    if not ok:
-        print("  <-- CHECK THIS FIT")
-
-    try:
-        corr_mu_sigma = result.correlation(nom["mu"], nom["sigma"])
-    except Exception:
-        corr_mu_sigma = None
-
-    record = {
-        "parameters": {
-            k: {"value": v.getVal(), "error": v.getError(),
-                "min": v.getMin(), "max": v.getMax(),
-                "at_bound": near_bound(v)}
-            for k, v in nom.items()
-        },
-        "shape_model": {
-            "formula_mean":
-                f"(cb_mu + MH - {MH_REF})*(1 + {bundle['cfg']['scale_unc']}*CMS_scale_m)",
-            "formula_sigma":
-                f"cb_sigma*(1 + {bundle['cfg']['res_unc']}*CMS_res_m)",
-            **bundle["cfg"],
-        },
-        "normalization": {
-            "integral": sig_yield,          # the datacard rate
-            "effective_entries": n_eff,
-            **({"mc_integral": norm, "extrapolation": yield_info}
-               if yield_info is not None else {}),
-        },
-        "fit_quality": {
-            "chi2_ndf": chi2_ndf,
-            "status": status,
-            "cov_qual": cov,
-            "edm": edm,
-            "n_float": n_float,
-            "params_at_bound": parked,
-            "corr_mu_sigma": corr_mu_sigma,
-            "ok": ok,
-        },
-    }
-
-    norm_var = ROOT.RooRealVar(f"{pdf.GetName()}_norm",
-                               f"{pdf.GetName()}_norm", sig_yield)
-    norm_var.setConstant(True)
-
-    if freeze:
-        for v in nom.values():          # shape from MC is now fixed ...
-            v.setConstant(True)
-        for v in nuis.values():         # ... nuisances released for Combine
-            v.setConstant(False)
-
-    return pdf, bundle, norm_var, record
+# importing style (signal imports it too) sets ROOT up for batch plotting
+from fitlib import config, signal, style
 
 
 def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
                  save_pdf=False):
     # imported late so --selftest runs without prepareFits
-    from prepareFits import (getHistoSignalByEra, normalize_year,
+    from fitlib.prepareFits import (getHistoSignalByEra, normalize_year,
                              signal_yield_scales, expand_year,
                              DATA_YEAR_GROUPS, LUMIS)
 
     year = normalize_year(year)        # '_Run3' -> 'Run3'
 
     tag_cat = f"{category}_{binMVA}_{year}"
-    x = ROOT.RooRealVar(f"mh{category}", "m_{#mu#mu}", XLOW, XHIGH)
-    x.setRange("full", XLOW, XHIGH)
+    x = ROOT.RooRealVar(f"mh{category}", "m_{#mu#mu}", config.XLOW, config.XHIGH)
+    x.setRange("full", config.XLOW, config.XHIGH)
 
     w = ROOT.RooWorkspace("w", "workspace")
-    nbins = int((XHIGH - XLOW) * BINS_PER_GEV)
+    nbins = int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
 
     # plots go to <plotdir>/<category>/ so a run over all categories does not
     # dump ~30 files into one directory
@@ -718,14 +68,14 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
     dump = {
         "provenance": {
             "written_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "git_commit": git_commit(),
+            "config.git_commit": config.git_commit(),
             "category": category, "bin": binMVA, "year": year,
             "yield_scales": scales,
             "lumi": {e: LUMIS[e]
                      for e in expand_year(year, DATA_YEAR_GROUPS)},
-            "fit_range": [XLOW, XHIGH],
+            "fit_range": [config.XLOW, config.XHIGH],
             "n_bins": nbins,
-            "bins_per_gev": BINS_PER_GEV,
+            "bins_per_gev": config.BINS_PER_GEV,
         },
         "fits": {},
     }
@@ -733,7 +83,7 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
     keep = []   # hold references so PyROOT does not collect mid-loop
     for sig in modes:
         print(f"\n--- {category} {binMVA} {sig} ---")
-        by_era = getHistoSignalByEra(nbins, XLOW, XHIGH, category, year,
+        by_era = getHistoSignalByEra(nbins, config.XLOW, config.XHIGH, category, year,
                                      binMVA, sig)
         hist = None
         for h_era in by_era.values():       # the MC the shape is fitted on
@@ -742,14 +92,14 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
                 hist.SetDirectory(0)
             else:
                 hist.Add(h_era)
-        mc_by_era = {e: range_integral(h) for e, h in by_era.items()}
+        mc_by_era = {e: signal.range_integral(h) for e, h in by_era.items()}
         yield_info = {
             "value": sum(scales[e] * n for e, n in mc_by_era.items()),
             "by_era": {e: {"mc": n, "scale": scales[e]}
                        for e, n in mc_by_era.items()},
         }
 
-        out = fit_one(x, hist, f"{tag_cat}_{sig}",
+        out = signal.fit_one(x, hist, f"{tag_cat}_{sig}",
                       f"{category} {binMVA} {sig}", catdir, freeze,
                       year=year, save_pdf=save_pdf, yield_info=yield_info)
         if out is None:
@@ -765,9 +115,9 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
     # the datacard rates over the fit window, per mode and summed
     yields = {s: r["normalization"]["integral"]
               for s, r in dump["fits"].items() if "normalization" in r}
-    dump["yields"] = {"window": [XLOW, XHIGH], "by_mode": yields,
+    dump["yields"] = {"window": [config.XLOW, config.XHIGH], "by_mode": yields,
                       "total": sum(yields.values())}
-    print(f"\n  signal yield {XLOW:g}-{XHIGH:g} GeV: "
+    print(f"\n  signal yield {config.XLOW:g}-{config.XHIGH:g} GeV: "
           + ", ".join(f"{s} {v:.2f}" for s, v in yields.items())
           + f"; total {dump['yields']['total']:.2f}")
 
@@ -776,7 +126,7 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
     # Name by the modes being fit, so single-mode runs don't clobber each
     # other. When the full default set for the category is run, keep the
     # plain per-category name (that's the combined workspace Combine wants).
-    if set(modes) == set(MC_LIST[category]):
+    if set(modes) == set(config.MC_LIST[category]):
         out_tag = tag_cat                       # e.g. ggHcat_incl_Run3
     else:
         out_tag = f"{tag_cat}_{'_'.join(modes)}" # e.g. ggHcat_incl_Run3_ggH
@@ -803,6 +153,7 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
         print(f"WARNING: {n_bad} fit(s) flagged for review in {tag_cat}")
 
 
+
 # ---------------------------------------------------------------------------
 # selftest
 # ---------------------------------------------------------------------------
@@ -821,9 +172,9 @@ def closure(plotdir, n_gen=500000, tag="selftest", verbose=True):
     not a CB (e.g. a sum of Gaussians) makes chi2/ndf meaningless and
     strongly binning-dependent, so it cannot serve as a pass criterion.
     """
-    x = ROOT.RooRealVar(f"mh_toy_{tag}", "m_{#mu#mu}", XLOW, XHIGH)
-    x.setRange("full", XLOW, XHIGH)
-    x.setBins(int((XHIGH - XLOW) * BINS_PER_GEV))
+    x = ROOT.RooRealVar(f"mh_toy_{tag}", "m_{#mu#mu}", config.XLOW, config.XHIGH)
+    x.setRange("full", config.XLOW, config.XHIGH)
+    x.setBins(int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV))
 
     # Bounded and constant: RooRealVar(name, title, value) alone gets
     # [-inf, inf], and RooCrystalBall warns that sigma/alpha/n must be > 0.
@@ -842,7 +193,7 @@ def closure(plotdir, n_gen=500000, tag="selftest", verbose=True):
     h = ds.createHistogram(f"h_toy_{tag}", x)
     h.SetDirectory(0)
 
-    out = fit_one(x, h, tag, f"closure {tag}",
+    out = signal.fit_one(x, h, tag, f"closure {tag}",
                   os.path.join(plotdir, "closure"), freeze=False)
     if out is None:
         return None
@@ -890,15 +241,12 @@ def selftest(plotdir, n_gen=500000):
     return 0 if good else 1
 
 
-# ---------------------------------------------------------------------------
-
 def main():
-    global BINS_PER_GEV          # must precede any use of the name below
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-c", "--category", nargs="+", default=["VBFcat"],
-                    choices=sorted(MC_LIST))
+                    choices=sorted(config.MC_LIST))
     ap.add_argument("-b", "--bins", nargs="+", default=["bdt0"],
                     help="BDT bin label(s): bdt0 bdt1 bdt2 incl")
     ap.add_argument("-s", "--sig", nargs="+", default=None,
@@ -906,7 +254,8 @@ def main():
     ap.add_argument("-y", "--year", default="Run3",
                     help="concrete era (12022, 2024, ...) or group "
                          "(2022, 2023, Run3)")
-    ap.add_argument("--wsdir", default="WS_LOCAL")
+    ap.add_argument("--wsdir", default=None,
+                    help="fit JSONs and workspaces (default WS_<year>)")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
                         "~/public_html/HmumuFits/signal_fits"),
@@ -918,21 +267,22 @@ def main():
                     help="leave shape parameters floating in the workspace")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--bins-per-gev", type=float, default=None,
-                    help=f"override binning (default {BINS_PER_GEV})")
+                    help=f"override binning (default {config.BINS_PER_GEV})")
     ap.add_argument("--ngen", type=int, default=500000,
                     help="events generated for --selftest")
     args = ap.parse_args()
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
     if args.bins_per_gev:
-        BINS_PER_GEV = args.bins_per_gev
-        print(f"binning override: {BINS_PER_GEV} bins/GeV "
-              f"({int((XHIGH - XLOW) * BINS_PER_GEV)} bins)")
+        config.BINS_PER_GEV = args.bins_per_gev
+        print(f"binning override: {config.BINS_PER_GEV} bins/GeV "
+              f"({int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)} bins)")
 
     if args.selftest:
         raise SystemExit(selftest(args.plotdir, args.ngen))
 
     for cat in args.category:
-        modes = args.sig if args.sig else MC_LIST[cat]
+        modes = args.sig if args.sig else config.MC_LIST[cat]
         for b in args.bins:
             run_category(cat, b, args.year, modes,
                          args.plotdir, args.wsdir, not args.no_freeze,
@@ -940,5 +290,5 @@ def main():
 
 
 if __name__ == "__main__":
-    setup_style()
+    style.setup_style()
     main()

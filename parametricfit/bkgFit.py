@@ -13,11 +13,15 @@ The full-range data is saved in the workspace as `datahist_<tag>` for the observ
 Model selection
 ---------------
 
-  1. F-test within each nested family (bernstein, exponential,
-     power): take the lowest order where adding the next
-     parameter is not justified at p < F_THRESHOLD.
+  1. F-test within each nested family (bernstein, exponential, power,
+     the DY-core families dyexp and dypow, and -- when mcCoreFit.py has
+     written MCcore_<tag>.json -- the MC-tuned-core families mcexp, mcpow
+     and mcdy; BKG_FAMILIES in pdfDefinitions.py): take the lowest order
+     where adding the next parameter is not justified at p < F_THRESHOLD.
   2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.
+  3. Order the survivors by penalised NLL, NLL + 0.5 * npar, as Combine
+     compares them: the lowest is pdfindex 0, the default member.
 
 Everything that survives goes into the RooMultiPdf envelope, which covers
 the ignorance about the shape.
@@ -45,11 +49,11 @@ the double underscore ("VBFcat__Run3") that the existing datacards have.
 
 Usage
 -----
-    # fits, plots, JSON -- conda
+    # fits, plots, JSON -- conda (mcCoreFit.py first, for the mc* families)
     python bkgFit.py -c ggHcat -y Run3 -b incl
 
-    # ...then the workspace -- inside the Combine container
-    python makeWorkspaces.py -c ggHcat -y Run3 -b incl
+    # ...then the cards and workspace -- inside the Combine container
+    python buildWorkspace.py -c ggHcat -y Run3 -b incl
 
     python bkgFit.py -c ggHcat -y Run3 -b ""    # VBFcat__Run3 style
 """
@@ -61,8 +65,10 @@ from datetime import datetime, timezone
 
 import ROOT
 
-import sigFit as sf
-import pdfDefinitions as pdefs
+from fitlib import config, mcCore, style
+from fitlib.gof import (CHI2_MIN_BIN_SIGNIFICANCE, GOF_THRESHOLD,
+                        merge_chi2_bins)
+from fitlib import pdfDefinitions as pdefs
 
 
 ROOT.gROOT.SetBatch(True)
@@ -89,16 +95,12 @@ R_SR = "sr"
 # F-test: add a parameter only if 2*dNLL against chi2_(dnpar) gives
 # p < F_THRESHOLD. 0.05 is the usual choice.
 F_THRESHOLD = 0.05
-# Goodness of fit: keep a candidate whose chi2 p-value exceeds this.
-GOF_THRESHOLD = 0.01
-
-# Minimum significance data/sqrt(sum err^2) a chi2 bin must reach; bins
-# below it are merged with their neighbours first. Without this, the
-# sparse 130-150 tail contributes bins of a handful of events whose
-# residuals are not chi2-distributed, so the p-value, and therefore the
-# GOF cut, is least reliable exactly where the candidates differ most.
-# 0 disables merging.
-CHI2_MIN_BIN_SIGNIFICANCE = 3.0
+# Penalty per free parameter on the sideband NLL, as RooMultiPdf applies it
+# when Combine profiles pdfindex (its correction factor, 0.5). The envelope
+# member with the lowest penalised NLL becomes pdfindex 0, the default.
+NLL_PENALTY_PER_PAR = 0.5
+# GOF_THRESHOLD and CHI2_MIN_BIN_SIGNIFICANCE: fitlib/gof.py, shared with
+# mcCoreFit.py
 
 # normalisation is extrapolated from the sideband, so give it room
 NORM_RANGE = (0.2, 5.0)            # x the extrapolated value
@@ -122,8 +124,8 @@ MAIN_Y_TITLE_OFFSET = 1.45
 
 def load_data(category, binMVA, year, nbins):
     """Full-range data histogram, from prepareFits."""
-    from prepareFits import getHisto
-    h = getHisto(nbins, sf.XLOW, sf.XHIGH, False, category, year,
+    from fitlib.prepareFits import getHisto
+    h = getHisto(nbins, config.XLOW, config.XHIGH, False, category, year,
                  False, binMVA or "incl")
     h.SetDirectory(0)
     return h
@@ -132,9 +134,9 @@ def load_data(category, binMVA, year, nbins):
 def setup_ranges(x):
     """Name the sideband pieces, the SR and the full range; return the
     sideband union as a range list."""
-    x.setRange(R_FULL, sf.XLOW, sf.XHIGH)
-    x.setRange(R_SB_LOW, sf.XLOW, SR_LO)
-    x.setRange(R_SB_HIGH, SR_HI, sf.XHIGH)
+    x.setRange(R_FULL, config.XLOW, config.XHIGH)
+    x.setRange(R_SB_LOW, config.XLOW, SR_LO)
+    x.setRange(R_SB_HIGH, SR_HI, config.XHIGH)
     x.setRange(R_SR, SR_LO, SR_HI)
     # RooFit takes a comma-separated list of named ranges, so the union is
     # expressed at use time rather than as its own range
@@ -146,7 +148,7 @@ def sideband_bins(h):
     out = []
     for i in range(1, h.GetNbinsX() + 1):
         c = h.GetBinCenter(i)
-        if sf.XLOW <= c < SR_LO or SR_HI <= c < sf.XHIGH:
+        if config.XLOW <= c < SR_LO or SR_HI <= c < config.XHIGH:
             out.append(i)
     return out
 
@@ -166,14 +168,14 @@ def full_yield(n_sb, fit):
 # fitting
 # ---------------------------------------------------------------------------
 
-def fit_candidate(x, data, name, tag, sb_range):
+def fit_candidate(x, data, name, tag, sb_range, mc_core=None):
     """Fit one candidate on the sideband only.
 
     Returns a dict with the masked NLL (for the F-test), the sideband
     chi2 and its p-value (for the GOF cut), and the fraction of the PDF
     that lies in the sideband (for the normalisation extrapolation).
     """
-    pdf, keep = pdefs.create_bkg_pdf(x, tag, name)
+    pdf, keep = pdefs.create_bkg_pdf(x, tag, name, mc_core)
     npar = pdefs.BKG_NPAR[name]
 
     opts = [ROOT.RooFit.Minimizer("Minuit2"), ROOT.RooFit.Strategy(2),
@@ -204,74 +206,6 @@ def fit_candidate(x, data, name, tag, sb_range):
             "nll": res.minNll(), "status": res.status(),
             "cov_qual": res.covQual(), "edm": res.edm(),
             "sb_fraction": itg_sb, "result": res}
-
-
-def merge_chi2_bins(h_data, h_pdf, blind_lo, blind_hi, threshold):
-    """Merge low-significance bins, then chi2 over what is left.
-
-      * Bins are accumulated until data/sqrt(sum err^2) reaches
-        `threshold`, then emitted as one merged bin, so no chi2 bin is
-        built from a handful of events.
-      * The blinded window SPLITS the histogram into segments and merging
-        never spans it -- otherwise a bin from the low sideband could be
-        merged with one from the high sideband, 20 GeV away.
-      * A leftover at the end of a segment that does not reach the
-        threshold is merged BACKWARDS into the previous bin of that same
-        segment, rather than emitted under-populated or dropped.
-
-    Returns (chi2, n_merged_bins).
-    """
-    bins = []                      # (data, pdf, err2)
-    cur = [0.0, 0.0, 0.0]
-    segment_start = 0
-
-    def has_current():
-        return cur[2] > 0.0 or abs(cur[0]) > 1e-6 or abs(cur[1]) > 1e-6
-
-    def passes():
-        if cur[2] <= 0.0:
-            return False
-        if threshold <= 0.0:
-            return True
-        if abs(cur[0]) < 1e-6:
-            return False
-        return cur[0] / cur[2] ** 0.5 >= threshold
-
-    def emit():
-        if has_current() and cur[2] > 0.0:
-            bins.append(tuple(cur))
-        cur[0] = cur[1] = cur[2] = 0.0
-
-    def flush_segment():
-        if not has_current():
-            return
-        if not passes() and len(bins) > segment_start:
-            d, p, e = bins[-1]
-            bins[-1] = (d + cur[0], p + cur[1], e + cur[2])
-            cur[0] = cur[1] = cur[2] = 0.0
-            return
-        emit()
-
-    ax = h_data.GetXaxis()
-    go_blind = (blind_lo < blind_hi
-                and (blind_lo > ax.GetXmin() or blind_hi < ax.GetXmax()))
-
-    for i in range(1, h_data.GetNbinsX() + 1):
-        c = h_data.GetBinCenter(i)
-        if go_blind and blind_lo < c < blind_hi:
-            flush_segment()
-            segment_start = len(bins)
-            continue
-        cur[0] += h_data.GetBinContent(i)
-        cur[1] += h_pdf.GetBinContent(i)
-        cur[2] += h_data.GetBinError(i) ** 2
-        if passes():
-            emit()
-
-    flush_segment()
-
-    chi2 = sum(((d - p) / e ** 0.5) ** 2 for d, p, e in bins if e > 0)
-    return chi2, len(bins)
 
 
 def pdf_histogram(x, h_data, pdf, norm_full, name):
@@ -375,7 +309,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
                 ROOT.RooFit.CutRange(sb_range),
                 ROOT.RooFit.MarkerStyle(DATA_MARKER_STYLE),
-                ROOT.RooFit.MarkerSize(sf.DATA_MARKER_SIZE),
+                ROOT.RooFit.MarkerSize(style.DATA_MARKER_SIZE),
                 ROOT.RooFit.MarkerColor(ROOT.kBlack),
                 ROOT.RooFit.LineColor(ROOT.kBlack),
                 ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2))
@@ -386,7 +320,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         if SR_LO <= hdat.GetPointX(i) < SR_HI:
             hdat.RemovePoint(i)
 
-    cols = [sf.fit_color(), ROOT.kAzure + 2, ROOT.kGreen + 2,
+    cols = [style.fit_color(), ROOT.kAzure + 2, ROOT.kGreen + 2,
             ROOT.kOrange + 7, ROOT.kViolet + 1, ROOT.kTeal + 3]
     for i, nm in enumerate(envelope):
         fits[nm]["pdf"].plotOn(
@@ -402,9 +336,9 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
                                   else ROOT.kDashed),
             ROOT.RooFit.LineWidth(2))
 
-    bw = (sf.XHIGH - sf.XLOW) / nbins
+    bw = (config.XHIGH - config.XLOW) / nbins
     frame.SetTitle(f";;Events / {bw:.2f} GeV")
-    sf._style_ratio_axis(frame.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(frame.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
     frame.GetYaxis().SetTitleOffset(MAIN_Y_TITLE_OFFSET)
     frame.GetXaxis().SetLabelSize(0)
     frame.GetXaxis().SetTitleSize(0)
@@ -426,7 +360,7 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         g.SetPointError(k, 0.0, ey / f)
         k += 1
     g.SetMarkerStyle(DATA_MARKER_STYLE)
-    g.SetMarkerSize(sf.DATA_MARKER_SIZE)
+    g.SetMarkerSize(style.DATA_MARKER_SIZE)
     g.SetMarkerColor(ROOT.kBlack)
     g.SetLineColor(ROOT.kBlack)
     rgraphs.append(g)
@@ -437,8 +371,8 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         c = frame.getCurve(nm)
         gr = ROOT.TGraph()
         npt = 0
-        xv = sf.XLOW + 0.5 * bw
-        while xv < sf.XHIGH:
+        xv = config.XLOW + 0.5 * bw
+        while xv < config.XHIGH:
             fb = cbest.average(xv - 0.5 * bw, xv + 0.5 * bw)
             fn = c.average(xv - 0.5 * bw, xv + 0.5 * bw)
             if fb > 0:
@@ -450,16 +384,16 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         gr.SetLineWidth(2)
         rgraphs.append(gr)
 
-    rframe = ROOT.TH1F("rframe", "", 1, sf.XLOW, sf.XHIGH)
+    rframe = ROOT.TH1F("rframe", "", 1, config.XLOW, config.XHIGH)
     rframe.SetDirectory(0)
     rframe.SetStats(0)
     rframe.SetMinimum(0.80)
     rframe.SetMaximum(1.20)
     rframe.SetTitle(";m_{#mu#mu} [GeV];Data/Template")
-    sf._style_ratio_axis(rframe.GetXaxis(), sf.RATIO_X_TITLE_OFFSET)
-    sf._style_ratio_axis(rframe.GetYaxis(), sf.RATIO_Y_TITLE_OFFSET)
+    style._style_ratio_axis(rframe.GetXaxis(), style.RATIO_X_TITLE_OFFSET)
+    style._style_ratio_axis(rframe.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
 
-    canvas, outer, pad1, pad2 = sf.make_canvas_pads("c_bkg")
+    canvas, outer, pad1, pad2 = style.make_canvas_pads("c_bkg")
     pad1.cd()
     frame.Draw()
 
@@ -474,18 +408,18 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
     latex = ROOT.TLatex()
     latex.SetNDC()
     latex.SetTextFont(42)
-    latex.SetTextSize(sf.ANN_TEXT_SIZE)
-    dy = sf.LINE_SPACING * sf.ANN_TEXT_SIZE
-    for i, ln in enumerate(sf.header_lines(label) +
+    latex.SetTextSize(style.ANN_TEXT_SIZE)
+    dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
+    for i, ln in enumerate(style.header_lines(label) +
                            [f"blinded {SR_LO:g}-{SR_HI:g} GeV"]):
-        latex.DrawLatex(sf.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, ln)
+        latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, ln)
     keep.append(latex)
 
-    leg = ROOT.TLegend(1 - sf.PAD_RIGHT_MARGIN - 0.32,
-                       1 - sf.PAD_TOP_MARGIN - 0.04
+    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.32,
+                       1 - style.PAD_TOP_MARGIN - 0.04
                        - 0.052 * (len(envelope) + 1),
-                       1 - sf.PAD_RIGHT_MARGIN - 0.02,
-                       1 - sf.PAD_TOP_MARGIN - 0.04)
+                       1 - style.PAD_RIGHT_MARGIN - 0.02,
+                       1 - style.PAD_TOP_MARGIN - 0.04)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -496,15 +430,15 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
                      nm + ("  (best fit)" if nm == best else ""), "l")
     leg.Draw()
     keep.append(leg)
-    keep.append(sf.cms_label(pad1, year, full_year=True))
+    keep.append(style.cms_label(pad1, year, full_year=True))
 
     pad2.cd()
     rframe.Draw()
     for gr in rgraphs[1:]:
         gr.Draw("L SAME")
     rgraphs[0].Draw("P SAME")
-    one = ROOT.TLine(sf.XLOW, 1.0, sf.XHIGH, 1.0)
-    one.SetLineColor(sf.fit_color())
+    one = ROOT.TLine(config.XLOW, 1.0, config.XHIGH, 1.0)
+    one.SetLineColor(style.fit_color())
     one.SetLineWidth(2)
     one.Draw("same")
     rbox = ROOT.TBox(SR_LO, 0.80, SR_HI, 1.20)
@@ -529,7 +463,7 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-c", "--category", default="ggHcat",
-                    choices=sorted(sf.MC_LIST))
+                    choices=sorted(config.MC_LIST))
     ap.add_argument("-b", "--bin", default="incl",
                     help="BDT bin label; pass \"\" to reproduce the "
                          "double-underscore tag the existing datacards use")
@@ -537,18 +471,25 @@ def main():
     ap.add_argument("--candidates", nargs="+", default=None,
                     help="restrict the candidate list (default: all in "
                          "pdfDefinitions)")
-    ap.add_argument("--wsdir", default="WS_BKG")
+    ap.add_argument("--wsdir", default=None,
+                    help="fit JSONs and workspaces (default WS_<year>)")
+    ap.add_argument("--mc-core", default=None,
+                    help="frozen MC cores from mcCoreFit.py (default "
+                         "<wsdir>/MCcore_<tag>.json, if it exists)")
+    ap.add_argument("--no-mc-core", action="store_true",
+                    help="leave out the mcexp/mcpow/mcdy families")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser(
                         "~/public_html/HmumuFits/bkg_fits"))
     ap.add_argument("--pdf", action="store_true")
     ap.add_argument("--bins-per-gev", type=float, default=None)
     args = ap.parse_args()
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
-    sf.setup_style()
+    style.setup_style()
     if args.bins_per_gev:
-        sf.BINS_PER_GEV = args.bins_per_gev
-    nbins = int((sf.XHIGH - sf.XLOW) * sf.BINS_PER_GEV)
+        config.BINS_PER_GEV = args.bins_per_gev
+    nbins = int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
 
     # exactly bwsHrare's tag, double underscore and all
     tag = f"{args.category}_{args.bin}_{args.year}"
@@ -558,14 +499,14 @@ def main():
           f"\nbin      : {args.bin or '(empty)'}"
           f"\nyear     : {args.year}"
           f"\ntag      : {tag}"
-          f"\nwindow   : {sf.XLOW:g}-{sf.XHIGH:g} GeV, {nbins} bins"
+          f"\nwindow   : {config.XLOW:g}-{config.XHIGH:g} GeV, {nbins} bins"
           f"\nblinded  : {SR_LO:g}-{SR_HI:g} GeV"
-          f"\nsideband : {sf.XLOW:g}-{SR_LO:g} + {SR_HI:g}-{sf.XHIGH:g} GeV")
+          f"\nsideband : {config.XLOW:g}-{SR_LO:g} + {SR_HI:g}-{config.XHIGH:g} GeV")
 
     # ---- data ----------------------------------------------------------
     h = load_data(args.category, args.bin, args.year, nbins)
     x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}",
-                        sf.XLOW, sf.XHIGH)
+                        config.XLOW, config.XHIGH)
     sb_range = setup_ranges(x)
     data = ROOT.RooDataHist(f"datahist_{tag}", "data",
                             ROOT.RooArgList(x), h)
@@ -577,15 +518,38 @@ def main():
           f"sideband ({100 * n_sb / n_full:.1f} %)")
     print(f"sideband bins used for chi2: {len(sb_idx)} of {nbins}")
 
+    # ---- MC-tuned cores (mcCoreFit.py) ---------------------------------
+    mc_file = args.mc_core or os.path.join(args.wsdir, f"MCcore_{tag}.json")
+    mc_core = None
+    if args.no_mc_core:
+        print("\nMC cores : off (--no-mc-core)")
+    elif os.path.isfile(mc_file):
+        with open(mc_file) as fh:
+            mc_core = json.load(fh)["cores"] or None
+        print(f"\nMC cores : {', '.join(mc_core or []) or 'none'} "
+              f"from {mc_file}")
+    elif args.mc_core:
+        raise SystemExit(f"--mc-core {args.mc_core}: no such file")
+    else:
+        print(f"\nMC cores : none ({mc_file} not found; run mcCoreFit.py "
+              f"for the mcexp/mcpow/mcdy families)")
+
     # ---- fit every candidate -------------------------------------------
+    def available(nm):
+        return not mcCore.is_member(nm) or \
+            nm.rstrip("0123456789") in (mc_core or {})
     names = args.candidates or sorted(pdefs.BKG_NPAR)
+    absent = [nm for nm in names if not available(nm)]
+    if args.candidates and absent:
+        raise SystemExit(f"no MC core for {absent}; run mcCoreFit.py")
+    names = [nm for nm in names if available(nm)]
     print(f"\nfitting {len(names)} candidates on the sideband")
     print(f"{'model':<11}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")
     fits, failed = {}, {}
     for nm in names:
         try:
-            f = fit_candidate(x, data, nm, tag, sb_range)
+            f = fit_candidate(x, data, nm, tag, sb_range, mc_core)
         except Exception as exc:
             print(f"{nm:<11}  failed: {exc}")
             continue
@@ -629,7 +593,6 @@ def main():
     envelope = [nm for nm in chosen.values()
                 if fits[nm]["pvalue"] > GOF_THRESHOLD]
     rejected = [nm for nm in chosen.values() if nm not in envelope]
-    envelope = sorted(set(envelope), key=lambda n: -fits[n]["pvalue"])
     print(f"\nGOF cut (p > {GOF_THRESHOLD})")
     for nm in sorted(set(chosen.values())):
         print(f"  {nm:<11} p={fits[nm]['pvalue']:.4f}  "
@@ -637,10 +600,19 @@ def main():
     if not envelope:
         raise SystemExit("no candidate passed the goodness-of-fit cut; "
                          "inspect the fits before lowering GOF_THRESHOLD")
-    # the member with the best goodness-of-fit p-value. It is the
-    # reference for the ratio panel and the source of the extrapolated
-    # norm, but it is NOT 'the' background model: the whole envelope
-    # goes into the multipdf and Combine profiles over pdfindex.
+
+    # ---- default member: lowest penalised NLL --------------------------
+    for f in fits.values():
+        f["nll_pen"] = f["nll"] + NLL_PENALTY_PER_PAR * f["npar"]
+    envelope = sorted(set(envelope), key=lambda n: fits[n]["nll_pen"])
+    print(f"\npenalised NLL = NLL + {NLL_PENALTY_PER_PAR:g} * npar")
+    for nm in envelope:
+        print(f"  {nm:<11} {fits[nm]['nll_pen']:14.2f}  "
+              f"(+{fits[nm]['nll_pen'] - fits[envelope[0]]['nll_pen']:.2f})")
+    # the member Combine would pick on the sideband: pdfindex 0, the source
+    # of the Asimov and of the extrapolated norm, and the reference for the
+    # ratio panel. It is NOT 'the' background model: the whole envelope goes
+    # into the multipdf and Combine profiles over pdfindex.
     best = envelope[0]
     print(f"\nenvelope : {', '.join(envelope)}   (best fit: {best})")
 
@@ -684,12 +656,13 @@ def main():
         "provenance": {
             "written_utc": datetime.now(timezone.utc)
                            .isoformat(timespec="seconds"),
-            "git_commit": sf.git_commit(),
+            "git_commit": config.git_commit(),
             "category": args.category, "bin": args.bin,
             "year": args.year, "tag": tag,
-            "window": [sf.XLOW, sf.XHIGH], "n_bins": nbins,
+            "window": [config.XLOW, config.XHIGH], "n_bins": nbins,
             "blind_region": [SR_LO, SR_HI],
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
+            "nll_penalty_per_par": NLL_PENALTY_PER_PAR,
             "observable": x.GetName(), "data_file": os.path.basename(datafile),
         },
         "data": {"n_full": n_full, "n_sideband": n_sb,
@@ -703,6 +676,9 @@ def main():
         "envelope": envelope,
         "rejected_by_gof": rejected,
         "best": best,
+        # the frozen cores the mc* candidates were built on, so that
+        # makeWorkspaces.py rebuilds them without the MC
+        "mc_core": {"file": mc_file, "cores": mc_core} if mc_core else None,
         "normalization": {"value": norm_val, "sideband_count": n_sb,
                           "sb_fraction": f_sb, "norm_range": NORM_RANGE,
                           "envelope_spread": [min(spread), max(spread)]
@@ -714,7 +690,7 @@ def main():
     print(f"wrote {jf}")
     print(f"plots {outbase}_envelope.png")
     bin_arg = args.bin or '""'
-    print(f"\nnext, inside the Combine container:\n  python makeWorkspaces.py "
+    print(f"\nnext, inside the Combine container:\n  python buildWorkspace.py "
           f"-c {args.category} -b {bin_arg} -y {args.year} "
           f"--wsdir {args.wsdir}")
 

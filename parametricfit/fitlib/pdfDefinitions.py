@@ -1,7 +1,9 @@
 # pdfDefinitions.py
 import ROOT
-from ROOT import RooRealVar, RooBernstein, RooChebychev
-from ROOT import RooExponential, RooGaussian, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
+from ROOT import RooRealVar, RooBernstein
+from ROOT import RooExponential, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
+
+from . import dyCore, mcCore
 
 class PDFDefinitions:
     """Centralized PDF definitions for signal and background fits"""
@@ -28,9 +30,12 @@ class PDFDefinitions:
         }
 
     @staticmethod
-    def create_bkg_pdfs(x, tag):
+    def create_bkg_pdfs(x, tag, mc_core=None):
         """
         Create all background PDFs - KEEP ALL OBJECTS IN MEMORY!
+
+        mc_core: the frozen MC cores ({model: {param: value}}, from
+        mcCoreFit.py); without it the mcexp/mcpow/mcdy families are absent.
         
         Returns dict with:
             - 'pdfs': final PDF objects to use
@@ -52,8 +57,6 @@ class PDFDefinitions:
         params['bern_c4'] = RooRealVar(f'bern_c4_{tag}', 'bern_c4', 1., -10., 10.)
         params['bern_c5'] = RooRealVar(f'bern_c5_{tag}', 'bern_c5', 1., -10., 10.)
 
-        pdfs['bern0'] = RooBernstein(f'bern0_{tag}', 'bern0', x, 
-                                      RooArgList(params['bern_c0']))
         pdfs['bern1'] = RooBernstein(f'bern1_{tag}', 'bern1', x, 
                                       RooArgList(params['bern_c0'], params['bern_c1']))
         pdfs['bern2'] = RooBernstein(f'bern2_{tag}', 'bern2', x, 
@@ -68,27 +71,6 @@ class PDFDefinitions:
                                       RooArgList(params['bern_c0'], params['bern_c1'], 
                                                 params['bern_c2'], params['bern_c3'], 
                                                 params['bern_c4'], params['bern_c5']))
-
-        # ===== CHEBYCHEV PDFs =====
-        params['chebychev_c0'] = RooRealVar(f'chebychev_c0_{tag}', 'chebychev_c0', 1.08, -1.1, 10.)
-        params['chebychev_c1'] = RooRealVar(f'chebychev_c1_{tag}', 'chebychev_c1', 0.4, -1., 1.)
-        params['chebychev_c2'] = RooRealVar(f'chebychev_c2_{tag}', 'chebychev_c2', 0.01, -1., 1.)
-        params['chebychev_c3'] = RooRealVar(f'chebychev_c3_{tag}', 'chebychev_c3', 0., -1., 1.)
-
-        pdfs['chebychev1'] = RooChebychev(f'chebychev1_{tag}', 'chebychev1', x,
-                                          RooArgList(params['chebychev_c0'], params['chebychev_c1']))
-        pdfs['chebychev2'] = RooChebychev(f'chebychev2_{tag}', 'chebychev2', x,
-                                          RooArgList(params['chebychev_c0'], params['chebychev_c1'], 
-                                                    params['chebychev_c2']))
-        pdfs['chebychev3'] = RooChebychev(f'chebychev3_{tag}', 'chebychev3', x,
-                                          RooArgList(params['chebychev_c0'], params['chebychev_c1'], 
-                                                    params['chebychev_c2'], params['chebychev_c3']))
-
-        # ===== GAUSSIAN PDF =====
-        params['gauss_mu'] = RooRealVar(f'gauss_mu{tag}', 'gauss_mu', 120, 100, 140)
-        params['gauss_sigma'] = RooRealVar(f'gauss_sigma{tag}', 'gauss_sigma', 30, 20, 40)
-        pdfs['gauss'] = RooGaussian(f'gauss{tag}', 'gauss', x, 
-                                     params['gauss_mu'], params['gauss_sigma'])
 
         # ===== EXPONENTIAL PDFs =====
         params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -10., 10.)
@@ -148,6 +130,17 @@ class PDFDefinitions:
                                            components['pdf_pow3_comp']),
                                  RooArgList(formulas['pow_frac1'], formulas['pow_frac2']))
 
+        # ===== DY CORE x CORRECTION PDFs (dyCore.py) =====
+        dy_pdfs, dy_params = dyCore.create_pdfs(x, tag)
+        pdfs.update(dy_pdfs)
+        params.update(dy_params)
+
+        # ===== MC-TUNED CORE x CORRECTION PDFs (mcCore.py) =====
+        if mc_core:
+            mc_pdfs, mc_params = mcCore.create_pdfs(x, tag, mc_core)
+            pdfs.update(mc_pdfs)
+            params.update(mc_params)
+
         # Return EVERYTHING to keep all references alive
         return {
             'pdfs': pdfs,
@@ -182,6 +175,8 @@ BKG_NPAR = {
     **{f"bern{o}": o for o in range(1, 6)},        # bern_c0 is constant
     **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
     **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
+    **dyCore.NPAR,
+    **mcCore.NPAR,                      # only with an MC core file
 }
 
 # candidates that are nested within one another, for the F-test
@@ -189,6 +184,8 @@ BKG_FAMILIES = {
     "bernstein": [f"bern{o}" for o in range(1, 6)],
     "exponential": [f"exp{n}" for n in (1, 2, 3)],
     "power": [f"pow{n}" for n in (1, 2, 3)],
+    **dyCore.FAMILIES,                  # dyexp, dypow
+    **mcCore.FAMILIES,                  # mcexp, mcpow, mcdy
 }
 
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
@@ -272,15 +269,20 @@ def create_signal_pdf(x, tag, scale_unc=None, res_unc=None, correlated=True):
                  "keep": out}
 
 
-def create_bkg_pdf(x, tag, name):
+def create_bkg_pdf(x, tag, name, mc_core=None):
     """One background candidate by name, with its own (fresh) parameters.
+
+    mc_core: the frozen MC cores, needed for the mcexp/mcpow/mcdy members.
 
     Returns (pdf, keep); keep["params"] are its FLOATING parameters.
     """
     if name not in BKG_NPAR:
         raise KeyError(f"unknown background model '{name}'; "
                        f"known: {sorted(BKG_NPAR)}")
-    out = PDFDefinitions.create_bkg_pdfs(x, tag)
+    out = PDFDefinitions.create_bkg_pdfs(x, tag, mc_core)
+    if name not in out['pdfs']:
+        raise KeyError(f"'{name}' needs its MC core (mcCoreFit.py), "
+                       f"which was not given")
     pdf = out['pdfs'][name]
     free = {p.GetName() for p in pdf.getParameters(ROOT.RooArgSet(x))
             if not p.isConstant()}

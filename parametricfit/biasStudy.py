@@ -53,8 +53,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import ROOT
 
-import pdfDefinitions as pdefs
-import sigFit as sf
+from fitlib import pdfDefinitions as pdefs
+from fitlib import config, style
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -77,10 +77,15 @@ PULL_LINE_RGB = (31, 120, 180)     # darker blue
 PULL_GAUS_RGB = (153, 0, 13)       # dark red
 SUMMARY_BAND_RGB = (217, 217, 217)  # light grey
 # one colour and marker per background family in the summary over BDT bins
-FAMILY_RGB = [(42, 120, 214), (235, 104, 52), (27, 175, 122), (237, 161, 0)]
-FAMILY_MARKERS = [20, 21, 22, 23]
+FAMILY_RGB = [(42, 120, 214), (235, 104, 52), (27, 175, 122), (237, 161, 0),
+              (140, 86, 192), (196, 61, 140), (102, 102, 102), (23, 162, 184)]
+FAMILY_MARKERS = [20, 21, 22, 23, 33, 29, 34, 47]
 FAMILY_LABEL = {"bern": "Bernstein", "exp": "exponential sum",
-                "pow": "power-law sum"}
+                "pow": "power-law sum", "dyexp": "DY #times exp(Chebyshev)",
+                "dypow": "DY #times power law",
+                "mcexp": "MC 2Exp #times exp(Chebyshev)",
+                "mcpow": "MC 2Pow #times exp(Chebyshev)",
+                "mcdy": "MC DY core #times exp(Chebyshev)"}
 
 # r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
 # that the 1 sigma interval of a toy never reaches the edge; --algo singles
@@ -498,26 +503,26 @@ def draw_label(pad, right):
     lat = ROOT.TLatex()
     lat.SetNDC()
     lat.SetTextFont(61)
-    lat.SetTextSize(sf.CMS_TEXT_SIZE_FRAC * t)
-    lat.DrawLatex(l, y, sf.CMS_TEXT)
-    if sf.CMS_EXTRA_TEXT:
+    lat.SetTextSize(style.CMS_TEXT_SIZE_FRAC * t)
+    lat.DrawLatex(l, y, style.CMS_TEXT)
+    if style.CMS_EXTRA_TEXT:
         lat.SetTextFont(52)
-        lat.SetTextSize(sf.EXTRA_OVER_CMS_TEXT_SIZE * sf.CMS_TEXT_SIZE_FRAC * t)
-        lat.DrawLatex(l + 0.14, y, sf.CMS_EXTRA_TEXT)   # full-height pad
+        lat.SetTextSize(style.EXTRA_OVER_CMS_TEXT_SIZE * style.CMS_TEXT_SIZE_FRAC * t)
+        lat.DrawLatex(l + 0.14, y, style.CMS_EXTRA_TEXT)   # full-height pad
     lat.SetTextFont(42)
     lat.SetTextAlign(31)
-    lat.SetTextSize(sf.LUMI_TEXT_SIZE_FRAC * t)
+    lat.SetTextSize(style.LUMI_TEXT_SIZE_FRAC * t)
     lat.DrawLatex(1 - r, y, right)
     return lat
 
 
 def new_canvas(name):
-    sf.setup_style()
-    c = ROOT.TCanvas(name, "", sf.CANVAS_W, sf.CANVAS_H)
-    c.SetTopMargin(sf.PAD_TOP_MARGIN)
-    c.SetBottomMargin(sf.PAD_BOTTOM_MARGIN)
-    c.SetLeftMargin(sf.PAD_LEFT_MARGIN)
-    c.SetRightMargin(sf.PAD_RIGHT_MARGIN)
+    style.setup_style()
+    c = ROOT.TCanvas(name, "", style.CANVAS_W, style.CANVAS_H)
+    c.SetTopMargin(style.PAD_TOP_MARGIN)
+    c.SetBottomMargin(style.PAD_BOTTOM_MARGIN)
+    c.SetLeftMargin(style.PAD_LEFT_MARGIN)
+    c.SetRightMargin(style.PAD_RIGHT_MARGIN)
     return c
 
 
@@ -560,7 +565,7 @@ def plot_member(pulls, s, tag, gen, r_inj, outbase, pdf):
         leg.AddEntry(ROOT.nullptr, "median = %+.3f #pm %.3f"
                      % (s["median_pull"], s["median_pull_err"]), "")
     leg.Draw()
-    keep += [leg, draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV)]
+    keep += [leg, draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
 
 
@@ -604,7 +609,7 @@ def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
     lat.DrawLatex(c.GetLeftMargin() + 0.04, 0.86,
                   f"{tag}, #mu_{{inj}} = {r_inj:g}")
     keep = [frame, band, zero, gr,  # noqa: F841 (ROOT needs them alive)
-            draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV)]
+            draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
 
 
@@ -694,7 +699,7 @@ def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
     lat.SetTextFont(42)
     lat.SetTextSize(0.035)
     lat.DrawLatex(x0 + 0.01, 0.86, f"{title}, #mu_{{inj}} = {r_inj:g}")
-    keep += [lat, draw_label(c, "toys (%.1f TeV)" % sf.SQRT_S_TEV)]
+    keep += [lat, draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
 
 
@@ -835,7 +840,7 @@ def main():
                     help="also write PDF alongside the PNG")
     args = ap.parse_args()
     if args.carddir is None:
-        args.carddir = os.path.join(HERE, f"WS_{args.year}")
+        args.carddir = os.path.join(HERE, config.default_wsdir(args.year))
 
     tags = [f"{c}_{b}_{args.year}" for c in args.category for b in args.bins]
     if args.only != "report":
