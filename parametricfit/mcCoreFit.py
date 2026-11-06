@@ -1,9 +1,10 @@
 """
-mcCoreFit.py -- fit the frozen background cores to the background MC.
+mcCoreFit.py -- fit the frozen background cores to the Drell-Yan MC.
 
-For each BDT bin, the weighted background MC (BKG_MC_TAGS in
-fitlib/prepareFits.py) is fitted over the full window, unblinded since it
-holds no signal, with three smooth shapes (fitlib/mcCore.py):
+For each BDT bin, the weighted Drell-Yan MC (BKG_DY_TAGS in
+fitlib/prepareFits.py: QCD DY, plus EWK Z in VBF) is fitted over the full
+window, unblinded since it holds no signal, with three smooth shapes
+(fitlib/mcCore.py):
 
     mcexp   2Exp
     mcpow   2Pow
@@ -26,6 +27,11 @@ values are frozen), and bkgFit.py then has no candidates on it.
 Usage (conda, ROOT >= 6.28), before bkgFit.py:
 
     python mcCoreFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
+    python mcCoreFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --all-bkg-mc
+
+By default tt, tW and VV are left to the data-side correction.
+--all-bkg-mc fits the total background MC instead (BKG_MC_TAGS), as
+flashgg does; it writes the same MCcore_<tag>.json, which records which.
 """
 
 import argparse
@@ -124,7 +130,7 @@ def plot_cores(x, data, fits, label, year, outbase, pdf_too):
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
     leg.SetTextSize(0.030)
-    leg.AddEntry(fr.findObject("mc"), "background MC", "pe")
+    leg.AddEntry(fr.findObject("mc"), "MC", "pe")
     pulls = []
     for model, f in fits.items():
         col = ROOT.TColor.GetColor(*CORE_RGB[model])
@@ -183,19 +189,21 @@ def plot_cores(x, data, fits, label, year, outbase, pdf_too):
 
 
 def run_bin(args, binMVA, rng):
-    from fitlib.prepareFits import BKG_MC_TAGS, getHistoBkgMC
+    from fitlib.prepareFits import bkg_mc_tags, getHistoBkgMC
 
     tag = f"{args.category}_{binMVA}_{args.year}"
     nbins = int((config.XHIGH - config.XLOW) * config.BINS_PER_GEV)
-    print(f"\n===== {tag}: background MC, {config.XLOW:g}-"
+    what = "DY MC" if args.dy_only else "background MC"
+    print(f"\n===== {tag}: {what}, {config.XLOW:g}-"
           f"{config.XHIGH:g} GeV, {nbins} bins =====")
     h, eras = getHistoBkgMC(nbins, config.XLOW, config.XHIGH,
-                            args.category, args.year, binMVA or "incl")
+                            args.category, args.year, binMVA or "incl",
+                            dy_only=args.dy_only)
     if h is None or h.Integral() <= 0:
         raise SystemExit(f"{tag}: no background MC in the window")
     x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}",
                         config.XLOW, config.XHIGH)
-    data = ROOT.RooDataHist(f"mc_{tag}", "background MC",
+    data = ROOT.RooDataHist(f"mc_{tag}", what,
                             ROOT.RooArgList(x), h)
     print(f"sum of weights {h.Integral():.1f}, "
           f"effective entries {h.GetEffectiveEntries():.0f}")
@@ -218,10 +226,9 @@ def run_bin(args, binMVA, rng):
             cores[model] = {p: v["value"] for p, v in f["params"].items()}
 
     plot_cores(x, data, fits, f"{args.category} {binMVA or 'incl'} "
-               f"background MC", args.year,
+               f"{what}", args.year,
                os.path.join(args.plotdir, f"MCcore_{tag}"), args.pdf)
 
-    per_era = BKG_MC_TAGS[args.category]
     rec = {
         "provenance": {
             "written_utc": datetime.now(timezone.utc)
@@ -230,7 +237,9 @@ def run_bin(args, binMVA, rng):
             "category": args.category, "bin": binMVA, "year": args.year,
             "tag": tag, "window": [config.XLOW, config.XHIGH],
             "n_bins": nbins,
-            "mc_tags": {era: per_era.get(era, per_era["*"]) for era in eras},
+            "dy_only": args.dy_only,
+            "mc_tags": {era: bkg_mc_tags(args.category, era, args.dy_only)
+                        for era in eras},
             "era_factors": {era: fac for era, (fac, _) in eras.items()},
             "n_files": {era: n for era, (_, n) in eras.items()},
         },
@@ -261,11 +270,17 @@ def main():
                     default=os.path.expanduser(
                         "~/public_html/HmumuFits/mc_core"))
     ap.add_argument("--pdf", action="store_true")
+    ap.add_argument("--all-bkg-mc", action="store_true",
+                    help="fit the cores to the total background MC "
+                         "(BKG_MC_TAGS) instead of the Drell-Yan MC alone "
+                         "(BKG_DY_TAGS); same output file, the JSON records "
+                         "which")
     ap.add_argument("--tries", type=int, default=5,
                     help="fits per core from random starts, until status 0")
     ap.add_argument("--seed", type=int, default=12345)
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
+    args.dy_only = not args.all_bkg_mc
 
     style.setup_style()
     rng = random.Random(args.seed)

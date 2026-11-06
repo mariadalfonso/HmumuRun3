@@ -1,6 +1,7 @@
 import ROOT
 from array import array
 import math
+import os
 import getpass
 
 ROOTFILES_DIR = f'/work/submit/{getpass.getuser()}/HmumuRun3/ROOTFILES'
@@ -83,17 +84,38 @@ DATA_TAGS = {
     "2026" : [str(i) for i in range(-81, -89, -1)],  # -81 ... -88
 }
 
-# background MC for the frozen-core fit (mcCoreFit.py), file tags per MC
-# era ("*" = every era without its own entry). Non-overlapping samples only,
-# so the weighted sum is the background: the extra DY slices (108-110) and
-# the MiNNLO alternative (126-128) overlap the inclusive DY and are left
-# out, as are the EWK alternatives 98/99 (overlap 101).
-_BKG_OTHER = ["101",                        # DY EWK
-              "140", "105", "106", "107",   # tt2l, tt1l, tW
-              "201", "202", "203", "204", "205", "206"]  # VV
-_BKG_GGH = {"2024": ["103", "104"] + _BKG_OTHER,   # DY -> mumu, tautau
-            "*":    ["100"] + _BKG_OTHER}          # DY -> ll
-BKG_MC_TAGS = {"ggHcat": _BKG_GGH, "VBFcat": _BKG_GGH}
+# background MC for the frozen-core fit (mcCoreFit.py --all-bkg-mc), file
+# tags per MC era ("*" = every era without its own entry); datasets as in
+# analysis/InputDict.py. Non-overlapping samples only, so the weighted sum
+# is the background. NOT used, because they overlap the samples below:
+#   DY QCD  108, 110 (powheg MLL-50to120 / 120to200), 109 (MLL-105to160),
+#           111-113, 119-121 (jet-binned), 114-117, 122-125 (pT-binned),
+#           126-128 (MiNNLO: never used for DY)
+#   DY EWK  98, 99 (M2Mu-105to160)
+#   tt      141-149 (other generators, tune / hdamp variations)
+#   VV      207-212 (amcatnlo, overlap the powheg set)
+_DY_QCD = {
+    "2024": ["103", "104"],     # DYto2Mu + DYto2Tau -2Jets MLL-50, amcatnloFXFX
+    "*":    ["100"],            # DYto2L-2Jets MLL-50, amcatnloFXFX (2022-23)
+}
+_DY_EWK = ["101"]               # EWK Z 2L2J, madgraph-herwig7
+_BKG_OTHER = [
+    "140",                      # TTto2L2Nu, powheg
+    "107",                      # TTtoLNu2Q, powheg
+    "105", "106",               # TWminus / TbarWplus to2L2Nu, powheg
+    "201", "202", "203",        # WZto2L2Q, ZZto2L2Nu, ZZto2L2Q, powheg
+    "204", "205", "206",        # WZto3LNu, ZZto4L, WWto2L2Nu, powheg
+]
+_BKG_ALL = {era: dy + _DY_EWK + _BKG_OTHER for era, dy in _DY_QCD.items()}
+BKG_MC_TAGS = {"ggHcat": _BKG_ALL, "VBFcat": _BKG_ALL}
+
+# the Drell-Yan subset, mcCoreFit.py's default. VBF keeps the EWK Z
+# (vector-boson fusion Z, the irreducible VBF-like DY); in ggH it is
+# negligible and left with the rest.
+BKG_DY_TAGS = {
+    "ggHcat": dict(_DY_QCD),
+    "VBFcat": {era: dy + _DY_EWK for era, dy in _DY_QCD.items()},
+}
 
 # Composite years expand into the concrete eras whose snapshots exist on disk.
 # Any year not listed here is used as-is (e.g. '2024' -> ['2024']).
@@ -213,15 +235,26 @@ def get_signal_files(sig, category, year, rootfiles_dir=ROOTFILES_DIR):
                           category, rootfiles_dir)
 
 
-def get_bkg_mc_files(category, era, rootfiles_dir=ROOTFILES_DIR):
-    """Background MC snapshot files of ONE concrete MC era; see BKG_MC_TAGS."""
-    if category not in BKG_MC_TAGS:
+def bkg_mc_tags(category, era, dy_only=False):
+    """Background MC sample ids of ONE concrete MC era; see BKG_MC_TAGS.
+
+    dy_only: the Drell-Yan subset instead, BKG_DY_TAGS.
+    """
+    table, name = ((BKG_DY_TAGS, "BKG_DY_TAGS") if dy_only
+                   else (BKG_MC_TAGS, "BKG_MC_TAGS"))
+    if category not in table:
         raise ValueError(f"no background MC list for {category} "
-                         f"(have {sorted(BKG_MC_TAGS)}); add it to "
-                         f"BKG_MC_TAGS in prepareFits.py")
-    per_era = BKG_MC_TAGS[category]
-    tags = per_era.get(era, per_era["*"])
-    return _collect_files([(era, tags)], category, rootfiles_dir)
+                         f"(have {sorted(table)}); add it to "
+                         f"{name} in prepareFits.py")
+    per_era = table[category]
+    return list(per_era.get(era, per_era["*"]))
+
+
+def get_bkg_mc_files(category, era, rootfiles_dir=ROOTFILES_DIR,
+                     dy_only=False):
+    """Background MC snapshot files of ONE concrete MC era."""
+    return _collect_files([(era, bkg_mc_tags(category, era, dy_only))],
+                          category, rootfiles_dir)
 
 
 def get_data_files(year, category, rootfiles_dir=ROOTFILES_DIR):
@@ -414,20 +447,48 @@ def getHisto(nbin, low, high, doLog, category, year, doSignal, binMVA, sig='',
                            nbin, low, high)
 
 
+def _require_branch(files, branch, category, treename="events"):
+    """Raise, naming every file whose tree lacks `branch`.
+
+    RDataFrame reads the column list off the first file only, so without
+    this a stale snapshot surfaces as a cling 'undeclared identifier'.
+    """
+    stale = []
+    for path in files:
+        f = ROOT.TFile.Open(path)
+        t = f.Get(treename)
+        if not t.GetBranch(branch):
+            stale.append(path)
+        f.Close()
+    if stale:
+        tags = sorted({os.path.basename(p).split("_")[2] for p in stale})
+        raise RuntimeError(
+            f"{len(stale)} of {len(files)} background-MC snapshot(s) have no "
+            f"'{branch}' branch -- written before the {category} classifier; "
+            f"rerun Hmm.py on them (sample ids {','.join(tags)}):\n  "
+            + "\n  ".join(stale))
+
+
 def getHistoBkgMC(nbin, low, high, category, year, binMVA,
-                  rootfiles_dir=ROOTFILES_DIR):
+                  rootfiles_dir=ROOTFILES_DIR, dy_only=False):
     """Weighted background-MC mass histogram, for the frozen-core fit.
 
     Summed over the MC eras of `year` with the same factors as the signal
     (signal_yield_scales): an era without MC of its own (2025, 2026) is
     represented by its proxy, so the era mix follows the data. Only the
-    SHAPE is used downstream. Returns (TH1, {era: (factor, n_files)}).
+    SHAPE is used downstream. dy_only: the Drell-Yan samples alone.
+    Returns (TH1, {era: (factor, n_files)}).
     """
     year = normalize_year(year)
     sel = get_selection(category, binMVA)
+    per_era = {era: get_bkg_mc_files(category, era, rootfiles_dir, dy_only)
+               for era in signal_yield_scales(year)}
+    if "discrMVA" in sel:
+        _require_branch([f for fs in per_era.values() for f in fs],
+                        "discrMVA", category)
     total, info = None, {}
     for era, factor in signal_yield_scales(year).items():
-        files = get_bkg_mc_files(category, era, rootfiles_dir)
+        files = per_era[era]
         df = ROOT.RDataFrame("events", files)
         df = df.Filter(sel, "selection cut")
         df = df.Filter("!isnan(HiggsCandCorrMass)", "Valid mass")

@@ -92,10 +92,12 @@ reads and writes there unless `--wsdir` says otherwise.
   - The shape is fitted on the 2022–2024 MC. The yield covers every data era:
     2025–2026 use 2024's yield per fb⁻¹ (`signal_yield_scales` in
     `fitlib/prepareFits.py`).
-- **`mcCoreFit.py`**: fits the weighted background MC of each bin
-  (`BKG_MC_TAGS` in `fitlib/prepareFits.py`) over 110–150 GeV with three
-  smooth cores, as flashgg does for ggH: 2Exp, 2Pow, and the LO DY core ×
-  (1 + Cheb3). The values are frozen; only the shape is used.
+- **`mcCoreFit.py`**: fits the weighted Drell–Yan MC of each bin
+  (`BKG_DY_TAGS` in `fitlib/prepareFits.py`: QCD DY, plus EWK Z in VBF)
+  over 110–150 GeV with three smooth cores, as flashgg does for ggH: 2Exp,
+  2Pow, and the LO DY core × (1 + Cheb3). The values are frozen; only the
+  shape is used.
+  - `--all-bkg-mc` fits the total background MC (`BKG_MC_TAGS`) instead.
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
   Bernstein, exponential and power-law sums, with a Drell–Yan core
   times exp(Chebyshev) or a power law (`dyexp`, `dypow`), and with each
