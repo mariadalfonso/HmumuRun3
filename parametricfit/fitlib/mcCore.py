@@ -45,7 +45,7 @@ CORES = {
              [0.0, 0.0, 0.0],
              [(-2, 2), (-2, 2), (-2, 2)]),
 }
-CORE_LABEL = {"mcexp": "2Exp", "mcpow": "2Pow", "mcdy": "DY core x Cheb3"}
+CORE_LABEL = {"mcexp": "2Exp", "mcpow": "2Pow", "mcdy": "DY core #times Cheb3"}
 
 # number of FREE parameters of each candidate (the core adds none), and the
 # nested families; merged into BKG_NPAR and BKG_FAMILIES in pdfDefinitions

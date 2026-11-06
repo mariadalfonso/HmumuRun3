@@ -175,7 +175,21 @@ def mc_hists(h, nbins, label):
     return filled, band
 
 
-def plot_cores(x, data, h, fits, label, year, outbase, pdf_too):
+def legend_label(model, f):
+    """'2Exp: chi2/ndf = 1.04, p = 0.27, pass' -- the GOF against the MC
+    and whether the core is frozen."""
+    name = mcCore.CORE_LABEL[model]
+    if f["status"] > 1:
+        return f"{name}: fit failed"
+    verdict = "pass" if f["gof_pass"] else "#bf{fail}"
+    if f["ndf"] <= 0:
+        return f"{name}: low MC stats, {verdict}"
+    p = "p < 0.001" if f["pvalue"] < 1e-3 else f"p = {f['pvalue']:.3f}"
+    return (f"{name}: #chi^{{2}}/ndf = {f['chi2_ndf']:.2f}, {p}, "
+            f"{verdict}")
+
+
+def plot_cores(x, data, h, fits, label, what, year, outbase, pdf_too):
     """MC (filled histogram, hatched stat. band), the bare LO DY core
     (dashed) and the three fitted cores; pulls of the MC against each fit
     below."""
@@ -191,11 +205,11 @@ def plot_cores(x, data, h, fits, label, year, outbase, pdf_too):
     data.plotOn(fr, ROOT.RooFit.Name("mc"),
                 ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2),
                 ROOT.RooFit.Binning(nplot), ROOT.RooFit.Invisible())
-    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.40, 0.56,
+    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.52, 0.56,
                        1 - style.PAD_RIGHT_MARGIN - 0.03, 0.88)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
-    leg.SetTextSize(0.030)
+    leg.SetTextSize(0.027)
     leg.AddEntry(mc_fill, "MC", "f")
     leg.AddEntry(mc_band, "MC stat. unc.", "f")
     leg.AddEntry(lo_core, "LO DY core (not fitted)", "l")
@@ -205,10 +219,7 @@ def plot_cores(x, data, h, fits, label, year, outbase, pdf_too):
         f["pdf"].plotOn(fr, ROOT.RooFit.Name(model),
                         ROOT.RooFit.LineColor(col),
                         ROOT.RooFit.LineWidth(2))
-        leg.AddEntry(fr.findObject(model),
-                     f"{mcCore.CORE_LABEL[model]}  "
-                     + (f"#chi^{{2}}/ndf = {f['chi2_ndf']:.2f}"
-                        if f["ndf"] > 0 else "too little MC to test"), "l")
+        leg.AddEntry(fr.findObject(model), legend_label(model, f), "l")
         ph = fr.pullHist("mc", model)
         ph.SetLineColor(col)
         ph.SetMarkerColor(col)
@@ -233,7 +244,7 @@ def plot_cores(x, data, h, fits, label, year, outbase, pdf_too):
     lat.SetTextFont(42)
     lat.SetTextSize(style.ANN_TEXT_SIZE)
     dy = style.LINE_SPACING * style.ANN_TEXT_SIZE
-    for i, line in enumerate(["H #rightarrow #mu#mu", label,
+    for i, line in enumerate(["H #rightarrow #mu#mu", label, what,
                               "shape fit only"]):
         lat.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, line)
 
@@ -288,7 +299,7 @@ def run_bin(args, binMVA, rng):
         f["gof_pass"] = f["pvalue"] > args.gof_pmin or args.gof_pmin <= 0
         ok = converged and f["gof_pass"]
         note = ("  <-- fit failed, left out" if not converged else
-                f"  <-- {f['n_bins']} merged bins: too little MC to test, "
+                f"  <-- {f['n_bins']} merged bins: low MC stats, "
                 f"left out" if f["ndf"] <= 0 and not ok else
                 f"  <-- fails GOF (p <= {args.gof_pmin:g}), left out"
                 if not ok else
@@ -301,8 +312,8 @@ def run_bin(args, binMVA, rng):
         if ok:
             cores[model] = {p: v["value"] for p, v in f["params"].items()}
 
-    plot_cores(x, data, h, fits, f"{args.category} {binMVA or 'incl'} "
-               f"{what}", args.year,
+    plot_cores(x, data, h, fits, f"{args.category} {binMVA or 'incl'}",
+               what, args.year,
                os.path.join(args.plotdir, f"MCcore_{tag}"), args.pdf)
 
     rec = {
