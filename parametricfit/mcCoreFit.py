@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-from fitlib import config, mcCore, style
+from fitlib import config, dyCore, mcCore, style
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -50,6 +50,11 @@ ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
 CORE_RGB = {"mcexp": (42, 120, 214), "mcpow": (235, 104, 52),
             "mcdy": (27, 175, 122)}
 PLOT_BINS_PER_GEV = 1          # coarser than the fit, for a readable plot
+MC_FILL_RGB = (214, 214, 214)  # MC as a filled histogram, not data points
+MC_LINE_RGB = (140, 140, 140)  # its outline, so the step shape reads
+MC_BAND_STYLE = 3354           # hatched MC stat. uncertainty
+LO_RGB = (0, 0, 0)             # the bare LO DY core, before any fit
+LO_SUBSTEPS = 20               # midpoint rule per plot bin for the LO core
 RANDOM_SPREAD = 0.05           # retry start: start +- this x the range
 
 
@@ -117,20 +122,66 @@ def chi2_vs_mc(x, h, pdf, npar):
             "pvalue": ROOT.TMath.Prob(chi2, ndf)}
 
 
-def plot_cores(x, data, fits, label, year, outbase, pdf_too):
-    """MC with the three cores; pulls of the MC against each below."""
+def lo_core_hist(name, nbins, total):
+    """The bare LO DY core (fitlib/dyCore.py, the base of mcdy) as a
+    histogram in the plot binning, normalised to `total` in the window."""
+    h = ROOT.TH1D(name, "", nbins, config.XLOW, config.XHIGH)
+    h.SetDirectory(0)
+    for i in range(1, nbins + 1):
+        lo, w = h.GetBinLowEdge(i), h.GetBinWidth(i)
+        step = w / LO_SUBSTEPS
+        h.SetBinContent(i, step * sum(dyCore.core_value(lo + (j + 0.5) * step)
+                                      for j in range(LO_SUBSTEPS)))
+    h.Scale(total / h.Integral())
+    h.SetLineColor(ROOT.TColor.GetColor(*LO_RGB))
+    h.SetLineWidth(2)
+    h.SetLineStyle(2)
+    return h
+
+
+def mc_hists(h, nbins, label):
+    """The fitted MC histogram in the plot binning: filled, and its
+    sum-w^2 uncertainty as a hatched band."""
+    if h.GetNbinsX() % nbins:
+        raise ValueError(f"{h.GetNbinsX()} fit bins do not rebin to {nbins}")
+    filled = h.Rebin(h.GetNbinsX() // nbins, f"mc_fill_{label}")
+    filled.SetDirectory(0)
+    filled.SetFillColor(ROOT.TColor.GetColor(*MC_FILL_RGB))
+    filled.SetLineColor(ROOT.TColor.GetColor(*MC_LINE_RGB))
+    filled.SetLineWidth(1)
+    band = filled.Clone(f"mc_band_{label}")
+    band.SetDirectory(0)
+    band.SetFillColor(ROOT.kGray + 2)
+    band.SetFillStyle(MC_BAND_STYLE)
+    band.SetLineWidth(0)
+    band.SetMarkerSize(0)
+    return filled, band
+
+
+def plot_cores(x, data, h, fits, label, year, outbase, pdf_too):
+    """MC (filled histogram, hatched stat. band), the bare LO DY core
+    (dashed) and the three fitted cores; pulls of the MC against each fit
+    below."""
     nplot = int((config.XHIGH - config.XLOW) * PLOT_BINS_PER_GEV)
     c, outer, pad1, pad2 = style.make_canvas_pads(f"c_{label}")
     fr = x.frame(ROOT.RooFit.Bins(nplot))
+    mc_fill, mc_band = mc_hists(h, nplot, label)
+    fr.addTH1(mc_fill, "hist")
+    fr.addTH1(mc_band, "E2")
+    lo_core = lo_core_hist(f"lo_core_{label}", nplot, data.sumEntries())
+    fr.addTH1(lo_core, "hist")
+    # the points stay in the frame, invisible, as the reference for the pulls
     data.plotOn(fr, ROOT.RooFit.Name("mc"),
                 ROOT.RooFit.DataError(ROOT.RooAbsData.SumW2),
-                ROOT.RooFit.Binning(nplot))
-    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.40, 0.62,
+                ROOT.RooFit.Binning(nplot), ROOT.RooFit.Invisible())
+    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.40, 0.56,
                        1 - style.PAD_RIGHT_MARGIN - 0.03, 0.88)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
     leg.SetTextSize(0.030)
-    leg.AddEntry(fr.findObject("mc"), "MC", "pe")
+    leg.AddEntry(mc_fill, "MC", "f")
+    leg.AddEntry(mc_band, "MC stat. unc.", "f")
+    leg.AddEntry(lo_core, "LO DY core (not fitted)", "l")
     pulls = []
     for model, f in fits.items():
         col = ROOT.TColor.GetColor(*CORE_RGB[model])
@@ -150,7 +201,8 @@ def plot_cores(x, data, fits, label, year, outbase, pdf_too):
     fr.SetTitle(f";;Weighted events / {1 / PLOT_BINS_PER_GEV:g} GeV")
     style._style_ratio_axis(fr.GetYaxis(), style.RATIO_Y_TITLE_OFFSET)
     fr.GetYaxis().SetTitleOffset(1.45)
-    ROOT.TGaxis.SetExponentOffset(-0.07, -0.02, "y")   # clear of "CMS"
+    ROOT.TGaxis.SetMaxDigits(3)   # 10^n above 999: labels clear of the title
+    ROOT.TGaxis.SetExponentOffset(-0.10, 0.01, "y")   # left of "CMS", above the title
     fr.GetXaxis().SetLabelSize(0)
     fr.GetXaxis().SetTitleSize(0)
     fr.SetMinimum(0.0)
@@ -225,7 +277,7 @@ def run_bin(args, binMVA, rng):
         if ok:
             cores[model] = {p: v["value"] for p, v in f["params"].items()}
 
-    plot_cores(x, data, fits, f"{args.category} {binMVA or 'incl'} "
+    plot_cores(x, data, h, fits, f"{args.category} {binMVA or 'incl'} "
                f"{what}", args.year,
                os.path.join(args.plotdir, f"MCcore_{tag}"), args.pdf)
 
