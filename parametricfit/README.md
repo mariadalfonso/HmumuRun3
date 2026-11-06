@@ -23,7 +23,7 @@ Run everything from `parametricfit/`.
 | where | what |
 |---|---|
 | top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `mcCore`, `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
@@ -98,6 +98,10 @@ reads and writes there unless `--wsdir` says otherwise.
   2Pow, and the LO DY core × (1 + Cheb3). The values are frozen; only the
   shape is used.
   - `--all-bkg-mc` fits the total background MC (`BKG_MC_TAGS`) instead.
+  - A core is frozen only if it passes a goodness-of-fit test against the
+    MC: χ² with bins merged to ~9 effective entries each, p > 0.01 (the
+    same test and cut as `bkgFit.py` on data, `fitlib/gof.py`). A bin with
+    too little MC to test gets no MC cores.
 - **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
   Bernstein, exponential and power-law sums, with a Drell–Yan core
   times exp(Chebyshev) or a power law (`dyexp`, `dypow`), and with each

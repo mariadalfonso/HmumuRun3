@@ -20,9 +20,16 @@ Outputs, in WS_<year>/ unless --wsdir:
 
     MCcore_<tag>.json   frozen core values, fit quality, MC provenance
 
-and a plot per bin in --plotdir. A core whose fit fails is left out of the
-JSON (status 1, a forced-positive covariance, is kept: only the central
-values are frozen), and bkgFit.py then has no candidates on it.
+and a plot per bin in --plotdir. A core is frozen only if
+
+  * its fit converged (status 1, a forced-positive covariance, is kept:
+    only the central values are frozen), and
+  * it passes a goodness-of-fit test against the MC: chi2 with bins merged
+    to ~9 effective entries each (fitlib/gof.py), p > --gof-pmin (0.01,
+    as bkgFit.py on data). Too little MC to leave a degree of freedom
+    fails too, so a bin with sparse MC simply gets no MC cores.
+
+A core left out has no candidates in bkgFit.py.
 
 Usage (conda, ROOT >= 6.28), before bkgFit.py:
 
@@ -43,6 +50,8 @@ from datetime import datetime, timezone
 import ROOT
 
 from fitlib import config, dyCore, mcCore, style
+from fitlib.gof import (CHI2_MIN_BIN_SIGNIFICANCE, GOF_THRESHOLD,
+                        merge_chi2_bins)
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -103,23 +112,31 @@ def fit_core(x, data, model, tag, tries, rng):
     return best
 
 
-def chi2_vs_mc(x, h, pdf, npar):
-    """Pearson chi2 of the MC histogram against the normalised core, with
-    the MC's own (sum w^2) errors; bins without entries are skipped."""
+def gof_vs_mc(x, h, pdf, npar):
+    """Goodness of fit of a core to the MC it was fitted to.
+
+    Pearson chi2 with the MC's own sum-w^2 errors, after merging
+    neighbouring bins until each has content/sqrt(sum w^2) >= 3, i.e.
+    about 9 effective entries (fitlib/gof.py, as bkgFit.py on data). The
+    expectation is normalised to the MC total, so ndf = bins - 1 - npar.
+    A bin too sparse to leave any degree of freedom gets p = 0: a core
+    that cannot be tested is not frozen.
+    """
     nset = ROOT.RooArgSet(x)
     total = h.Integral(1, h.GetNbinsX())
-    chi2, nb = 0.0, 0
+    h_pdf = h.Clone(f"hpdf_{pdf.GetName()}")
+    h_pdf.SetDirectory(0)
+    h_pdf.Reset()
     for i in range(1, h.GetNbinsX() + 1):
-        err = h.GetBinError(i)
-        if err <= 0:
-            continue
         x.setVal(h.GetBinCenter(i))
-        exp = total * pdf.getVal(nset) * h.GetBinWidth(i)
-        chi2 += ((h.GetBinContent(i) - exp) / err) ** 2
-        nb += 1
-    ndf = max(nb - npar, 1)
-    return {"chi2": chi2, "ndf": ndf, "chi2_ndf": chi2 / ndf,
-            "pvalue": ROOT.TMath.Prob(chi2, ndf)}
+        h_pdf.SetBinContent(i, total * pdf.getVal(nset) * h.GetBinWidth(i))
+    chi2, nbins = merge_chi2_bins(h, h_pdf, 0.0, 0.0,
+                                  CHI2_MIN_BIN_SIGNIFICANCE)
+    ndf = nbins - 1 - npar
+    p = ROOT.TMath.Prob(chi2, ndf) if ndf > 0 else 0.0
+    return {"chi2": chi2, "ndf": ndf,
+            "chi2_ndf": chi2 / ndf if ndf > 0 else -1.0,
+            "pvalue": p, "n_bins": nbins}
 
 
 def lo_core_hist(name, nbins, total):
@@ -190,7 +207,8 @@ def plot_cores(x, data, h, fits, label, year, outbase, pdf_too):
                         ROOT.RooFit.LineWidth(2))
         leg.AddEntry(fr.findObject(model),
                      f"{mcCore.CORE_LABEL[model]}  "
-                     f"#chi^{{2}}/ndf = {f['chi2_ndf']:.2f}", "l")
+                     + (f"#chi^{{2}}/ndf = {f['chi2_ndf']:.2f}"
+                        if f["ndf"] > 0 else "too little MC to test"), "l")
         ph = fr.pullHist("mc", model)
         ph.SetLineColor(col)
         ph.SetMarkerColor(col)
@@ -261,18 +279,24 @@ def run_bin(args, binMVA, rng):
           f"effective entries {h.GetEffectiveEntries():.0f}")
 
     fits, cores = {}, {}
-    print(f"{'core':<7}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
+    print(f"{'core':<7}{'npar':>5}{'NLL':>14}{'bins':>6}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'status':>8}{'try':>5}")
     for model in mcCore.CORES:
         f = fit_core(x, data, model, tag, args.tries, rng)
-        f.update(chi2_vs_mc(x, h, f["pdf"], len(f["params"])))
-        ok = f["status"] <= 1
-        note = ("" if f["status"] == 0 else
-                "  (covariance forced pos. def.; minimum kept)" if ok else
-                "  <-- failed, left out")
+        f.update(gof_vs_mc(x, h, f["pdf"], len(f["params"])))
+        converged = f["status"] <= 1
+        f["gof_pass"] = f["pvalue"] > args.gof_pmin or args.gof_pmin <= 0
+        ok = converged and f["gof_pass"]
+        note = ("  <-- fit failed, left out" if not converged else
+                f"  <-- {f['n_bins']} merged bins: too little MC to test, "
+                f"left out" if f["ndf"] <= 0 and not ok else
+                f"  <-- fails GOF (p <= {args.gof_pmin:g}), left out"
+                if not ok else
+                "" if f["status"] == 0 else
+                "  (covariance forced pos. def.; minimum kept)")
         print(f"{model:<7}{len(f['params']):>5}{f['nll']:>14.2f}"
-              f"{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}{f['status']:>8}"
-              f"{f['try']:>5}{note}")
+              f"{f['n_bins']:>6}{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}"
+              f"{f['status']:>8}{f['try']:>5}{note}")
         fits[model] = f
         if ok:
             cores[model] = {p: v["value"] for p, v in f["params"].items()}
@@ -289,6 +313,8 @@ def run_bin(args, binMVA, rng):
             "category": args.category, "bin": binMVA, "year": args.year,
             "tag": tag, "window": [config.XLOW, config.XHIGH],
             "n_bins": nbins,
+            "gof_pmin": args.gof_pmin,
+            "gof_min_bin_significance": CHI2_MIN_BIN_SIGNIFICANCE,
             "dy_only": args.dy_only,
             "mc_tags": {era: bkg_mc_tags(args.category, era, args.dy_only)
                         for era in eras},
@@ -327,6 +353,10 @@ def main():
                          "(BKG_MC_TAGS) instead of the Drell-Yan MC alone "
                          "(BKG_DY_TAGS); same output file, the JSON records "
                          "which")
+    ap.add_argument("--gof-pmin", type=float, default=GOF_THRESHOLD,
+                    help="freeze a core only if its chi2 p-value against "
+                         "the MC exceeds this (default %(default)s, as "
+                         "bkgFit.py on data); 0 keeps every converged fit")
     ap.add_argument("--tries", type=int, default=5,
                     help="fits per core from random starts, until status 0")
     ap.add_argument("--seed", type=int, default=12345)
