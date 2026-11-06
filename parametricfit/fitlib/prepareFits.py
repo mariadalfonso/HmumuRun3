@@ -86,19 +86,30 @@ DATA_TAGS = {
 
 # background MC for the frozen-core fit (mcCoreFit.py --all-bkg-mc), file
 # tags per MC era ("*" = every era without its own entry); datasets as in
-# analysis/InputDict.py. Non-overlapping samples only, so the weighted sum
-# is the background. NOT used, because they overlap the samples below:
-#   DY QCD  108, 110 (powheg MLL-50to120 / 120to200), 109 (MLL-105to160),
-#           111-113, 119-121 (jet-binned), 114-117, 122-125 (pT-binned),
-#           126-128 (MiNNLO: never used for DY)
-#   DY EWK  98, 99 (M2Mu-105to160)
+# analysis/config/samples.yaml. Non-overlapping samples only, so the
+# weighted sum is the background. The Drell-Yan samples carry a generator
+# filter 105 < m_mumu < 160 GeV, around the 110-150 window, so nearly all
+# their events are in it (the MLL-50 samples spend most on the Z peak);
+# the 103 vs 109 shapes agree across 110-150, the 160 edge only shows above
+# 150. NOT used, because they overlap the samples below:
+#   DY QCD  100, 103 (MLL-50 inclusive), 108, 110 (powheg MLL-50to120 /
+#           120to200), 111-113, 119-121 (jet-binned), 114-117, 122-125
+#           (pT-binned), 126-128 (MiNNLO: never used for DY)
+#   DY EWK  VBF: 101 (inclusive 2L2J); ggH: 98 (not in the ggH lists);
+#           99 (M2Mu-105to160 with M2J > 120, pythia8)
 #   tt      141-149 (other generators, tune / hdamp variations)
 #   VV      207-212 (amcatnlo, overlap the powheg set)
 _DY_QCD = {
-    "2024": ["103", "104"],     # DYto2Mu + DYto2Tau -2Jets MLL-50, amcatnloFXFX
-    "*":    ["100"],            # DYto2L-2Jets MLL-50, amcatnloFXFX (2022-23)
+    # DYto2Mu-2Jets MLL-105to160 + DYto2Tau-2Jets MLL-50, amcatnloFXFX
+    "2024": ["109", "104"],
+    # DYto2Mu-2Jets MLL-105to160, amcatnloFXFX; no tautau sample for
+    # 2022-23 in the lists -- negligible at 110-150
+    "*":    ["109"],
 }
-_DY_EWK = ["101"]               # EWK Z 2L2J, madgraph-herwig7
+_DY_EWK = {
+    "ggHcat": ["101"],          # EWK Z 2L2J, madgraph-herwig7
+    "VBFcat": ["98"],           # EWK Z 2Mu2J MLL-105to160, madgraph-herwig7
+}
 _BKG_OTHER = [
     "140",                      # TTto2L2Nu, powheg
     "107",                      # TTtoLNu2Q, powheg
@@ -106,15 +117,17 @@ _BKG_OTHER = [
     "201", "202", "203",        # WZto2L2Q, ZZto2L2Nu, ZZto2L2Q, powheg
     "204", "205", "206",        # WZto3LNu, ZZto4L, WWto2L2Nu, powheg
 ]
-_BKG_ALL = {era: dy + _DY_EWK + _BKG_OTHER for era, dy in _DY_QCD.items()}
-BKG_MC_TAGS = {"ggHcat": _BKG_ALL, "VBFcat": _BKG_ALL}
+BKG_MC_TAGS = {
+    cat: {era: dy + ewk + _BKG_OTHER for era, dy in _DY_QCD.items()}
+    for cat, ewk in _DY_EWK.items()
+}
 
 # the Drell-Yan subset, mcCoreFit.py's default. VBF keeps the EWK Z
 # (vector-boson fusion Z, the irreducible VBF-like DY); in ggH it is
 # negligible and left with the rest.
 BKG_DY_TAGS = {
     "ggHcat": dict(_DY_QCD),
-    "VBFcat": {era: dy + _DY_EWK for era, dy in _DY_QCD.items()},
+    "VBFcat": {era: dy + _DY_EWK["VBFcat"] for era, dy in _DY_QCD.items()},
 }
 
 # Composite years expand into the concrete eras whose snapshots exist on disk.

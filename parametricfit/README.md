@@ -93,8 +93,8 @@ reads and writes there unless `--wsdir` says otherwise.
     2025–2026 use 2024's yield per fb⁻¹ (`signal_yield_scales` in
     `fitlib/prepareFits.py`).
 - **`mcCoreFit.py`**: fits the weighted Drell–Yan MC of each bin
-  (`BKG_DY_TAGS` in `fitlib/prepareFits.py`: QCD DY, plus EWK Z in VBF)
-  over 110–150 GeV with three smooth cores, as flashgg does for ggH: 2Exp,
+  (`BKG_DY_TAGS` in `fitlib/prepareFits.py`: QCD DY, plus EWK Z in VBF,
+  from samples generated with 105 < m_μμ < 160 GeV) over 110–150 GeV with three smooth cores, as flashgg does for ggH: 2Exp,
   2Pow, and the LO DY core × (1 + Cheb3). The values are frozen; only the
   shape is used.
   - `--all-bkg-mc` fits the total background MC (`BKG_MC_TAGS`) instead.
