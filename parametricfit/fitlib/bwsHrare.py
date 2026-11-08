@@ -1,6 +1,6 @@
 #!env python
 # Copy of analysis/FITS/bwsHrare.py, for the parametricfit/ chain: run from
-# parametricfit/. --output is written into the card's shapes lines as given,
+# parametricfit/ as python -m fitlib.bwsHrare (buildWorkspace.py does). --output is written into the card's shapes lines as given,
 # and combine resolves it from where it runs, so keep it relative to here.
 import sys, os
 import re

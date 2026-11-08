@@ -22,8 +22,10 @@ OVERWRITTEN with the container-readable version.
 
 Usage (inside the Combine container, from parametricfit/)
 -----
-    python makeWorkspaces.py -c ggHcat -b incl -y 2024 --wsdir WS_2024
-    python makeWorkspaces.py -c ggHcat -b incl -y 2024 --only bkg
+    python -m fitlib.makeWorkspaces -c ggHcat -b incl -y 2024 --wsdir WS_2024
+    python -m fitlib.makeWorkspaces -c ggHcat -b incl -y 2024 --only bkg
+
+buildWorkspace.py runs it for every bin; call it directly only to debug.
 """
 
 import argparse
@@ -32,7 +34,8 @@ import os
 
 import ROOT
 
-import pdfDefinitions as pdefs
+from . import config
+from . import pdfDefinitions as pdefs
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -111,9 +114,10 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile):
     prov = rec["provenance"]
     x = observable(category, prov["window"])
 
+    mc_core = (rec.get("mc_core") or {}).get("cores")   # mc* members
     keep, store = [], ROOT.RooArgList()
     for nm in rec["envelope"]:
-        pdf, k = pdefs.create_bkg_pdf(x, tag, nm)
+        pdf, k = pdefs.create_bkg_pdf(x, tag, nm, mc_core)
         fitted = rec["candidates"][nm]["params"]
         for p in k["params"]:
             if p.GetName() not in fitted:
@@ -163,10 +167,12 @@ def main():
     ap.add_argument("-b", "--bin", default="incl",
                     help="BDT bin label, as given to sigFit/bkgFit")
     ap.add_argument("-y", "--year", default="Run3")
-    ap.add_argument("--wsdir", default="WS_LOCAL",
-                    help="where the JSONs are, and the workspaces go")
+    ap.add_argument("--wsdir", default=None,
+                    help="where the JSONs are, and the workspaces go "
+                         "(default WS_<year>)")
     ap.add_argument("--only", choices=("signal", "bkg"), default=None)
     args = ap.parse_args()
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
     # before writing anything: the workspaces must be built with Combine's classes
     if not pdefs.load_combine(quiet=True):

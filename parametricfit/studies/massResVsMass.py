@@ -50,12 +50,12 @@ and the residual oscillation in the single-DSCB pull may be partly this.
 
 Usage
 -----
-    python massResVsMass.py 2024                      # both variants
-    python massResVsMass.py 2024 --sig ggH qqH VH ttH
-    python massResVsMass.py 2024 --variant postFSR
-    python massResVsMass.py Run3 --sig ggH --category VBFcat
-    python massResVsMass.py 2024 --absolute
-    python massResVsMass.py 2024 --file <snapshot> [<snapshot> ...]
+    python -m studies.massResVsMass 2024                      # both variants
+    python -m studies.massResVsMass 2024 --sig ggH qqH VH ttH
+    python -m studies.massResVsMass 2024 --variant postFSR
+    python -m studies.massResVsMass Run3 --sig ggH --category VBFcat
+    python -m studies.massResVsMass 2024 --absolute
+    python -m studies.massResVsMass 2024 --file <snapshot> [<snapshot> ...]
 """
 
 import argparse
@@ -66,16 +66,16 @@ from datetime import datetime, timezone
 
 import ROOT
 
-import sigFit as SF
-from sigFit import git_commit, XLOW, XHIGH
-from prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
+from fitlib import config, style
+from fitlib.config import git_commit, XLOW, XHIGH
+from fitlib.prepareFits import (ROOTFILES_DIR, SELMVA, SIGNAL_TAGS,
                          SIGNAL_YEAR_GROUPS, expand_year, get_signal_files,
                          normalize_year)
 # The |eta| topology comes from fitEtaBins rather than being redefined
 # here, so BB/BE/EE mean exactly the same thing in both scripts and
 # changing ETA_EDGES changes both. Importing it is safe: everything in
 # that module is behind a __main__ guard.
-from fitEtaBins import ETA_EDGES, eta_bins
+from studies.fitEtaBins import ETA_EDGES, eta_bins
 
 ROOT.gROOT.SetBatch(True)
 ROOT.TH1.SetDefaultSumw2(True)
@@ -103,7 +103,7 @@ ABS_MAX = 6.0                        # GeV, when --absolute
 Q_LO, Q_MID, Q_HI = 0.16, 0.50, 0.84
 
 PALETTE_RGB = [
-    SF.FIT_COLOR_RGB,
+    style.FIT_COLOR_RGB,
     (31, 78, 158),
     (34, 139, 34),
     (230, 159, 0),
@@ -252,18 +252,18 @@ def color(i):
 
 
 def make_canvas(name, width=None, right=None):
-    c = ROOT.TCanvas(name, "", width or SF.CANVAS_W, SF.CANVAS_H)
-    c.SetTopMargin(SF.PAD_TOP_MARGIN)
-    c.SetBottomMargin(SF.PAD_BOTTOM_MARGIN)
-    c.SetLeftMargin(SF.PAD_LEFT_MARGIN)
-    c.SetRightMargin(SF.PAD_RIGHT_MARGIN if right is None else right)
+    c = ROOT.TCanvas(name, "", width or style.CANVAS_W, style.CANVAS_H)
+    c.SetTopMargin(style.PAD_TOP_MARGIN)
+    c.SetBottomMargin(style.PAD_BOTTOM_MARGIN)
+    c.SetLeftMargin(style.PAD_LEFT_MARGIN)
+    c.SetRightMargin(style.PAD_RIGHT_MARGIN if right is None else right)
     c.SetTickx()
     c.SetTicky()
     return c
 
 
 def cms_label(pad, year, scale=1.0):
-    """sigFit.cms_label with the "Internal" offset scaled to this pad.
+    """style.cms_label with the "Internal" offset scaled to this pad.
 
     `scale` shrinks the whole header. Returns the TLatex so the caller
     keeps it alive.
@@ -271,7 +271,7 @@ def cms_label(pad, year, scale=1.0):
     pad.cd()
     t, l, r = pad.GetTopMargin(), pad.GetLeftMargin(), pad.GetRightMargin()
     y = 1 - t + 0.2 * t
-    size = SF.CMS_TEXT_SIZE_FRAC * t * scale
+    size = style.CMS_TEXT_SIZE_FRAC * t * scale
 
     tex = ROOT.TLatex()
     tex.SetNDC()
@@ -279,23 +279,23 @@ def cms_label(pad, year, scale=1.0):
     tex.SetTextFont(61)
     tex.SetTextAlign(11)
     tex.SetTextSize(size)
-    tex.DrawLatex(l, y, SF.CMS_TEXT)
+    tex.DrawLatex(l, y, style.CMS_TEXT)
 
-    if SF.CMS_EXTRA_TEXT:
+    if style.CMS_EXTRA_TEXT:
         w = pad.GetWw() * pad.GetAbsWNDC()
         h = pad.GetWh() * pad.GetAbsHNDC()
         dx = CMS_EXTRA_OFFSET * size * min(w, h) / w if w > 0 else 0.10
         tex.SetTextFont(52)
-        tex.SetTextSize(SF.EXTRA_OVER_CMS_TEXT_SIZE * size)
-        tex.DrawLatex(l + dx, y, SF.CMS_EXTRA_TEXT)
+        tex.SetTextSize(style.EXTRA_OVER_CMS_TEXT_SIZE * size)
+        tex.DrawLatex(l + dx, y, style.CMS_EXTRA_TEXT)
 
-    lumi = SF.get_lumi(year) if year else 0.0
+    lumi = config.get_lumi(year) if year else 0.0
     tex.SetTextFont(42)
     tex.SetTextAlign(31)
-    tex.SetTextSize(SF.LUMI_TEXT_SIZE_FRAC * t * scale)
+    tex.SetTextSize(style.LUMI_TEXT_SIZE_FRAC * t * scale)
     tex.DrawLatex(1 - r, y,
-                  ("%.1f fb^{-1} (%.1f TeV)" % (lumi, SF.SQRT_S_TEV))
-                  if lumi > 0 else "(%.1f TeV)" % SF.SQRT_S_TEV)
+                  ("%.1f fb^{-1} (%.1f TeV)" % (lumi, style.SQRT_S_TEV))
+                  if lumi > 0 else "(%.1f TeV)" % style.SQRT_S_TEV)
     return tex
 
 
@@ -328,20 +328,20 @@ def header_2d(pad, year, left2="", right2=""):
     tex.SetTextFont(61)
     tex.SetTextAlign(11)
     tex.SetTextSize(HDR_CMS_SIZE)
-    tex.DrawLatex(l, y1, SF.CMS_TEXT)
-    if SF.CMS_EXTRA_TEXT:
+    tex.DrawLatex(l, y1, style.CMS_TEXT)
+    if style.CMS_EXTRA_TEXT:
         tex.SetTextFont(52)
-        tex.SetTextSize(SF.EXTRA_OVER_CMS_TEXT_SIZE * HDR_CMS_SIZE)
+        tex.SetTextSize(style.EXTRA_OVER_CMS_TEXT_SIZE * HDR_CMS_SIZE)
         tex.DrawLatex(l + CMS_EXTRA_OFFSET * HDR_CMS_SIZE * scl, y1,
-                      SF.CMS_EXTRA_TEXT)
+                      style.CMS_EXTRA_TEXT)
 
-    lumi = SF.get_lumi(year) if year else 0.0
+    lumi = config.get_lumi(year) if year else 0.0
     tex.SetTextFont(42)
     tex.SetTextAlign(31)
     tex.SetTextSize(HDR_SUB_SIZE)
     tex.DrawLatex(1 - r, y1,
-                  ("%.1f fb^{-1} (%.1f TeV)" % (lumi, SF.SQRT_S_TEV))
-                  if lumi > 0 else "(%.1f TeV)" % SF.SQRT_S_TEV)
+                  ("%.1f fb^{-1} (%.1f TeV)" % (lumi, style.SQRT_S_TEV))
+                  if lumi > 0 else "(%.1f TeV)" % style.SQRT_S_TEV)
 
     if left2:
         tex.SetTextAlign(11)
@@ -413,17 +413,17 @@ def band_graph(xs, los, his, col):
     return g
 
 
-def median_graph(xs, mids, col, style=None):
+def median_graph(xs, mids, col, marker=None):
     """Marker style defaults to sigFit's, so points match across scripts."""
-    style = SF.DATA_MARKER_STYLE if style is None else style
+    marker = style.DATA_MARKER_STYLE if marker is None else marker
     g = ROOT.TGraph(len(xs))
     for i, (xx, mm) in enumerate(zip(xs, mids)):
         g.SetPoint(i, xx, mm)
     g.SetLineColor(col)
     g.SetLineWidth(3)
     g.SetMarkerColor(col)
-    g.SetMarkerStyle(style)
-    g.SetMarkerSize(SF.DATA_MARKER_SIZE)
+    g.SetMarkerStyle(marker)
+    g.SetMarkerSize(style.DATA_MARKER_SIZE)
     return g
 
 
@@ -511,10 +511,10 @@ def plot_profile(entries, plotdir, year, label, ytit, save_pdf,
     frame.Draw()
 
     keep = [frame]
-    leg = ROOT.TLegend(SF.PAD_LEFT_MARGIN + 0.04,
-                       1 - SF.PAD_TOP_MARGIN - 0.04 - 0.05 * len(live),
-                       SF.PAD_LEFT_MARGIN + 0.40,
-                       1 - SF.PAD_TOP_MARGIN - 0.04)
+    leg = ROOT.TLegend(style.PAD_LEFT_MARGIN + 0.04,
+                       1 - style.PAD_TOP_MARGIN - 0.04 - 0.05 * len(live),
+                       style.PAD_LEFT_MARGIN + 0.40,
+                       1 - style.PAD_TOP_MARGIN - 0.04)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -538,11 +538,11 @@ def plot_profile(entries, plotdir, year, label, ytit, save_pdf,
     tex.SetNDC()
     tex.SetTextFont(42)
     tex.SetTextSize(0.026)
-    tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.40,
-                  SF.PAD_BOTTOM_MARGIN + 0.05,
+    tex.DrawLatex(1 - style.PAD_RIGHT_MARGIN - 0.40,
+                  style.PAD_BOTTOM_MARGIN + 0.05,
                   "line: median   band: 16-84%")
-    tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.40,
-                  SF.PAD_BOTTOM_MARGIN + 0.02, label)
+    tex.DrawLatex(1 - style.PAD_RIGHT_MARGIN - 0.40,
+                  style.PAD_BOTTOM_MARGIN + 0.02, label)
     keep.append(tex)
 
     keep.append(cms_label(c, year, scale=CMS_SCALE))
@@ -558,10 +558,10 @@ def plot_1d(entries, plotdir, year, label, xtit, save_pdf,
 
     c = make_canvas(f"c1d{suffix}")
     keep = []
-    leg = ROOT.TLegend(1 - SF.PAD_RIGHT_MARGIN - 0.40,
-                       1 - SF.PAD_TOP_MARGIN - 0.06 - 0.05 * len(live),
-                       1 - SF.PAD_RIGHT_MARGIN - 0.02,
-                       1 - SF.PAD_TOP_MARGIN - 0.06)
+    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.40,
+                       1 - style.PAD_TOP_MARGIN - 0.06 - 0.05 * len(live),
+                       1 - style.PAD_RIGHT_MARGIN - 0.02,
+                       1 - style.PAD_TOP_MARGIN - 0.06)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -605,9 +605,9 @@ def plot_1d(entries, plotdir, year, label, xtit, save_pdf,
     tex.SetNDC()
     tex.SetTextFont(42)
     tex.SetTextSize(0.028)
-    tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04, 0.86, label)
+    tex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04, 0.86, label)
     tex.SetTextSize(0.024)
-    tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04, 0.82,
+    tex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04, 0.82,
                   "dashed: median")
     keep.append(tex)
 
@@ -695,10 +695,10 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
     keep = []
 
     ymax = max(h.GetMaximum() for _, h, _ in drawn)
-    leg = ROOT.TLegend(1 - SF.PAD_RIGHT_MARGIN - 0.46,
-                       1 - SF.PAD_TOP_MARGIN - 0.06 - 0.05 * len(sl),
-                       1 - SF.PAD_RIGHT_MARGIN - 0.02,
-                       1 - SF.PAD_TOP_MARGIN - 0.06)
+    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.46,
+                       1 - style.PAD_TOP_MARGIN - 0.06 - 0.05 * len(sl),
+                       1 - style.PAD_RIGHT_MARGIN - 0.02,
+                       1 - style.PAD_TOP_MARGIN - 0.06)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -738,7 +738,7 @@ def plot_mass_slices(entry, plotdir, year, label, xtit, save_pdf,
         lines.append(f"|#eta| topology: {entry['eta']}")
     lines.append("dashed: median")
     for i, ln_ in enumerate(lines):
-        tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln_)
+        tex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04, 0.86 - i * dy, ln_)
     keep.append(tex)
 
     keep.append(cms_label(c, year, scale=CMS_SCALE))
@@ -802,11 +802,11 @@ def plot_eta_dist(entries, plotdir, year, label, xtit, save_pdf,
             ymax = max(h.GetMaximum() for _, h, _, _, _ in curves)
             c = make_canvas(f"cetad_{sig}_{vkey}")
             keep = []
-            leg = ROOT.TLegend(1 - SF.PAD_RIGHT_MARGIN - 0.44,
-                               1 - SF.PAD_TOP_MARGIN - 0.06
+            leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.44,
+                               1 - style.PAD_TOP_MARGIN - 0.06
                                - 0.048 * len(curves),
-                               1 - SF.PAD_RIGHT_MARGIN - 0.02,
-                               1 - SF.PAD_TOP_MARGIN - 0.06)
+                               1 - style.PAD_RIGHT_MARGIN - 0.02,
+                               1 - style.PAD_TOP_MARGIN - 0.06)
             leg.SetBorderSize(0)
             leg.SetFillStyle(0)
             leg.SetTextFont(42)
@@ -837,7 +837,7 @@ def plot_eta_dist(entries, plotdir, year, label, xtit, save_pdf,
             lines = [f"{sig}, {label.split(',')[0].strip()}",
                      rows[0][1]["desc"]]
             for k, ln_ in enumerate(lines):
-                tex.DrawLatex(SF.PAD_LEFT_MARGIN + 0.04,
+                tex.DrawLatex(style.PAD_LEFT_MARGIN + 0.04,
                               0.86 - k * 0.042, ln_)
             keep.append(tex)
 
@@ -884,11 +884,11 @@ def plot_eta_compare(entries, plotdir, year, label, ytit, save_pdf):
         frame.Draw()
         keep = [frame]
 
-        leg = ROOT.TLegend(SF.PAD_LEFT_MARGIN + 0.04,
-                           1 - SF.PAD_TOP_MARGIN - 0.04
+        leg = ROOT.TLegend(style.PAD_LEFT_MARGIN + 0.04,
+                           1 - style.PAD_TOP_MARGIN - 0.04
                            - 0.048 * (len(rows) + (1 if incl else 0)),
-                           SF.PAD_LEFT_MARGIN + 0.44,
-                           1 - SF.PAD_TOP_MARGIN - 0.04)
+                           style.PAD_LEFT_MARGIN + 0.44,
+                           1 - style.PAD_TOP_MARGIN - 0.04)
         leg.SetBorderSize(0)
         leg.SetFillStyle(0)
         leg.SetTextFont(42)
@@ -921,11 +921,11 @@ def plot_eta_compare(entries, plotdir, year, label, ytit, save_pdf):
         tex.SetNDC()
         tex.SetTextFont(42)
         tex.SetTextSize(0.026)
-        tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.42,
-                      SF.PAD_BOTTOM_MARGIN + 0.05,
+        tex.DrawLatex(1 - style.PAD_RIGHT_MARGIN - 0.42,
+                      style.PAD_BOTTOM_MARGIN + 0.05,
                       "line: median   band: 16-84%")
-        tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.42,
-                      SF.PAD_BOTTOM_MARGIN + 0.02, f"{label}, {vkey}")
+        tex.DrawLatex(1 - style.PAD_RIGHT_MARGIN - 0.42,
+                      style.PAD_BOTTOM_MARGIN + 0.02, f"{label}, {vkey}")
         keep.append(tex)
 
         keep.append(cms_label(c, year, scale=CMS_SCALE))
@@ -976,10 +976,10 @@ def plot_fsr_compare(entries, plotdir, year, label, ytit, save_pdf):
     frame.Draw()
     keep = [frame]
 
-    leg = ROOT.TLegend(SF.PAD_LEFT_MARGIN + 0.04,
-                       1 - SF.PAD_TOP_MARGIN - 0.04 - 0.048 * (2 * len(pairs)),
-                       SF.PAD_LEFT_MARGIN + 0.46,
-                       1 - SF.PAD_TOP_MARGIN - 0.04)
+    leg = ROOT.TLegend(style.PAD_LEFT_MARGIN + 0.04,
+                       1 - style.PAD_TOP_MARGIN - 0.04 - 0.048 * (2 * len(pairs)),
+                       style.PAD_LEFT_MARGIN + 0.46,
+                       1 - style.PAD_TOP_MARGIN - 0.04)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -1004,11 +1004,11 @@ def plot_fsr_compare(entries, plotdir, year, label, ytit, save_pdf):
     tex.SetNDC()
     tex.SetTextFont(42)
     tex.SetTextSize(0.026)
-    tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.44,
-                  SF.PAD_BOTTOM_MARGIN + 0.05,
+    tex.DrawLatex(1 - style.PAD_RIGHT_MARGIN - 0.44,
+                  style.PAD_BOTTOM_MARGIN + 0.05,
                   "dashed: before FSR   solid: after FSR")
-    tex.DrawLatex(1 - SF.PAD_RIGHT_MARGIN - 0.44,
-                  SF.PAD_BOTTOM_MARGIN + 0.02, label)
+    tex.DrawLatex(1 - style.PAD_RIGHT_MARGIN - 0.44,
+                  style.PAD_BOTTOM_MARGIN + 0.02, label)
     keep.append(tex)
 
     keep.append(cms_label(c, year, scale=CMS_SCALE))
@@ -1028,7 +1028,7 @@ def main():
         if not hasattr(ROOT, args.palette):
             raise SystemExit(f"ROOT has no palette named {args.palette}")
         MAP_PALETTE = getattr(ROOT, args.palette)
-    SF.setup_style()
+    style.setup_style()
     year = normalize_year(args.year)
 
     if args.file and len(args.sig) > 1:
