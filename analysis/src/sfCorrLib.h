@@ -290,7 +290,8 @@ MyCorrections::MyCorrections(int year) {
 double MyCorrections::eval_jetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc) {
 
   // add clipping everywhere (is done only in some era in correctionLib)
-  pt = std::max(pt,30.000);
+  // pt = std::max(pt,30.000);
+  // "the JME recipe" say to apply to 2024 and only eta:[2-2.5]
 
   if (year == "22023" or year == "2024" or year == "2025" or year == "2026") {
     if(isData) return JECdata_->evaluate({area, eta,  pt, rho, phi, (float) run});
