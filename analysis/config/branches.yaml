@@ -88,6 +88,8 @@ per_mode:
     - nGoodJetsAll
     - Jet1_Pt
     - Jet1_Eta
+    - Muon1_charge
+    - Muon2_charge
 
   isZinv:
     - Muon1_phi

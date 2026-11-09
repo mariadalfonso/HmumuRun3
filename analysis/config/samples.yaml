@@ -83,7 +83,7 @@ periods:
 #  cross-sections so they can be checked and updated in one place.
 # ---------------------------------------------------------------------
 branching_ratios:
-  H_to_mumu: 0.00022                       # BR(H->mumu)
+  H_to_mumu: 0.000218                      # BR(H->mumu)
   H_to_Zgamma: 0.0015                      # BR(H->Z gamma)
   H_to_WW: 0.2137                          # BR(H->WW)
   W_to_lnu: 0.325                          # BR(W->l nu), summed over 3 flavours
@@ -111,9 +111,10 @@ xsecs:
     TTH: 570
     ggZH: 217.09                       # from xsecDB
     bbH: 568                           # 0.568 /pb
-    Z: 6244800                         # TO USE TURBO XSECION 6244.8
+    Z: 6244800                         # TO USE TURBO XSECION 6244.8 (3 lepton flavour)
     EWKZ: 1710                         # TEMP: placeholder for now from Andrea
-    W: 67710000
+    W: 67710000                        # compatible with 3 flavour and 2 charges
+    DYlowmass: 21190000                # DY MLL 10-50, 3 lepton flavour
     EWKW: 91480
     TT2l2n: 96978                      # needed the 2L BR (NNLO)
     TTln: 404536.8
@@ -181,7 +182,9 @@ groups:
   ttgamma_v12: [246, 247, 248]
   # mode-dependent extras (training, systematic variations), see getMCList
   wjets: [129]
-  wjets_mu: [130]
+  wjets_mu: [130, 132]
+  dy_lowmass: [133]
+  dy_lowmass_mu: [134]
   ttbar_2l_training: [141, 142]
   vv_amcnlo: [208, 209, 210, 211, 212]
   vv_amcnlo_2024: [207]                   # 207 still missing outside 2024
@@ -349,6 +352,17 @@ samples:
   131:
     path: "{ceph}/{year}/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8/NANOAODSIM/{campaign}"
     xsec: {ref: EWKW}
+  132:
+    path: "{ceph}/{year}/WtoTauNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/NANOAODSIM/{campaign}"
+    xsec: {ref: W, br: one_lepton_flavour}
+
+  # --- Drell-Yan, MLL 10-50 ---
+  133:
+    path: "{ceph}/{year}/DYto2L-2Jets_MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/NANOAODSIM/{campaign}"
+    xsec: {ref: DYlowmass}
+  134:
+    path: "{ceph}/{year}/DYto2Mu-2Jets_Bin-MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/NANOAODSIM/{campaign}"
+    xsec: {ref: DYlowmass, br: one_lepton_flavour}
 
   # --- Drell-Yan (EWK) ---
   101:
