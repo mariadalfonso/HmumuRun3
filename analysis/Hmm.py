@@ -179,7 +179,6 @@ def doCategories(df,mc,year):
     if (mode == "isVlep" or mode == "isTTlep"): eleSel = selections["GOODelectronsTTH24"]
 
     pairingModeVL = "MuonPairMode::Chi2"
-    if doSynch: pairingModeVL = "MuonPairMode::LeadingPt"
 
     #fix the muonPT it's 25 GeV for the one triggered
     df = (df.Define("fsrIdx_mu","pickFsrForMuons(Muon_fsrPhotonIdx, Muon_pt, FsrPhoton_pt, FsrPhoton_dROverEt2, FsrPhoton_relIso03)")
