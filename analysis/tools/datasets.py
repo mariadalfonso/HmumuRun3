@@ -264,7 +264,7 @@ def getMCList(year, mode):
     mc += g("top_other")
 
     if mode == "isGGH":
-        mc += g("wjets_mu") if is_2024 else g("wjets")
+        mc += g("wjets_mu") + g("dy_lowmass_mu") if is_2024 else g("wjets") + g("dy_lowmass")
 
     # training samples and systematic variations
     if mode in ("isTThad", "isTTlep", "isZinv", "isVhad"):

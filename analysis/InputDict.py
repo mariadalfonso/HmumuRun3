@@ -35,8 +35,8 @@ def myMCdatasets(year,mode):
     mc.extend([107,105,106]) # tt1l, tW
 
     if mode == "isGGH":
-        if year=="2024": mc.extend([130])  # Wjets
-        else: mc.extend([129])
+        if year=="2024": mc.extend([130,132,134])  # Wjets and DY10-50
+        else: mc.extend([129,133])
 
     # below for training
     if mode == "isTThad" or mode == "isTTlep" or mode == "isZinv" or mode == "isVhad": mc.extend([141,142]) # extra TTbar (2024 not there yet)
@@ -104,7 +104,7 @@ xsecRun2={
 # top BR https://pdg.lbl.gov/2017/reviews/rpp2017-rev-top-quark.pdf
 # SM https://twiki.cern.ch/twiki/bin/viewauth/CMS/MATRIXCrossSectionsat13p6TeV
 
-BRHmm = 0.00022
+BRHmm = 0.000218
 BRHZg = 0.0015
 BRH2W2L = 0.2137
 
@@ -119,9 +119,9 @@ xsecRun3={
     'bbH':568, # 0.568 /pb
     ###
 #    'Z':6688.0*1000,
-    'Z':6244.8*1000, # TO USE TURBO XSECION 6244.8
+    'Z':6244.8*1000, # TO USE TURBO XSECION 6244.8 (3 lepton flavor)
     'EWKZ':1.71*1000, # TEMP: placeholder for now from Andrea
-    'W':67710.0*1000,
+    'W':67710.0*1000, # compatible with 3 flavour and 2 charges
     'EWKW':91.48*1000,
     'TT2l2n':923.6*1000*0.105, # needed the 2L BR (NNLO)
     'TTln':923.6*1000*0.438,
@@ -292,6 +292,9 @@ def BuildDict(year):
         129: (findDIR(path("/WtoLNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['W']),
         130: (findDIR(path("/WtoMuNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['W']*1./3),
         131: (findDIR(path("/WtoLNu-2Jets-EWK_TuneCP5_13p6TeV_madgraph-pythia8")),xsecRun3['EWKW']),
+        132: (findDIR(path("/WtoTauNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),xsecRun3['W']*1./3),
+        133: (findDIR(path("/DYto2L-2Jets_MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),21190*1000),
+        134: (findDIR(path("/DYto2Mu-2Jets_Bin-MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8")),21190*1000*1./3),
         ## DY-EWK
         101: (findDIR(path("/EWK*2L2J_*TuneCH3_13p6TeV_madgraph-herwig7")),xsecRun3['EWKZ']),  # 1.3 ?? from Filippo ? 
         99:  (findDIR(path("/EWK-2Mu2J*M2Mu-105to160*M2J-120_TuneCP5_13p6TeV_madgraph-pythia8")),0.06443*1000), # pythia8 i.e. dipole ? (# 0.052 ?? from Filippo ) 

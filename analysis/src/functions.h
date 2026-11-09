@@ -843,7 +843,12 @@ PairingResult findBestZHCombo(const Vec_f& pts, const Vec_f& etas, const Vec_f& 
 
 }
 
-stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const std::string mode, const Vec_f& mts){
+enum class MuonPairMode {
+  Chi2,
+  LeadingPt
+};
+
+stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, const Vec_f& charges, const Vec_f& ptErrs, const std::string mode, const Vec_f& mts, MuonPairMode modePair){
 
   stdVec_i idx_(2, -1);
 
@@ -859,7 +864,7 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
     idx_[0]=0;
     idx_[1]=1;
 
-  } else if (n == 3 and (mode=="isVlep" or mode=="isTTlep")) {
+  } else if (n == 3 and (mode=="isVlep" or mode=="isTTlep") and modePair == MuonPairMode::Chi2) {
     // target W-->munu and H-->mumu
 
     auto result = findBestWHCombo(pts, etas, phis, charges, ptErrs, mts);
@@ -869,7 +874,7 @@ stdVec_i getMuonIndices(const Vec_f& pts, const Vec_f& etas, const Vec_f& phis, 
       idx_[1] = result.Hpair.j;
     }
 
-  } else if (n == 4 and mode=="isVlep") {
+  } else if (n == 4 and mode=="isVlep" and modePair == MuonPairMode::Chi2) {
     // target Z-->mumu and H--> mumu
 
     auto result = findBestZHCombo(pts, etas, phis, charges, ptErrs);
