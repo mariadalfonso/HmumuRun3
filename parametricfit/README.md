@@ -23,7 +23,7 @@ Run everything from `parametricfit/`.
 | where | what |
 |---|---|
 | top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
@@ -33,12 +33,22 @@ Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
 **1. Fits** (conda)
 ```bash
 python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
-python mcCoreFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
 for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3; done
 ```
-`mcCoreFit.py` is optional: without its output `bkgFit.py` prints a note and
-leaves out the `mcexp`/`mcpow`/`mcdy` families (`--no-mc-core` also does).
-Look for `CHECK THIS FIT` / `<-- check` in the output.
+By default `bkgFit.py` fits the background families of the Run 2 analysis
+note (Sec. 5.3, eqs. 5.1–5.11; `RUN2_FAMILIES` in `fitlib/pdfDefinitions.py`),
+every parameter on data. `--extra-models` adds the families beyond it
+(`EXTRA_FAMILIES`): `dyexp`/`dypow`, and `mcexp`/`mcpow`/`mcdy` once
+`mcCoreFit.py` has run:
+```bash
+python mcCoreFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
+for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3 --extra-models; done
+```
+Both write `WS_<year>/Bkg_<tag>_params.json`; to keep the two side by side,
+give one of them its own `--wsdir` (and the signal there: `sigFit.py
+--wsdir`), and `biasStudy.py` its own `--carddir` and `--outdir`, since it
+skips toy jobs whose output already exists. Look for `CHECK THIS FIT` /
+`<-- check` in the output.
 
 **2. Cards and workspace** (container)
 ```bash
@@ -96,16 +106,31 @@ reads and writes there unless `--wsdir` says otherwise.
   (`BKG_DY_TAGS` in `fitlib/prepareFits.py`: QCD DY, plus EWK Z in VBF,
   from samples generated with 105 < m_μμ < 160 GeV) over 110–150 GeV with three smooth cores, as flashgg does for ggH: 2Exp,
   2Pow, and the LO DY core × (1 + Cheb3). The values are frozen; only the
-  shape is used.
+  shape is used, and only by `bkgFit.py --extra-models`.
   - `--all-bkg-mc` fits the total background MC (`BKG_MC_TAGS`) instead.
   - A core is frozen only if it passes a goodness-of-fit test against the
     MC: χ² with bins merged to ~9 effective entries each, p > 0.01 (the
     same test and cut as `bkgFit.py` on data, `fitlib/gof.py`). A bin with
     too little MC to test gets no MC cores.
-- **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV) with
-  Bernstein, exponential and power-law sums, with a Drell–Yan core
-  times exp(Chebyshev) or a power law (`dyexp`, `dypow`), and with each
-  frozen MC core times exp(Chebyshev) (`mcexp`, `mcpow`, `mcdy`).
+- **`bkgFit.py`**: fits the sidebands (110–120 and 130–150 GeV). By
+  default with the families of the Run 2 note, Sec. 5.3, every parameter
+  floating on data:
+  - eqs. 5.1–5.4 (`fitlib/bwz.py`): BWZ and BWZ × Bernstein as one nested
+    family (`bwz`, `bwzbern1`–`4`), `bwzgamma`, `bwzredux`;
+  - eq. 5.5 (`fitlib/fewz.py`): FEWZ × Bernstein (`fewzbern1`–`4`). The
+    FEWZ spline (`fitlib/fewz_spline.root`, copied from flashggFinalFit)
+    is fixed; the Bernstein coefficients float;
+  - eqs. 5.6–5.8: Bernstein, exponential and power-law sums (`bern`,
+    `exp`, `pow`);
+  - eqs. 5.9–5.11 (`fitlib/agnostic.py`): exponential + constant,
+    power law + constant, Landau × Bernstein (`expconst`, `powconst`,
+    `landau`, `landbern1`–`4`).
+
+  `--extra-models` adds the LO Drell–Yan core times exp(Chebyshev) or a
+  power law (`dyexp`, `dypow`), and each frozen MC core times
+  exp(Chebyshev) (`mcexp`, `mcpow`, `mcdy`).
+  - The order of each family, the goodness-of-fit cut and the envelope
+    are ours; the Run 2 note excerpt only asks for χ²/dof ≈ 1.
   - The F-test picks one order per family; a goodness-of-fit cut builds the
     envelope. Failed fits are dropped.
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
@@ -149,6 +174,13 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `--wsdir` (default `WS_<year>`), `--plotdir`, `--pdf`.
 - `--no-freeze`: leave the shape floating.
 - `--selftest`: closure test.
+
+**`bkgFit.py`**
+- `-c`, `-b`, `-y`, `--wsdir` (default `WS_<year>`), `--plotdir`, `--pdf`.
+- `--extra-models`: add `dyexp`/`dypow` and, with `mcCoreFit.py`'s
+  output, `mcexp`/`mcpow`/`mcdy` to the Run 2 families.
+- `--candidates`: fit exactly these members instead.
+- `--mc-core`, `--no-mc-core` (with `--extra-models`), `--bins-per-gev`.
 
 **`buildWorkspace.py`**: `-c`, `-b`, `-y`, `--wsdir` (default `WS_<year>`),
 `--name`, `--dry-run`.

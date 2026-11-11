@@ -3,7 +3,7 @@ import ROOT
 from ROOT import RooRealVar, RooBernstein
 from ROOT import RooExponential, RooAddPdf, RooGenericPdf, RooArgList, RooFormulaVar
 
-from . import dyCore, mcCore
+from . import agnostic, bwz, dyCore, fewz, mcCore
 
 class PDFDefinitions:
     """Centralized PDF definitions for signal and background fits"""
@@ -135,6 +135,22 @@ class PDFDefinitions:
         pdfs.update(dy_pdfs)
         params.update(dy_params)
 
+        # ===== BREIT-WIGNER Z PDFs, Run 2 note eqs. 5.1-5.4 (bwz.py) =====
+        bw_pdfs, bw_params = bwz.create_pdfs(x, tag)
+        pdfs.update(bw_pdfs)
+        params.update(bw_params)
+
+        # ===== FEWZ SPLINE x BERNSTEIN, Run 2 note eq. 5.5 (fewz.py) =====
+        fz_pdfs, fz_params = fewz.create_pdfs(x, tag)
+        pdfs.update(fz_pdfs)
+        params.update(fz_params)
+
+        # ===== EXP/POW + CONSTANT, LANDAU x BERNSTEIN, Run 2 note
+        # eqs. 5.9-5.11 (agnostic.py) =====
+        ag_pdfs, ag_params = agnostic.create_pdfs(x, tag)
+        pdfs.update(ag_pdfs)
+        params.update(ag_params)
+
         # ===== MC-TUNED CORE x CORRECTION PDFs (mcCore.py) =====
         if mc_core:
             mc_pdfs, mc_params = mcCore.create_pdfs(x, tag, mc_core)
@@ -176,6 +192,9 @@ BKG_NPAR = {
     **{f"exp{n}": 2 * n - 1 for n in (1, 2, 3)},
     **{f"pow{n}": 2 * n - 1 for n in (1, 2, 3)},
     **dyCore.NPAR,
+    **bwz.NPAR,
+    **fewz.NPAR,
+    **agnostic.NPAR,
     **mcCore.NPAR,                      # only with an MC core file
 }
 
@@ -185,8 +204,29 @@ BKG_FAMILIES = {
     "exponential": [f"exp{n}" for n in (1, 2, 3)],
     "power": [f"pow{n}" for n in (1, 2, 3)],
     **dyCore.FAMILIES,                  # dyexp, dypow
+    **bwz.FAMILIES,                     # bwzbern, bwzgamma, bwzredux
+    **fewz.FAMILIES,                    # fewzbern
+    **agnostic.FAMILIES,                # expconst, powconst, landbern
     **mcCore.FAMILIES,                  # mcexp, mcpow, mcdy
 }
+
+# The default candidates of bkgFit.py: the families of the Run 2 H->mumu
+# analysis note, Sec. 5.3, the physics-inspired 5.1-5.5 and the agnostic
+# 5.6-5.11. Every parameter floats on data; FEWZ is the only fixed input.
+RUN2_FAMILIES = [
+    "bwzbern", "bwzgamma", "bwzredux", "fewzbern",          # 5.1-5.5
+    "bernstein", "exponential", "power",                    # 5.6-5.8
+    "expconst", "powconst", "landbern",                     # 5.9-5.11
+]
+# Beyond the Run 2 note, added by bkgFit.py --extra-models: the LO DY core
+# x a data correction, and the cores tuned to MC (mcCoreFit.py) x exp(Cheb).
+EXTRA_FAMILIES = [*dyCore.FAMILIES, *mcCore.FAMILIES]
+assert sorted(RUN2_FAMILIES + EXTRA_FAMILIES) == sorted(BKG_FAMILIES)
+
+
+def family_members(families):
+    """Every candidate of the given BKG_FAMILIES, in order."""
+    return [nm for fam in families for nm in BKG_FAMILIES[fam]]
 
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
               "libHiggsAnalysisCombinedLimit.so"

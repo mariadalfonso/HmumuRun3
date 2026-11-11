@@ -85,7 +85,13 @@ FAMILY_LABEL = {"bern": "Bernstein", "exp": "exponential sum",
                 "dypow": "DY #times power law",
                 "mcexp": "MC 2Exp #times exp(Chebyshev)",
                 "mcpow": "MC 2Pow #times exp(Chebyshev)",
-                "mcdy": "MC DY core #times exp(Chebyshev)"}
+                "mcdy": "MC DY core #times exp(Chebyshev)",
+                "bwz": "BWZ", "bwzbern": "BWZ #times Bernstein",
+                "bwzgamma": "BWZGamma", "bwzredux": "BWZRedux",
+                "fewzbern": "FEWZ #times Bernstein",
+                "expconst": "exponential + constant",
+                "powconst": "power law + constant",
+                "landau": "Landau", "landbern": "Landau #times Bernstein"}
 
 # r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
 # that the 1 sigma interval of a toy never reaches the edge; --algo singles

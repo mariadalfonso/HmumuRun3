@@ -13,11 +13,15 @@ The full-range data is saved in the workspace as `datahist_<tag>` for the observ
 Model selection
 ---------------
 
-  1. F-test within each nested family (bernstein, exponential, power,
-     the DY-core families dyexp and dypow, and -- when mcCoreFit.py has
-     written MCcore_<tag>.json -- the MC-tuned-core families mcexp, mcpow
-     and mcdy; BKG_FAMILIES in pdfDefinitions.py): take the lowest order
-     where adding the next parameter is not justified at p < F_THRESHOLD.
+  1. F-test within each nested family: take the lowest order where
+     adding the next parameter is not justified at p < F_THRESHOLD.
+     The families are those of the Run 2 analysis note, Sec. 5.3
+     (RUN2_FAMILIES in pdfDefinitions.py): BWZ x Bernstein, BWZGamma,
+     BWZRedux, FEWZ x Bernstein, Bernstein, exponential and power-law
+     sums, exponential / power law + constant, Landau x Bernstein.
+     --extra-models adds EXTRA_FAMILIES: the DY-core families dyexp and
+     dypow and -- when mcCoreFit.py has written MCcore_<tag>.json -- the
+     MC-tuned-core families mcexp, mcpow and mcdy.
   2. Goodness-of-fit across families: keep every family's choice whose
      chi2 p-value exceeds GOF_THRESHOLD.
   3. Order the survivors by penalised NLL, NLL + 0.5 * npar, as Combine
@@ -468,23 +472,38 @@ def main():
                     help="BDT bin label; pass \"\" to reproduce the "
                          "double-underscore tag the existing datacards use")
     ap.add_argument("-y", "--year", default="Run3")
+    ap.add_argument("--extra-models", action="store_true",
+                    help="add the families beyond the Run 2 note "
+                         "(EXTRA_FAMILIES in pdfDefinitions): dyexp, "
+                         "dypow, and mcexp/mcpow/mcdy if mcCoreFit.py "
+                         "has run")
     ap.add_argument("--candidates", nargs="+", default=None,
-                    help="restrict the candidate list (default: all in "
-                         "pdfDefinitions)")
+                    help="fit exactly these members instead (overrides "
+                         "--extra-models)")
     ap.add_argument("--wsdir", default=None,
                     help="fit JSONs and workspaces (default WS_<year>)")
     ap.add_argument("--mc-core", default=None,
                     help="frozen MC cores from mcCoreFit.py (default "
                          "<wsdir>/MCcore_<tag>.json, if it exists)")
     ap.add_argument("--no-mc-core", action="store_true",
-                    help="leave out the mcexp/mcpow/mcdy families")
-    ap.add_argument("--plotdir",
-                    default=os.path.expanduser(
-                        "~/public_html/HmumuFits/bkg_fits"))
+                    help="with --extra-models: leave out the "
+                         "mcexp/mcpow/mcdy families")
+    ap.add_argument("--plotdir", default=None,
+                    help="default ~/public_html/HmumuFits/bkg_fits")
     ap.add_argument("--pdf", action="store_true")
     ap.add_argument("--bins-per-gev", type=float, default=None)
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
+    args.plotdir = args.plotdir or os.path.expanduser(
+        "~/public_html/HmumuFits/bkg_fits")
+    if args.candidates:
+        model_set = "candidates"
+    elif args.extra_models:
+        model_set = "run2+extra"
+    else:
+        model_set = "run2"
+    # the MC cores only matter when mc* members can be asked for
+    use_mc = model_set != "run2" and not args.no_mc_core
 
     style.setup_style()
     if args.bins_per_gev:
@@ -521,7 +540,10 @@ def main():
     # ---- MC-tuned cores (mcCoreFit.py) ---------------------------------
     mc_file = args.mc_core or os.path.join(args.wsdir, f"MCcore_{tag}.json")
     mc_core = None
-    if args.no_mc_core:
+    if model_set == "run2":
+        print("\nMC cores : not used (Run 2 families; --extra-models "
+              "adds the MC-tuned cores)")
+    elif not use_mc:
         print("\nMC cores : off (--no-mc-core)")
     elif os.path.isfile(mc_file):
         with open(mc_file) as fh:
@@ -538,7 +560,13 @@ def main():
     def available(nm):
         return not mcCore.is_member(nm) or \
             nm.rstrip("0123456789") in (mc_core or {})
-    names = args.candidates or sorted(pdefs.BKG_NPAR)
+    if args.candidates:
+        names = args.candidates
+    elif args.extra_models:
+        names = pdefs.family_members(pdefs.RUN2_FAMILIES
+                                     + pdefs.EXTRA_FAMILIES)
+    else:
+        names = pdefs.family_members(pdefs.RUN2_FAMILIES)
     absent = [nm for nm in names if not available(nm)]
     if args.candidates and absent:
         raise SystemExit(f"no MC core for {absent}; run mcCoreFit.py")
@@ -663,6 +691,7 @@ def main():
             "blind_region": [SR_LO, SR_HI],
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
             "nll_penalty_per_par": NLL_PENALTY_PER_PAR,
+            "model_set": model_set,
             "observable": x.GetName(), "data_file": os.path.basename(datafile),
         },
         "data": {"n_full": n_full, "n_sideband": n_sb,
@@ -690,6 +719,10 @@ def main():
     print(f"wrote {jf}")
     print(f"plots {outbase}_envelope.png")
     bin_arg = args.bin or '""'
+    sig = os.path.join(args.wsdir, f"Signal_{tag}_params.json")
+    if not os.path.isfile(sig):
+        print(f"\nnote: {sig} is missing; buildWorkspace.py needs it "
+              f"(sigFit.py --wsdir {args.wsdir})")
     print(f"\nnext, inside the Combine container:\n  python buildWorkspace.py "
           f"-c {args.category} -b {bin_arg} -y {args.year} "
           f"--wsdir {args.wsdir}")
