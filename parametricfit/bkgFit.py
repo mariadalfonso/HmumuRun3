@@ -14,7 +14,11 @@ Model selection
 ---------------
 
   1. F-test within each nested family: take the lowest order where
-     adding the next parameter is not justified at p < F_THRESHOLD.
+     adding the next parameter is not justified at p < F_THRESHOLD. Each
+     order is fitted from its default start and from the fit of the order
+     below (seed_values); the better one is kept, so a higher order does
+     not lose to a local minimum. A failed fit (status != 0) ends its
+     family: the order below it is kept.
      The families are those of the Run 2 analysis note, Sec. 5.3
      (RUN2_FAMILIES in pdfDefinitions.py): BWZ x Bernstein, BWZGamma,
      BWZRedux, FEWZ x Bernstein, Bernstein, exponential and power-law
@@ -172,8 +176,13 @@ def full_yield(n_sb, fit):
 # fitting
 # ---------------------------------------------------------------------------
 
-def fit_candidate(x, data, name, tag, sb_range, mc_core=None):
+def fit_candidate(x, data, name, tag, sb_range, mc_core=None, seed=None):
     """Fit one candidate on the sideband only.
+
+    seed: {parameter name: value}, a second start (seed_values: the fit of
+    the order below, carried over). The fit is run from the default start
+    and, if given, from the seed; the better result is kept (status 0
+    first, then the lower NLL). `start` records which one it was.
 
     Returns a dict with the masked NLL (for the F-test), the sideband
     chi2 and its p-value (for the GOF cut), and the fraction of the PDF
@@ -181,6 +190,7 @@ def fit_candidate(x, data, name, tag, sb_range, mc_core=None):
     """
     pdf, keep = pdefs.create_bkg_pdf(x, tag, name, mc_core)
     npar = pdefs.BKG_NPAR[name]
+    pars = keep["params"]
 
     opts = [ROOT.RooFit.Minimizer("Minuit2"), ROOT.RooFit.Strategy(2),
             ROOT.RooFit.Save(True),
@@ -190,8 +200,35 @@ def fit_candidate(x, data, name, tag, sb_range, mc_core=None):
             ROOT.RooFit.SumW2Error(True),
             ROOT.RooFit.PrintLevel(-1),
             ROOT.RooFit.PrintEvalErrors(-1)]
-    pdf.fitTo(data, *opts)
-    res = pdf.fitTo(data, *opts)
+    def run():
+        pdf.fitTo(data, *opts)
+        return pdf.fitTo(data, *opts)
+
+    def state():
+        return {p.GetName(): (p.getVal(), p.getError()) for p in pars}
+
+    def load(vals):
+        for p in pars:
+            if p.GetName() in vals:
+                v, e = vals[p.GetName()]
+                p.setVal(min(max(v, p.getMin()), p.getMax()))
+                if e is not None:
+                    p.setError(e)
+
+    def rank(r):
+        return (r.status() != 0, r.minNll())
+
+    init = state()
+    res, start = run(), "default"
+    if seed:
+        kept = state()
+        load(init)
+        load({k: (v, None) for k, v in seed.items()})
+        res_seed = run()
+        if rank(res_seed) < rank(res):
+            res, start = res_seed, "seeded"
+        else:
+            load(kept)
 
     # sideband fraction: what part of the PDF lies in the sideband once
     # normalised over the full range. Needed to turn the observed sideband
@@ -206,7 +243,7 @@ def fit_candidate(x, data, name, tag, sb_range, mc_core=None):
               for p in keep["params"]}
 
     return {"name": name, "pdf": pdf, "keep": keep, "npar": npar,
-            "params": params,
+            "params": params, "start": start,
             "nll": res.minNll(), "status": res.status(),
             "cov_qual": res.covQual(), "edm": res.edm(),
             "sb_fraction": itg_sb, "result": res}
@@ -258,20 +295,78 @@ def sideband_chi2(x, h, pdf, sb_idx, norm_full, npar, threshold=None):
             "chi2_threshold": threshold}
 
 
-def ftest(fits, family):
+# Bernstein-type families: the prefix of their coefficient names. c0 is
+# fixed to 1 and has no parameter; c1..cn are <prefix><k>_<tag>.
+BERN_COEF = {"bernstein": "bern_c", "bwzbern": "bwzbern_c",
+             "fewzbern": "fewzbern_c", "landbern": "landbern_c"}
+# sums of exponentials / power laws: the fraction that keeps the components
+# of the order below (<name><tag>, no underscore), per member
+SUM_FRAC = {"exp2": "exp_c1", "exp3": "exp_c2",
+            "pow2": "frac1", "pow3": "frac2"}
+SEED_FRAC = 0.99
+
+
+def lower_order():
+    """{member: the order below it in its family}, from BKG_FAMILIES."""
+    return {hi: (fam, lo) for fam, mem in pdefs.BKG_FAMILIES.items()
+            for lo, hi in zip(mem, mem[1:])}
+
+
+def seed_values(name, family, prev, tag):
+    """A start for `name` at the fit of `prev`, the order below it.
+
+    Parameters the two share keep prev's fitted values. Then, per family:
+      Bernstein types   degree elevation, c'_k = k/(n+1) c_(k-1)
+                        + (1 - k/(n+1)) c_k: the same polynomial, so the
+                        start reproduces prev exactly;
+      exp / pow sums    the components of prev keep SEED_FRAC of the
+                        weight, the new one starts at its default: close to
+                        prev, but not at the stationary point an exact copy
+                        (new exponent = old) would sit on;
+      dy* / mc*         the new coefficient at its default 0 is exact.
+    """
+    vals = {n: p["value"] for n, p in prev["params"].items()}
+    if family in BERN_COEF:
+        pre = BERN_COEF[family]
+        n = 0
+        while f"{pre}{n + 1}_{tag}" in vals:
+            n += 1
+        b = [1.0] + [vals[f"{pre}{k}_{tag}"] for k in range(1, n + 1)]
+        for k in range(1, n + 2):
+            r = k / (n + 1)
+            vals[f"{pre}{k}_{tag}"] = (r * b[k - 1]
+                                       + (1 - r) * (b[k] if k <= n else 0.0))
+    elif name in SUM_FRAC:
+        vals[f"{SUM_FRAC[name]}{tag}"] = SEED_FRAC
+    return vals
+
+
+def ftest(fits, family, failed=None):
     """Lowest order in `family` whose successor is not justified.
 
     2*(NLL_low - NLL_high) is compared with chi2 at the difference in
     parameter count. Both NLLs come from the same masked likelihood, so
     the comparison is valid; mixing a blinded and an unblinded fit here
     would not be.
+
+    failed: the members whose fit failed. The chain starts at the lowest
+    order that fitted and stops at the first failed order after it: the
+    order below is kept, rather than comparing across the gap with an
+    order whose predecessor was never tested.
     """
-    names = [n for n in family if n in fits]
+    failed = failed or {}
+    names = [n for n in family if n in fits or n in failed]
+    while names and names[0] not in fits:
+        names.pop(0)
     if not names:
         return None, []
     steps = []
     chosen = names[0]
     for lo, hi in zip(names, names[1:]):
+        if hi in failed:
+            steps.append({"from": lo, "to": hi, "failed": True,
+                          "status": failed[hi]["status"]})
+            break
         dnll = fits[lo]["nll"] - fits[hi]["nll"]
         dnpar = fits[hi]["npar"] - fits[lo]["npar"]
         if dnpar <= 0:
@@ -575,15 +670,23 @@ def main():
     print(f"{'model':<11}{'npar':>5}{'NLL':>14}{'chi2/ndf':>10}"
           f"{'p(chi2)':>9}{'f_sb':>8}{'status':>8}")
     fits, failed = {}, {}
+    below = lower_order()
     for nm in names:
+        # a second start at the fit of the order below, if that one fitted
+        fam, prev = below.get(nm, (None, None))
+        seed = (seed_values(nm, fam, fits[prev], tag) if prev in fits
+                else None)
         try:
-            f = fit_candidate(x, data, nm, tag, sb_range, mc_core)
+            f = fit_candidate(x, data, nm, tag, sb_range, mc_core, seed)
         except Exception as exc:
             print(f"{nm:<11}  failed: {exc}")
+            failed[nm] = {"status": -1, "error": str(exc)}
             continue
         f.update(sideband_chi2(x, h, f["pdf"], sb_idx,
                                full_yield(n_sb, f), f["npar"]))
         flag = "" if f["status"] == 0 and f["cov_qual"] == 3 else "  <-- check"
+        if f["start"] == "seeded":
+            flag += "  (from the order below)"
         print(f"{nm:<11}{f['npar']:>5}{f['nll']:>14.2f}"
               f"{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}"
               f"{f['sb_fraction']:>8.3f}{f['status']:>8}{flag}")
@@ -605,12 +708,16 @@ def main():
           f"extra parameter)")
     chosen, ftests = {}, {}
     for fam, members in pdefs.BKG_FAMILIES.items():
-        pick, steps = ftest(fits, members)
+        pick, steps = ftest(fits, members, failed)
         if pick is None:
             continue
         chosen[fam] = pick
         ftests[fam] = steps
         for st in steps:
+            if st.get("failed"):
+                print(f"  {fam:<12} {st['from']:>6} -> {st['to']:<6} "
+                      f"fit failed (status {st['status']}): stop here")
+                continue
             print(f"  {fam:<12} {st['from']:>6} -> {st['to']:<6} "
                   f"2dNLL={st['2dNLL']:7.2f} dnpar={st['dnpar']} "
                   f"p={st['pvalue']:.4f}  "

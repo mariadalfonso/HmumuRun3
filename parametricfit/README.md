@@ -132,7 +132,13 @@ reads and writes there unless `--wsdir` says otherwise.
   - The order of each family, the goodness-of-fit cut and the envelope
     are ours; the Run 2 note excerpt only asks for χ²/dof ≈ 1.
   - The F-test picks one order per family; a goodness-of-fit cut builds the
-    envelope. Failed fits are dropped.
+    envelope. Failed fits (status ≠ 0) are dropped, and a failed order ends
+    its family: the order below it is kept, never one above the gap.
+  - Each order is fitted twice, from its default start and from the fit of
+    the order below (a Bernstein raised one degree reproduces it exactly),
+    and the better fit is kept, so a higher order does not end in a worse
+    local minimum. `(from the order below)` in the output marks where that
+    start won.
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
     is the default (`pdfindex` 0): the Asimov and the yield come from it.
   - The yield is extrapolated over 110–150 GeV.
