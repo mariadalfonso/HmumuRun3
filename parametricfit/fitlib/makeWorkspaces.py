@@ -11,6 +11,12 @@ the workspaces bwsHrare.py reads, with tag = "<cat>_<bin>_<year>":
     Bkg_<tag>_workspace.root      multipdf_<tag>_bkg, pdfindex_<tag>,
                                   multipdf_<tag>_bkg_norm, datahist_<tag>
 
+With --members families the multipdf holds every family's F-test pick
+(bkgFit.py's family_choice), the ones the goodness-of-fit cut rejected
+included, and goes to Bkg_<tag>_families_workspace.root instead. That is
+the input of biasStudy.py --mode single (the Run 2 note's truth x fit
+matrix); the limit always uses the envelope.
+
 Why the split: the container's ROOT (6.22) has no RooCrystalBall, and RooFit
 objects written by a newer ROOT are not guaranteed to read back in it; and
 before 6.28, Range("sbLow,sbHigh") normalises each sideband separately,
@@ -24,6 +30,7 @@ Usage (inside the Combine container, from parametricfit/)
 -----
     python -m fitlib.makeWorkspaces -c ggHcat -b incl -y 2024 --wsdir WS_2024
     python -m fitlib.makeWorkspaces -c ggHcat -b incl -y 2024 --only bkg
+    python -m fitlib.makeWorkspaces -c ggHcat -b bdt0 -y Run3 --members families
 
 buildWorkspace.py runs it for every bin; call it directly only to debug.
 """
@@ -107,16 +114,37 @@ def build_signal(category, tag, sigjson, wsfile):
     print(f"wrote {wsfile}")
 
 
-def build_bkg(category, tag, bkgjson, wsdir, wsfile):
-    """The RooMultiPdf envelope, each member at its sideband-fit values
-    with its parameters floating, plus the floating norm and the data."""
+# file-name suffix of each --members choice
+MEMBERS_SUFFIX = {"envelope": "", "families": "_families"}
+
+
+def bkg_members(rec, members):
+    """The multipdf members, in pdfindex order. "envelope": bkgFit.py's
+    envelope, best first. "families": the envelope, then every other
+    family's F-test pick (rejected by the goodness-of-fit cut), lowest
+    penalised NLL first; index 0 stays the envelope's best, which the
+    norm comes from."""
+    env = list(rec["envelope"])
+    if members == "envelope":
+        return env
+    cand = rec["candidates"]
+    rest = sorted({nm for nm in rec["family_choice"].values()
+                   if nm not in env},
+                  key=lambda n: cand[n].get("nll_pen", cand[n]["nll"]))
+    return env + rest
+
+
+def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope"):
+    """The RooMultiPdf, each member at its sideband-fit values with its
+    parameters floating, plus the floating norm and the data."""
     rec = read_json(bkgjson)
     prov = rec["provenance"]
     x = observable(category, prov["window"])
+    names = bkg_members(rec, members)
 
     mc_core = (rec.get("mc_core") or {}).get("cores")   # mc* members
     keep, store = [], ROOT.RooArgList()
-    for nm in rec["envelope"]:
+    for nm in names:
         pdf, k = pdefs.create_bkg_pdf(x, tag, nm, mc_core)
         fitted = rec["candidates"][nm]["params"]
         for p in k["params"]:
@@ -153,7 +181,9 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile):
     for obj in (cat, multi, nrm, data):  # data is FULL range, for data_obs
         getattr(w, "import")(obj, ROOT.RooFit.Silence())
     w.writeToFile(wsfile)
-    print(f"  multipdf_{tag}_bkg        {', '.join(rec['envelope'])}")
+    print(f"  multipdf_{tag}_bkg        {', '.join(names)}"
+          + ("" if members == "envelope" else
+             f"   (all families; envelope = {', '.join(rec['envelope'])})"))
     print(f"  multipdf_{tag}_bkg_norm   = {norm_val:.1f}, floating")
     print(f"  datahist_{tag}            {data.sumEntries():.0f} events")
     print(f"wrote {wsfile}")
@@ -171,6 +201,12 @@ def main():
                     help="where the JSONs are, and the workspaces go "
                          "(default WS_<year>)")
     ap.add_argument("--only", choices=("signal", "bkg"), default=None)
+    ap.add_argument("--members", choices=tuple(MEMBERS_SUFFIX),
+                    default="envelope",
+                    help="multipdf members: the envelope (default, for the "
+                         "limit) or every family's F-test pick, written to "
+                         "Bkg_<tag>_families_workspace.root for "
+                         "biasStudy.py --mode single")
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
@@ -189,10 +225,12 @@ def main():
                      os.path.join(args.wsdir, f"Signal_{tag}_workspace.root"))
     if args.only != "signal":
         print("\n--- background ---")
+        sfx = MEMBERS_SUFFIX[args.members]
         build_bkg(args.category, tag,
                   os.path.join(args.wsdir, f"Bkg_{tag}_params.json"),
                   args.wsdir,
-                  os.path.join(args.wsdir, f"Bkg_{tag}_workspace.root"))
+                  os.path.join(args.wsdir, f"Bkg_{tag}{sfx}_workspace.root"),
+                  args.members)
 
 
 if __name__ == "__main__":

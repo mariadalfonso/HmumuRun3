@@ -17,7 +17,16 @@ then writes the yields of every bin to <wsdir>/Yields_<name>.json, prints them,
 and prints the combine commands for the expected limit and significance.
 
 <name> is <category>_<bins>_<year>, e.g. ggHcat_bdt_Run3 for bdt0 bdt1 bdt2
-(--name overrides); for one bin it is that bin's tag. Everything runs from
+(--name overrides); for one bin it is that bin's tag.
+
+--members families builds a second set, for biasStudy.py --mode single (the
+Run 2 note's single-function bias study): the multipdf holds every family's
+F-test pick, the ones the goodness-of-fit cut rejected included, and every
+file name gets _families (Bkg_<tag>_families_workspace.root,
+datacard_<tag>_families.txt, <name>_families.root). The envelope files are
+not touched, so the limit cards stay as they are.
+
+Everything runs from
 parametricfit/: the shapes paths in the cards are relative to it, so run
 combine from here too.
 """
@@ -49,17 +58,23 @@ def in_container():
                 or os.environ.get("SINGULARITY_CONTAINER"))
 
 
+def suffix(args):
+    """'' for the envelope, '_families' for --members families"""
+    return "" if args.members == "envelope" else "_families"
+
+
 def chain_name(args):
-    """ggHcat_bdt_Run3 for bdt0 bdt1 bdt2, ggHcat_incl_2024 for one bin."""
+    """ggHcat_bdt_Run3 for bdt0 bdt1 bdt2, ggHcat_incl_2024 for one bin
+    (+ _families with --members families)."""
     if args.name:
-        return args.name
+        return args.name + suffix(args)
     if len(args.bins) == 1:
         label = args.bins[0]
     elif all(re.fullmatch(r"bdt\d+", b) for b in args.bins):
         label = "bdt"
     else:
         label = "_".join(args.bins)
-    return f"{args.category}_{label}_{args.year}"
+    return f"{args.category}_{label}_{args.year}{suffix(args)}"
 
 
 def tags(args):
@@ -85,27 +100,28 @@ def run(cmd, args, cwd=HERE, stdout=None):
 def make_workspaces(args):
     for b in args.bins:
         run([sys.executable, "-m", "fitlib.makeWorkspaces", "-c", args.category,
-             "-b", b, "-y", args.year, "--wsdir", args.wsdir], args)
+             "-b", b, "-y", args.year, "--wsdir", args.wsdir,
+             "--members", args.members], args)
 
 
 def make_cards(args):
-    ws = rel(args.wsdir)
+    ws, sfx = rel(args.wsdir), suffix(args)
     for b, tag in zip(args.bins, tags(args)):
         # --output goes into the shapes lines as given: relative to here
         run([sys.executable, "-m", "fitlib.bwsHrare",
              f"--whichCat={args.category}", f"--whichBIN={b}",
              f"--whichYear={args.year}",
              f"--inputFileSig={ws}/Signal_{tag}_workspace.root",
-             f"--inputFileBKG={ws}/Bkg_{tag}_workspace.root",
-             f"--output={ws}/workspace_{tag}_workspace.root",
-             f"--datCardName={ws}/datacard_{tag}.txt"], args)
+             f"--inputFileBKG={ws}/Bkg_{tag}{sfx}_workspace.root",
+             f"--output={ws}/workspace_{tag}{sfx}_workspace.root",
+             f"--datCardName={ws}/datacard_{tag}{sfx}.txt"], args)
 
 
 def combine_cards(args):
     """combineCards.py prefixes each shapes path with its card's directory,
     so it runs next to the cards (bare file names, no prefix)."""
     card = os.path.join(args.wsdir, f"datacard_{chain_name(args)}.txt")
-    cmd = ["combineCards.py"] + [f"{b}=datacard_{t}.txt"
+    cmd = ["combineCards.py"] + [f"{b}=datacard_{t}{suffix(args)}.txt"
                                  for b, t in zip(args.bins, tags(args))]
     print(f"\n   > {rel(card)}")
     if args.dry_run:
@@ -220,6 +236,12 @@ def print_yields(out):
 def print_next(args):
     name, ws = chain_name(args), rel(args.wsdir)
     opts = " ".join(COMBINE_OPTS)
+    if args.members != "envelope":
+        print(f"\nnext, from parametricfit/ (single-function bias study):\n"
+              f"  python -u biasStudy.py --mode single -c {args.category} "
+              f"-b {' '.join(args.bins)} -y {args.year} --carddir {ws} "
+              f"--ntoys 2000 -j 10")
+        return
     print(f"\nnext, from parametricfit/ (blinded, -t -1):\n"
           f"  combine -M AsymptoticLimits -m {MH} -t -1 --run expected "
           f"--rMin 0 -d {ws}/{name}.root -n _{name} {opts}\n"
@@ -246,6 +268,11 @@ def main():
     ap.add_argument("--name", default=None,
                     help="name of the combined card and workspace "
                          "(default <category>_<bins>_<year>)")
+    ap.add_argument("--members", choices=("envelope", "families"),
+                    default="envelope",
+                    help="multipdf members: the envelope (default) or every "
+                         "family's F-test pick, as *_families files for "
+                         "biasStudy.py --mode single")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the commands, run nothing")
     args = ap.parse_args()

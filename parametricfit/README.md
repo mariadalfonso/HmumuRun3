@@ -73,6 +73,12 @@ combine -M Significance -m 125 -t -1 --expectSignal 1 -d WS_Run3/ggHcat_bdt_Run3
 python -u biasStudy.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 1000 -j 10
 python biasStudy.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --only report   # replot only; conda is fine
 ```
+The Run 2 note's single-function study (Sec. 6.4.1) instead: every family's
+F-test pick as a truth, each fitted with one function at a time.
+```bash
+python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --members families
+python -u biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 2000 -j 10
+```
 
 ## Outputs
 
@@ -155,6 +161,14 @@ reads and writes there unless `--wsdir` says otherwise.
   - Bias = (μ_fit − μ_inj)/σ_μ. Every member needs |median Bias| < 0.20.
   - Toys come from the pre-fit model, so the blinded region is never fitted.
   - Finished jobs are skipped, so a crashed run resumes.
+  - `--mode single` is the Run 2 note's version. The truths are every
+    family's F-test pick, the ones the goodness-of-fit cut rejected included
+    (`buildWorkspace.py --members families`, `*_families` files). Each truth's
+    toys are fitted once per function with `pdfindex` frozen: a truth × fit
+    matrix of the mean Bias. A function is usable if |Bias| < 0.20 against
+    every truth; of those, the one with the highest expected significance
+    (Asimov, background frozen to it) is chosen. Output in
+    `<outdir>/<tag>_single/`, plot `bias_<tag>_<r>_matrix.png`.
 
 ## Status (2026-10-29)
 
@@ -189,7 +203,9 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `--mc-core`, `--no-mc-core` (with `--extra-models`), `--bins-per-gev`.
 
 **`buildWorkspace.py`**: `-c`, `-b`, `-y`, `--wsdir` (default `WS_<year>`),
-`--name`, `--dry-run`.
+`--name`, `--dry-run`, `--members envelope|families` (`families`: every
+family's F-test pick in the multipdf, as separate `*_families` files for
+`biasStudy.py --mode single`; the limit cards are not touched).
 
 **`biasStudy.py`**
 - `-c`, `-b`, `-y`.
@@ -200,4 +216,10 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `--ntoys` (default 1000), `--toys-per-job` (100), `-j`.
 - `--rrange`: fixed r range.
 - `--threshold`: default 0.20.
+- `--mode envelope|single`: the envelope floating (default), or the Run 2
+  single-function matrix.
+- `--fit-models`: with `--mode single`, fit with these members only (all
+  stay truths). The Run 2 note used Landau × Bernstein only as a truth.
+- `--metric median|mean`: the quoted Bias. Median by default for the
+  envelope (flashggFinalFit), mean for `single` (the Run 2 note).
 - `--combine-opts`, `--seed`, `--force`, `--dry-run`, `--only run|report`.

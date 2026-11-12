@@ -1,5 +1,6 @@
 """
-biasStudy.py -- bias on r from the discrete-profiling background envelope.
+biasStudy.py -- bias on r from the background model: the discrete-profiling
+envelope (default), or each function on its own (--mode single, Run 2).
 
 For each tag = "<cat>_<bin>_<year>" and each member i of the envelope
 (multipdf_<tag>_bkg in the card, indexed by pdfindex_<tag>):
@@ -21,6 +22,19 @@ background norm at its rateParam value, CMS_scale_m / CMS_res_m drawn from
 their constraints. --toysFrequentist is NOT used: it fits the full data first,
 the blinded 120-130 GeV region included.
 
+--mode single: the Run 2 note's single-function study (Sec. 6.4.1)
+------------------------------------------------------------------
+The truths are every family's F-test pick, the ones the goodness-of-fit cut
+rejected included (the buildWorkspace.py --members families cards), and
+each toy is fitted once per function, pdfindex FROZEN to it: a truth x fit
+matrix of Bias. As in the note, the Bias is the MEAN of the pulls
+(--metric), a function is usable if |Bias| < 0.20 against every truth,
+and of the usable ones the one with the highest expected significance
+(Asimov, background frozen to that function, one -M Significance per
+function) is chosen. The toys of a truth are generated once and fitted by
+every function. --fit-models restricts the fit functions (the note fitted
+with six, and used Landau x Bernstein only as a truth).
+
 Step 6 of the chain, after buildWorkspace.py (README). Runs in the Combine
 container, from parametricfit/. --only report reads back the combine output
 and needs only ROOT, so it also runs in conda.
@@ -34,12 +48,21 @@ Outputs, in <outdir>/<tag>/:
     bias_<tag>_<r>.json              the pull summary per member
 and plots in <plotdir>/<cat>/bias_<tag>_<r>_{<member>,summary}.png.
 
+--mode single writes to <outdir>/<tag>_single/ instead:
+    toys_gen<i>_<r>_s<seed>.root          as above, truth i
+    fit_gen<i>_fit<j>_<r>_s<seed>.root    those toys fitted with member j
+    sig_fit<j>.root                       expected significance with j
+    bias_<tag>_<r>_matrix.json            the matrix, usable fits, choice
+and the plot <plotdir>/<cat>/bias_<tag>_<r>_matrix.png.
+
 Usage (inside the Combine container, from parametricfit/)
 -----
     python biasStudy.py -c ggHcat -b incl -y 2024 --ntoys 1000 -j 8
     python biasStudy.py -c ggHcat VBFcat -b bdt0 bdt1 -y Run3 --inject 0 1
     python biasStudy.py -c ggHcat -b incl -y 2024 --only report
     python biasStudy.py -c ggHcat -b incl -y 2024 --dry-run
+    python biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 \
+        --ntoys 2000 -j 10
 """
 
 import argparse
@@ -95,17 +118,29 @@ R_SEED_RANGE = 50.0        # range of the Asimov fit that sets it
 # Discrete profiling, as recommended in the Combine documentation: Minuit
 # strategy 0, the parameters of the inactive members frozen, and the
 # constant terms hidden from the minimizer when the index changes.
-COMBINE_FIT_OPTS = [
+DISCRETE_OPTS = [
     "--cminDefaultMinimizerStrategy", "0",
     "--X-rtd", "MINIMIZER_freezeDisassociatedParams",
     "--X-rtd", "MINIMIZER_multiMin_hideConstants",
     "--X-rtd", "MINIMIZER_multiMin_maskConstraints",
     "--X-rtd", "MINIMIZER_multiMin_maskChannels=2",
     "--X-rtd", "REMOVE_CONSTANT_ZERO_POINT=1",
+]
+COMBINE_FIT_OPTS = DISCRETE_OPTS + [
     "--robustFit", "1",
     "--cminFallbackAlgo", "Minuit2,Migrad,1:0.1",
     "--cminFallbackAlgo", "Minuit2,Simplex,1:0.5",
 ]
+
+# --mode: which cards it reads, where it writes, which Bias it quotes
+#   envelope  toys from each envelope member, fitted with pdfindex floating
+#   single    the Run 2 note (Sec. 6.4.1): toys from every family's F-test
+#             pick, each fitted with ONE function at a time (pdfindex frozen)
+CARD_SUFFIX = {"envelope": "", "single": "_families"}   # buildWorkspace.py
+OUT_SUFFIX = {"envelope": "", "single": "_single"}
+DEFAULT_METRIC = {"envelope": "median", "single": "mean"}
+MATRIX_PASS_RGB = (232, 232, 232)   # light grey
+MATRIX_FAIL_RGB = (246, 196, 190)   # light red
 
 # quantileExpected of the three rows --algo singles writes per toy
 Q_BEST, Q_LO, Q_HI = -1.0, -0.32, 0.32
@@ -297,51 +332,147 @@ def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry):
     return [r_inj - R_WIDTH * sig, r_inj + R_WIDTH * sig], "asimov"
 
 
-def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
-            force, dry):
-    """Generate `ntoys` from member igen and fit them with the envelope
-    floating. Skipped if its fit output already exists (unless force)."""
+def gen_toys(t2w, tag, igen, r_inj, ntoys, seed, outdir, extra, force, dry):
+    """`ntoys` toys from member igen (pdfindex frozen to it), r = r_inj.
+    Returns (stem, toys file or None). An existing file is reused, unless
+    force (the envelope may have changed since)."""
     idx = f"pdfindex_{tag}"
     stem = f"gen{igen}_{rlabel(r_inj)}_s{seed}"
     toys = os.path.join(outdir, f"toys_{stem}.root")
-    fit = os.path.join(outdir, f"fit_{stem}.root")
-    if os.path.isfile(fit) and not force:
-        return stem, "exists"
-    logs = os.path.join(outdir, "logs")
-
+    if os.path.isfile(toys) and not force:
+        return stem, toys
     gen = ["combine", "-M", "GenerateOnly", "-d", t2w, "-m", "%g" % MH,
            "-t", str(ntoys), "-s", str(seed), "--saveToys",
            "--expectSignal", "%g" % r_inj,
            "--setParameters", f"{idx}={igen},r={r_inj:g}",
            "--freezeParameters", f"{idx},MH",
            "-n", f"_toys_{stem}"] + extra
-    if not (run_cmd(gen, outdir, os.path.join(logs, f"toys_{stem}.log"), dry)
+    log = os.path.join(outdir, "logs", f"toys_{stem}.log")
+    if not (run_cmd(gen, outdir, log, dry)
             and take_output(outdir, f"_toys_{stem}", "GenerateOnly", toys,
                             dry)):
-        return stem, "generation failed"
+        return stem, None
+    return stem, toys
 
-    # the index is NOT frozen here: the fit picks the member, as in the limit
+
+def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
+             extra, dry, ifit=None):
+    """Fit the toys of `stem`: pdfindex floating (ifit None), as in the
+    limit, or frozen to member ifit. Returns the fit output's stem."""
+    idx = f"pdfindex_{tag}"
+    fstem = stem if ifit is None else stem.replace("_", f"_fit{ifit}_", 1)
+    if ifit is None:
+        index = ["--saveSpecifiedIndex", idx,
+                 "--setParameters", "r=%g" % r_inj,
+                 "--freezeParameters", "MH"]
+    else:
+        index = ["--setParameters", f"r={r_inj:g},{idx}={ifit}",
+                 "--freezeParameters", f"MH,{idx}"]
     fitc = (["combine", "-M", "MultiDimFit", "-d", t2w, "-m", "%g" % MH,
              "-t", str(ntoys), "-s", str(seed), "--toysFile", toys,
              "-P", "r", "--algo", "singles", "--floatOtherPOIs", "1",
-             "--saveSpecifiedIndex", idx,
-             "--setParameters", "r=%g" % r_inj,
-             "--setParameterRanges", "r=%g,%g" % tuple(rrange),
-             "--freezeParameters", "MH",
-             "-n", f"_fit_{stem}"] + COMBINE_FIT_OPTS + extra)
-    if not (run_cmd(fitc, outdir, os.path.join(logs, f"fit_{stem}.log"), dry)
-            and take_output(outdir, f"_fit_{stem}", "MultiDimFit", fit, dry)):
-        return stem, "fit failed"
-    return stem, "done"
+             "--setParameterRanges", "r=%g,%g" % tuple(rrange)]
+            + index + ["-n", f"_fit_{fstem}"] + COMBINE_FIT_OPTS + extra)
+    fit = os.path.join(outdir, f"fit_{fstem}.root")
+    log = os.path.join(outdir, "logs", f"fit_{fstem}.log")
+    ok = (run_cmd(fitc, outdir, log, dry)
+          and take_output(outdir, f"_fit_{fstem}", "MultiDimFit", fit, dry))
+    return fstem, ok
+
+
+def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
+            force, dry, fits=None):
+    """One chunk of toys from member igen, then its fits: with the envelope
+    floating (fits None), or once per member in `fits` with the index
+    frozen. Fits whose output exists are skipped (unless force). Returns
+    [(fit stem, status)]."""
+    stem = f"gen{igen}_{rlabel(r_inj)}_s{seed}"
+    todo = [None] if fits is None else list(fits)
+
+    def out(ifit):
+        f = stem if ifit is None else stem.replace("_", f"_fit{ifit}_", 1)
+        return f, os.path.join(outdir, f"fit_{f}.root")
+    if not force:
+        done = [(f, "exists") for f, path in map(out, todo)
+                if os.path.isfile(path)]
+        todo = [i for i in todo if not os.path.isfile(out(i)[1])]
+        if not todo:
+            return done
+    else:
+        done = []
+    stem, toys = gen_toys(t2w, tag, igen, r_inj, ntoys, seed, outdir, extra,
+                          force, dry)
+    if toys is None:
+        return done + [(out(i)[0], "generation failed") for i in todo]
+    for ifit in todo:
+        fstem, ok = fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys,
+                             seed, outdir, extra, dry, ifit)
+        done.append((fstem, "done" if ok else "fit failed"))
+    return done
+
+
+def sig_job(t2w, tag, ifit, outdir, extra, force, dry):
+    """Expected significance with the background frozen to member ifit:
+    Asimov (-t -1) from the pre-fit model, r = 1. The figure of merit the
+    Run 2 note chooses the function by (its Table 6.14)."""
+    idx = f"pdfindex_{tag}"
+    name = f"_sig_fit{ifit}"
+    dest = os.path.join(outdir, f"sig_fit{ifit}.root")
+    if os.path.isfile(dest) and not force:
+        return ifit, "exists"
+    cmd = (["combine", "-M", "Significance", "-d", t2w, "-m", "%g" % MH,
+            "-t", "-1", "--expectSignal", "1",
+            "--setParameters", f"{idx}={ifit}",
+            "--freezeParameters", f"MH,{idx}", "-n", name]
+           + DISCRETE_OPTS + extra)
+    ok = (run_cmd(cmd, outdir, os.path.join(outdir, "logs", f"{name[1:]}.log"),
+                  dry)
+          and take_output(outdir, name, "Significance", dest, dry))
+    return ifit, "done" if ok else "failed"
+
+
+def read_significance(path):
+    """The expected significance in a -M Significance output, or None."""
+    if not os.path.isfile(path):
+        return None
+    f = ROOT.TFile.Open(path)
+    t = f.Get("limit") if f and not f.IsZombie() else None
+    z = None
+    if t and t.GetEntries():
+        t.GetEntry(0)
+        z = float(t.limit)
+    if f:
+        f.Close()
+    return z
+
+
+def fit_indices(names, tag, wanted):
+    """pdfindex of every member to fit with in --mode single: all, or those
+    named in --fit-models (members this bin does not have are skipped)."""
+    short = [short_name(n, tag) for n in names]
+    if not wanted:
+        return list(range(len(names)))
+    missing = [w for w in wanted if w not in short]
+    if missing:
+        print(f"  note: no {', '.join(missing)} in this bin; not fitted")
+    return [short.index(w) for w in wanted if w in short]
+
+
+def tag_outdir(tag, args):
+    """<outdir>/<tag>, or <outdir>/<tag>_single for --mode single"""
+    return os.path.abspath(os.path.join(args.outdir,
+                                        tag + OUT_SUFFIX[args.mode]))
 
 
 def run_tag(tag, args):
-    outdir = os.path.abspath(os.path.join(args.outdir, tag))
+    outdir = tag_outdir(tag, args)
     os.makedirs(os.path.join(outdir, "logs"), exist_ok=True)
-    card = os.path.abspath(os.path.join(args.carddir, f"datacard_{tag}.txt"))
+    card = os.path.abspath(os.path.join(
+        args.carddir, f"datacard_{tag}{CARD_SUFFIX[args.mode]}.txt"))
     if not os.path.isfile(card):
-        raise SystemExit(f"missing {card}; run buildWorkspace.py first, "
-                         "or point --carddir at the cards")
+        hint = (" --members families" if args.mode == "single" else "")
+        raise SystemExit(f"missing {card}; run buildWorkspace.py{hint} "
+                         "first, or point --carddir at the cards")
     t2w = os.path.join(outdir, f"{tag}.root")
     extra = shlex.split(args.combine_opts)
 
@@ -357,14 +488,23 @@ def run_tag(tag, args):
     if meta.get("envelope") not in (None, names):
         print(f"  !! envelope changed since the last run "
               f"({meta['envelope']} -> {names}); rerun with --force")
-    meta.update({"tag": tag, "card": card, "workspace": t2w,
+    fits = None
+    if args.mode == "single":
+        fits = fit_indices(names, tag, args.fit_models)
+        meta["fits"] = fits
+    meta.update({"tag": tag, "card": card, "workspace": t2w, "mode": args.mode,
                  "envelope": names, "mh": MH,
                  "combine_opts": COMBINE_FIT_OPTS + extra})
     meta.setdefault("rrange", {})
     meta.setdefault("rrange_source", {})   # asimov, fallback or user
     meta.setdefault("ntoys", {})       # per job, to count fits that wrote nothing
-    print("  envelope : " + ", ".join(f"[{i}] {short_name(n, tag)}"
-                                      for i, n in enumerate(names)))
+    print(("  envelope : " if args.mode == "envelope" else "  truths   : ")
+          + ", ".join(f"[{i}] {short_name(n, tag)}"
+                      for i, n in enumerate(names)))
+    if fits is not None:
+        print("  fitted   : " + ", ".join(short_name(names[i], tag)
+                                         for i in fits)
+              + "   (one at a time, pdfindex frozen)")
 
     jobs = []
     for r_inj in args.inject:
@@ -391,19 +531,31 @@ def run_tag(tag, args):
             for k in range(nchunks):
                 n = min(args.toys_per_job, args.ntoys - k * args.toys_per_job)
                 seed = args.seed + 1000 * igen + k
-                meta["ntoys"][f"gen{igen}_{key}_s{seed}"] = n
+                for ifit in ([None] if fits is None else fits):
+                    fs = (f"gen{igen}_{key}_s{seed}" if ifit is None else
+                          f"gen{igen}_fit{ifit}_{key}_s{seed}")
+                    meta["ntoys"][fs] = n
                 jobs.append((t2w, tag, igen, r_inj, rrange, n, seed, outdir,
-                             extra, args.force, args.dry_run))
+                             extra, args.force, args.dry_run, fits))
     if not args.dry_run:
         write_json(meta_path, meta)
 
-    print(f"  {len(jobs)} job(s), {args.jobs} at a time")
+    nfit = 1 if fits is None else len(fits)
+    print(f"  {len(jobs)} job(s) of {nfit} fit(s) each, {args.jobs} at a time")
     status = {}
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        for stem, st in pool.map(lambda j: toy_job(*j), jobs):
-            status.setdefault(st, []).append(stem)
-            if st not in ("done", "exists"):
-                print(f"  {stem}: {st}")
+        if fits is not None:     # the significances first: one fit each
+            for ifit, st in pool.map(
+                    lambda i: sig_job(t2w, tag, i, outdir, extra, args.force,
+                                      args.dry_run), fits):
+                if st not in ("done", "exists"):
+                    print(f"  significance with "
+                          f"{short_name(names[ifit], tag)}: {st}")
+        for res in pool.map(lambda j: toy_job(*j), jobs):
+            for stem, st in res:
+                status.setdefault(st, []).append(stem)
+                if st not in ("done", "exists"):
+                    print(f"  {stem}: {st}")
     for st, stems in sorted(status.items()):
         print(f"  {st:<18} {len(stems)}")
 
@@ -466,7 +618,10 @@ def pull_hist(name, pulls):
     return h
 
 
-def summarize(pulls, dr, chosen, drop, nmembers, threshold):
+def summarize(pulls, dr, chosen, drop, nmembers, threshold, metric="median"):
+    """Pull statistics of one truth (and fit function). The quoted Bias,
+    "bias" +/- "bias_err", is the median (flashggFinalFit) or the mean (the
+    Run 2 note) of the pulls, as `metric` says; pass is |bias| < threshold."""
     n = len(pulls)
     ntot = n + sum(drop.values())
     s = {"n_toys": ntot, "n_valid": n, "dropped": drop,
@@ -479,8 +634,10 @@ def summarize(pulls, dr, chosen, drop, nmembers, threshold):
     s.update(median_pull=median(pulls),
              # standard error of the median of a Gaussian sample
              median_pull_err=1.2533 * rms / math.sqrt(n),
-             mean_pull=mean, rms_pull=rms,
-             median_dr=median(dr))
+             mean_pull=mean, mean_pull_err=rms / math.sqrt(n), rms_pull=rms,
+             median_dr=median(dr), metric=metric)
+    s["bias"] = s[f"{metric}_pull"]
+    s["bias_err"] = s[f"{metric}_pull_err"]
     h = pull_hist("h_tmp_summarize", pulls)
     if n >= 20:
         res = h.Fit("gaus", "QSN0").Get()
@@ -488,15 +645,18 @@ def summarize(pulls, dr, chosen, drop, nmembers, threshold):
             s.update(gaus_mean=res.Parameter(1), gaus_mean_err=res.ParError(1),
                      gaus_sigma=res.Parameter(2),
                      gaus_sigma_err=res.ParError(2))
-    s["pass"] = abs(s["median_pull"]) < threshold
+    s["pass"] = abs(s["bias"]) < threshold
     s["status"] = "ok" if s["pass"] else "BIASED"
     if ntot and n < MIN_VALID_FRAC * ntot:
         s["status"] += " (few valid toys)"
     return s
 
 
-def draw_label(pad, right):
-    t, l, r = pad.GetTopMargin(), pad.GetLeftMargin(), pad.GetRightMargin()
+def draw_label(pad, right, t=None):
+    """CMS label and `right` text in the top band of height t (NDC; default
+    the top margin)."""
+    l, r = pad.GetLeftMargin(), pad.GetRightMargin()
+    t = pad.GetTopMargin() if t is None else t
     y = 1 - t + 0.2 * t
     lat = ROOT.TLatex()
     lat.SetNDC()
@@ -596,10 +756,12 @@ def plot_rows(groups, title, threshold, outbase, pdf):
     c.SetRightMargin(ROWS_RIGHT_PX / w)
     c.SetTicky(0)
 
-    vals = [abs(s["median_pull"]) + s["median_pull_err"]
-            for _, s in rows if s and "median_pull" in s]
+    vals = [abs(s["bias"]) + s["bias_err"] for _, s in rows
+            if s and "bias" in s]
+    metric = next((s["metric"] for _, s in rows if s and "metric" in s),
+                  "median")
     lim = max([threshold * 2.5] + vals) * 1.12
-    frame = ROOT.TH2F(f"f_{os.path.basename(outbase)}", ";median Bias;",
+    frame = ROOT.TH2F(f"f_{os.path.basename(outbase)}", f";{metric} Bias;",
                       100, -lim, lim, ny, 0, ny)
     frame.SetDirectory(0)
     frame.SetStats(0)
@@ -652,17 +814,17 @@ def plot_rows(groups, title, threshold, outbase, pdf):
         if s is None:
             continue
         y = n - k - 0.5
-        if "median_pull" not in s:
+        if "bias" not in s:
             val.SetTextColor(ROOT.kGray + 2)
             val.DrawLatex(xv, ndc_y(y), s.get("status", "no toys"))
             continue
         gr = ok if s.get("pass") else bad
         i = gr.GetN()
-        gr.SetPoint(i, s["median_pull"], y)
-        gr.SetPointError(i, s["median_pull_err"], 0)
+        gr.SetPoint(i, s["bias"], y)
+        gr.SetPointError(i, s["bias_err"], 0)
         val.SetTextColor(ROOT.kBlack if s.get("pass") else bad_col)
         val.DrawLatex(xv, ndc_y(y), "%+.2f #pm %.2f%s" % (
-            s["median_pull"], s["median_pull_err"],
+            s["bias"], s["bias_err"],
             "" if s.get("pass") else "  fails"))
     for gr, col, mk in ((ok, ok_col, 20), (bad, bad_col, 21)):
         gr.SetMarkerStyle(mk)
@@ -692,10 +854,10 @@ def plot_rows(groups, title, threshold, outbase, pdf):
     leg.SetMargin(0.3)
     leg.AddEntry(ok, "passes", "pe")
     leg.AddEntry(bad, "fails", "pe")
-    leg.AddEntry(band, "|median| < %g" % threshold, "f")
+    leg.AddEntry(band, "|%s| < %g" % (metric, threshold), "f")
     leg.Draw()
     val.SetTextColor(ROOT.kGray + 2)
-    val.DrawLatex(xv, yh, "median #pm err")
+    val.DrawLatex(xv, yh, f"{metric} #pm err")
     keep += [ok, bad, val, lat, leg,
              draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
@@ -717,13 +879,41 @@ def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
               threshold, outbase, pdf)
 
 
-def report_tag(tag, args):
-    outdir = os.path.join(args.outdir, tag)
+def collect_member(outdir, prefix, r_inj, rrange, index_name, requested,
+                   nmembers, threshold, metric):
+    """Summary of the fit files fit_<prefix>_s*.root (one truth, and one fit
+    function in --mode single), with the toys of jobs that wrote nothing
+    counted as dropped. Returns (summary, pulls)."""
+    files = sorted(glob.glob(os.path.join(outdir, f"fit_{prefix}_s*.root")))
+    pulls, dr, chosen, drop = collect_pulls(files, r_inj, rrange,
+                                            index_name, requested)
+    # jobs that never wrote a fit file (combine crashed): their toys count
+    # as dropped, so the valid fraction is out of all requested
+    have = {os.path.basename(p)[len("fit_"):-len(".root")] for p in files}
+    failed = sorted(st for st in requested
+                    if st.startswith(f"{prefix}_s") and st not in have)
+    drop["job_failed"] = sum(requested[st] for st in failed)
+    s = summarize(pulls, dr, chosen, drop, nmembers, threshold, metric)
+    s["n_files"] = len(files)
+    s["failed_jobs"] = failed
+    return s, pulls
+
+
+def read_meta(tag, args):
+    outdir = tag_outdir(tag, args)
     meta_path = os.path.join(outdir, "meta.json")
     if not os.path.isfile(meta_path):
         print(f"\n=== {tag} === no {meta_path}; run the toys first")
+        return outdir, None
+    return outdir, read_json(meta_path)
+
+
+def report_tag(tag, args):
+    if args.mode == "single":
+        return report_single(tag, args)
+    outdir, meta = read_meta(tag, args)
+    if meta is None:
         return {}
-    meta = read_json(meta_path)
     names = [short_name(n, tag) for n in meta["envelope"]]
     index_name = f"pdfindex_{tag}"
     category = tag.split("_")[0]
@@ -739,33 +929,22 @@ def report_tag(tag, args):
         rrange = meta["rrange"][key]
         results = {}
         for igen, gen in enumerate(names):
-            files = sorted(glob.glob(os.path.join(
-                outdir, f"fit_gen{igen}_{key}_s*.root")))
-            requested = meta.get("ntoys", {})
-            pulls, dr, chosen, drop = collect_pulls(files, r_inj, rrange,
-                                                    index_name, requested)
-            # jobs that never wrote a fit file (combine crashed): their toys
-            # count as dropped, so the valid fraction is out of all requested
-            have = {os.path.basename(p)[len("fit_"):-len(".root")]
-                    for p in files}
-            failed = sorted(st for st in requested
-                            if st.startswith(f"gen{igen}_{key}_s")
-                            and st not in have)
-            drop["job_failed"] = sum(requested[st] for st in failed)
-            s = summarize(pulls, dr, chosen, drop, len(names), args.threshold)
-            s["n_files"] = len(files)
-            s["failed_jobs"] = failed
+            s, pulls = collect_member(outdir, f"gen{igen}_{key}", r_inj,
+                                      rrange, index_name,
+                                      meta.get("ntoys", {}), len(names),
+                                      args.threshold, args.metric)
             results[gen] = s
             if pulls:
                 plot_member(pulls, s, tag, gen, r_inj,
                             os.path.join(plotdir, f"bias_{tag}_{key}_{gen}"),
                             args.pdf)
-        if any("median_pull" in s for s in results.values()):
+        if any("bias" in s for s in results.values()):
             plot_summary(results, tag, r_inj, args.threshold,
                          os.path.join(plotdir, f"bias_{tag}_{key}_summary"),
                          args.pdf)
-        summary = {"tag": tag, "r_inj": r_inj, "r_range": rrange,
-                   "threshold": args.threshold, "envelope": names,
+        summary = {"tag": tag, "mode": "envelope", "r_inj": r_inj,
+                   "r_range": rrange, "threshold": args.threshold,
+                   "metric": args.metric, "envelope": names,
                    "pull": "Bias = (mu_fit - mu_inj) / sigma_mu, mu = r, "
                            "sigma_mu on the side facing mu_inj",
                    "members": results,
@@ -776,11 +955,215 @@ def report_tag(tag, args):
     return out
 
 
+def report_single(tag, args):
+    """The Run 2 note's matrix: Bias of every fit function (pdfindex frozen)
+    on the toys of every truth. A function is usable if |Bias| < threshold
+    against every truth; of those, the one with the best expected
+    significance is chosen."""
+    outdir, meta = read_meta(tag, args)
+    if meta is None:
+        return {}
+    names = [short_name(n, tag) for n in meta["envelope"]]
+    fits = meta.get("fits", list(range(len(names))))
+    category = tag.split("_")[0]
+    plotdir = os.path.join(args.plotdir, category)
+    os.makedirs(plotdir, exist_ok=True)
+    signif = {names[j]: read_significance(
+        os.path.join(outdir, f"sig_fit{j}.root")) for j in fits}
+
+    out = {}
+    for r_inj in args.inject:
+        key = rlabel(r_inj)
+        if key not in meta["rrange"]:
+            print(f"\n=== {tag}, r = {r_inj:g} === no toys")
+            continue
+        rrange = meta["rrange"][key]
+        matrix = {}               # fit -> truth -> summary
+        for j in fits:
+            row = {}
+            for igen, gen in enumerate(names):
+                s, _ = collect_member(outdir, f"gen{igen}_fit{j}_{key}",
+                                      r_inj, rrange, None,
+                                      meta.get("ntoys", {}), len(names),
+                                      args.threshold, args.metric)
+                s.pop("chosen_index", None)     # the index is frozen
+                row[gen] = s
+            matrix[names[j]] = row
+        functions = {}
+        for fit, row in matrix.items():
+            vals = [abs(s["bias"]) for s in row.values() if "bias" in s]
+            complete = all("bias" in s for s in row.values())
+            functions[fit] = {
+                "max_abs_bias": max(vals) if vals else None,
+                "worst_truth": (max((g for g in row if "bias" in row[g]),
+                                    key=lambda g: abs(row[g]["bias"]))
+                                if vals else None),
+                "pass": complete and all(s["pass"] for s in row.values()),
+                "significance": signif.get(fit)}
+        usable = [f for f, v in functions.items() if v["pass"]]
+        ranked = sorted((f for f in usable
+                         if functions[f]["significance"] is not None),
+                        key=lambda f: -functions[f]["significance"])
+        chosen = ranked[0] if ranked else None
+        summary = {"tag": tag, "mode": "single", "r_inj": r_inj,
+                   "r_range": rrange, "threshold": args.threshold,
+                   "metric": args.metric, "truths": names,
+                   "fits": [names[j] for j in fits],
+                   "pull": "Bias = (mu_fit - mu_inj) / sigma_mu, mu = r, "
+                           "sigma_mu on the side facing mu_inj; each fit "
+                           "with pdfindex frozen to one function",
+                   "matrix": matrix, "functions": functions,
+                   "usable": usable, "chosen": chosen}
+        write_json(os.path.join(outdir, f"bias_{tag}_{key}_matrix.json"),
+                   summary)
+        print_matrix(summary)
+        plot_matrix(summary, os.path.join(
+            plotdir, f"bias_{tag}_{key}_matrix"), args.pdf)
+        out[key] = summary
+    return out
+
+
+def plot_matrix(summary, outbase, pdf):
+    """Truth x fit matrix of the Bias, one cell per pair: the value in the
+    cell, light red where |Bias| >= threshold. On the right, per fit
+    function: its worst |Bias|, its expected significance, and which one is
+    chosen. Pixel fonts, so the canvas grows with the matrix."""
+    truths, fits = summary["truths"], summary["fits"]
+    thr, metric = summary["threshold"], summary["metric"]
+    nx, ny = len(truths), len(fits)
+    cw, ch = 64, 30                                  # cell, pixels
+    band = 48                    # CMS label, as on the 600 px canvases
+    left, right, top, bottom = 120, 210, band + 40, 120
+    w, h = left + right + cw * nx, top + bottom + ch * ny
+    style.setup_style()
+    c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
+    c.SetLeftMargin(left / w)
+    c.SetRightMargin(right / w)
+    c.SetTopMargin(top / h)
+    c.SetBottomMargin(bottom / h)
+    frame = ROOT.TH2F(f"f_{os.path.basename(outbase)}", "",
+                      nx, 0, nx, ny, 0, ny)
+    frame.SetDirectory(0)
+    frame.SetStats(0)
+    for i, t in enumerate(truths):
+        frame.GetXaxis().SetBinLabel(i + 1, t)
+    for k, f in enumerate(fits):
+        frame.GetYaxis().SetBinLabel(ny - k, f)       # first fit on top
+    for ax in (frame.GetXaxis(), frame.GetYaxis()):
+        ax.SetLabelFont(43)
+        ax.SetLabelSize(14)
+        ax.SetTickLength(0)
+    frame.GetXaxis().LabelsOption("v")
+    frame.Draw("AXIS")
+    keep = [c, frame]
+    ok_col = ROOT.TColor.GetColor(*MATRIX_PASS_RGB)
+    bad_col = ROOT.TColor.GetColor(*MATRIX_FAIL_RGB)
+    txt = ROOT.TLatex()
+    txt.SetTextFont(43)
+    txt.SetTextSize(13)
+    txt.SetTextAlign(22)
+    for k, f in enumerate(fits):
+        y = ny - k - 1
+        for i, t in enumerate(truths):
+            s = summary["matrix"][f][t]
+            box = ROOT.TBox(i + 0.03, y + 0.06, i + 0.97, y + 0.94)
+            box.SetFillColor(ok_col if s.get("pass") else
+                             bad_col if "bias" in s else ROOT.kWhite)
+            box.Draw()
+            keep.append(box)
+            txt.DrawLatex(i + 0.5, y + 0.5,
+                          "%+.2f" % s["bias"] if "bias" in s else "-")
+    frame.Draw("AXIS same")
+
+    # per fit function, right of the matrix
+    def ndc_y(y):
+        return c.GetBottomMargin() + y / float(ny) * (
+            1 - c.GetBottomMargin() - c.GetTopMargin())
+    col = ROOT.TLatex()
+    col.SetNDC()
+    col.SetTextFont(43)
+    col.SetTextSize(13)
+    col.SetTextAlign(12)
+    x0 = 1 - c.GetRightMargin() + 0.012
+    xs = [x0, x0 + 62.0 / w, x0 + 120.0 / w]
+    col.SetTextColor(ROOT.kGray + 2)
+    for x, head in zip(xs, ("max |Bias|", "Z_{exp}", "")):
+        col.DrawLatex(x, ndc_y(ny + 0.6), head)
+    for k, f in enumerate(fits):
+        v = summary["functions"][f]
+        y = ndc_y(ny - k - 0.5)
+        col.SetTextColor(ROOT.kBlack)
+        col.DrawLatex(xs[0], y, "%.2f" % v["max_abs_bias"]
+                      if v["max_abs_bias"] is not None else "-")
+        col.DrawLatex(xs[1], y, "%.2f" % v["significance"]
+                      if v["significance"] is not None else "-")
+        label = ("#bf{chosen}" if f == summary["chosen"] else
+                 "usable" if v["pass"] else "fails")
+        col.SetTextColor(ROOT.kBlack if v["pass"] else
+                         ROOT.TColor.GetColor(*PULL_GAUS_RGB))
+        col.DrawLatex(xs[2], y, label)
+    lat = ROOT.TLatex()
+    lat.SetNDC()
+    lat.SetTextFont(43)
+    lat.SetTextSize(15)
+    lat.SetTextAlign(12)
+    lat.DrawLatex(c.GetLeftMargin(), 1 - (band + 20.0) / h,
+                  f"{summary['tag']}, #mu_{{inj}} = {summary['r_inj']:g}: "
+                  f"{metric} Bias, red where |Bias| #geq {thr:g}")
+    # axis titles by hand: pixel-font title offsets do not scale
+    lat.SetTextSize(14)
+    lat.SetTextColor(ROOT.kGray + 2)
+    lat.SetTextAlign(21)
+    lat.DrawLatex(c.GetLeftMargin() + 0.5 * cw * nx / w, 8.0 / h,
+                  "toys generated from (truth)")
+    lat.SetTextAlign(32)
+    lat.DrawLatex(c.GetLeftMargin() - 8.0 / w, ndc_y(ny + 0.6), "fitted with")
+    keep += [txt, col, lat, draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV,
+                                       t=band / float(h))]
+    save(c, outbase, pdf)
+
+
+def print_matrix(summary):
+    truths, fits = summary["truths"], summary["fits"]
+    print(f"\n=== {summary['tag']}, r_inj = {summary['r_inj']:g}, "
+          f"single functions, {summary['metric']} Bias, "
+          f"|Bias| < {summary['threshold']:g} ===")
+    wid = max(9, max(len(t) for t in truths) + 1)
+    print("  " + "fit / truth".ljust(11)
+          + "".join(t.rjust(wid) for t in truths)
+          + "max|B|".rjust(8) + "Z_exp".rjust(7) + "  status")
+    for f in fits:
+        row = summary["matrix"][f]
+        v = summary["functions"][f]
+        cells = "".join(
+            ("%+.2f%s" % (row[t]["bias"], "" if row[t]["pass"] else "*")
+             if "bias" in row[t] else "-").rjust(wid) for t in truths)
+        mb = "%.2f" % v["max_abs_bias"] if v["max_abs_bias"] is not None else "-"
+        z = "%.3f" % v["significance"] if v["significance"] is not None else "-"
+        st = ("CHOSEN" if f == summary["chosen"] else
+              "usable" if v["pass"] else f"fails (worst: {v['worst_truth']})")
+        print(f"  {f:<11}{cells}{mb:>8}{z:>7}  {st}")
+    low = [(f, t, s["n_valid"], s["n_toys"]) for f in fits
+           for t, s in summary["matrix"][f].items()
+           if s["n_toys"] and s["n_valid"] < MIN_VALID_FRAC * s["n_toys"]]
+    for f, t, nv, nt in low:
+        print(f"  !! {f} on {t} toys: only {nv}/{nt} valid fits")
+    failed = sum(len(s.get("failed_jobs", [])) for f in fits
+                 for s in summary["matrix"][f].values())
+    if failed:
+        print(f"  !! {failed} fit job(s) wrote nothing; rerun the same "
+              "command to retry them")
+    print("  * = |Bias| above the threshold")
+    print("  chosen: " + (summary["chosen"] or
+                          "none (no function passes against every truth)"))
+
+
 def print_table(summary):
     names = summary["envelope"]
     print(f"\n=== {summary['tag']}, r_inj = {summary['r_inj']:g}, "
           f"r in [{summary['r_range'][0]:.3g}, {summary['r_range'][1]:.3g}]"
-          f", |median| < {summary['threshold']:g} ===")
+          f", |{summary.get('metric', 'median')}| < "
+          f"{summary['threshold']:g} ===")
     print(f"  {'toys from':<10} {'valid':>11}  {'median':>15}  {'mean':>6}  "
           f"{'gaus mu':>7}  {'gaus sig':>8}  {'median dr':>9}  "
           f"{'fit picks ' + '/'.join(names):<24}  status")
@@ -819,18 +1202,35 @@ def main():
     ap.add_argument("-b", "--bins", nargs="+", default=["incl"],
                     help="BDT bin label(s), as given to sigFit/bkgFit")
     ap.add_argument("-y", "--year", default="Run3")
+    ap.add_argument("--mode", choices=("envelope", "single"),
+                    default="envelope",
+                    help="envelope (default): toys from each envelope member, "
+                         "fitted with pdfindex floating. single: the Run 2 "
+                         "note, toys from every family's F-test pick, each "
+                         "fitted with one function at a time; reads the "
+                         "buildWorkspace.py --members families cards")
+    ap.add_argument("--fit-models", nargs="+", default=None, metavar="NAME",
+                    help="--mode single: fit with these members only "
+                         "(default all); every member stays a truth")
+    ap.add_argument("--metric", choices=("median", "mean"), default=None,
+                    help="the quoted Bias: median (default for envelope, as "
+                         "flashggFinalFit) or mean (default for single, as "
+                         "the Run 2 note)")
     ap.add_argument("--carddir", default=None,
                     help="where buildWorkspace.py wrote datacard_<tag>.txt "
-                         "(default WS_<year>)")
+                         "(datacard_<tag>_families.txt for --mode single; "
+                         "default WS_<year>)")
     ap.add_argument("--outdir", default="BIAS",
-                    help="toys, fits and summaries go to <outdir>/<tag>/")
+                    help="toys, fits and summaries go to <outdir>/<tag>/ "
+                         "(<outdir>/<tag>_single/ for --mode single)")
     ap.add_argument("--plotdir",
                     default=os.path.expanduser("~/public_html/HmumuFits/bias"),
                     help="plots land in <plotdir>/<category>/")
     ap.add_argument("--inject", nargs="+", type=float, default=[1.0],
                     help="injected signal strength(s) (default 1)")
     ap.add_argument("--ntoys", type=int, default=1000,
-                    help="toys per envelope member and r_inj (default 1000)")
+                    help="toys per truth and r_inj (default 1000; the "
+                         "Run 2 note used 2000)")
     ap.add_argument("--toys-per-job", type=int, default=100)
     ap.add_argument("-j", "--jobs", type=int, default=1,
                     help="combine processes run at once")
@@ -841,7 +1241,7 @@ def main():
                     help="r range of the toy fits (default: from an Asimov "
                          f"fit, r_inj -/+ {R_WIDTH:g} sigma_r)")
     ap.add_argument("--threshold", type=float, default=PULL_THRESHOLD,
-                    help=f"max |median Bias| (default {PULL_THRESHOLD})")
+                    help=f"max |Bias| (default {PULL_THRESHOLD})")
     ap.add_argument("--combine-opts", default="",
                     help="extra options for every combine call, e.g. "
                          "\"--toysNoSystematics\"")
@@ -853,6 +1253,10 @@ def main():
     ap.add_argument("--pdf", action="store_true",
                     help="also write PDF alongside the PNG")
     args = ap.parse_args()
+    if args.metric is None:
+        args.metric = DEFAULT_METRIC[args.mode]
+    if args.fit_models and args.mode != "single":
+        ap.error("--fit-models needs --mode single")
     if args.carddir is None:
         args.carddir = os.path.join(HERE, config.default_wsdir(args.year))
 
@@ -862,7 +1266,7 @@ def main():
             run_tag(tag, args)
     if args.only != "run" and not args.dry_run:
         reports = {tag: report_tag(tag, args) for tag in tags}
-        if len(args.bins) > 1:
+        if len(args.bins) > 1 and args.mode == "envelope":
             for cat in args.category:
                 for r_inj in args.inject:
                     key = rlabel(r_inj)
