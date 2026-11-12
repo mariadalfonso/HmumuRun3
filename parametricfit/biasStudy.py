@@ -76,22 +76,14 @@ PULL_FILL_RGB = (166, 206, 227)    # light blue
 PULL_LINE_RGB = (31, 120, 180)     # darker blue
 PULL_GAUS_RGB = (153, 0, 13)       # dark red
 SUMMARY_BAND_RGB = (217, 217, 217)  # light grey
-# one colour and marker per background family in the summary over BDT bins
-FAMILY_RGB = [(42, 120, 214), (235, 104, 52), (27, 175, 122), (237, 161, 0),
-              (140, 86, 192), (196, 61, 140), (102, 102, 102), (23, 162, 184)]
-FAMILY_MARKERS = [20, 21, 22, 23, 33, 29, 34, 47]
-FAMILY_LABEL = {"bern": "Bernstein", "exp": "exponential sum",
-                "pow": "power-law sum", "dyexp": "DY #times exp(Chebyshev)",
-                "dypow": "DY #times power law",
-                "mcexp": "MC 2Exp #times exp(Chebyshev)",
-                "mcpow": "MC 2Pow #times exp(Chebyshev)",
-                "mcdy": "MC DY core #times exp(Chebyshev)",
-                "bwz": "BWZ", "bwzbern": "BWZ #times Bernstein",
-                "bwzgamma": "BWZGamma", "bwzredux": "BWZRedux",
-                "fewzbern": "FEWZ #times Bernstein",
-                "expconst": "exponential + constant",
-                "powconst": "power law + constant",
-                "landau": "Landau", "landbern": "Landau #times Bernstein"}
+# summary plots: one row per generating member, sizes in pixels
+ROWS_CANVAS_W = 700
+ROWS_MIN_H = 450
+ROW_PX = 24                 # height of one row
+ROW_HEADROOM = 2            # empty rows on top for the title and legend
+ROWS_TOP_PX, ROWS_BOTTOM_PX = 48, 64
+ROWS_LEFT_PX, ROWS_RIGHT_PX = 120, 150   # member names | value column
+ROW_LABEL_PX, ROW_VALUE_PX = 16, 14
 
 # r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
 # that the 1 sigma interval of a toy never reaches the edge; --algo singles
@@ -514,7 +506,9 @@ def draw_label(pad, right):
     if style.CMS_EXTRA_TEXT:
         lat.SetTextFont(52)
         lat.SetTextSize(style.EXTRA_OVER_CMS_TEXT_SIZE * style.CMS_TEXT_SIZE_FRAC * t)
-        lat.DrawLatex(l + 0.14, y, style.CMS_EXTRA_TEXT)   # full-height pad
+        # 0.14 of the 600 px wide canvas, kept at 84 px on wider ones
+        lat.DrawLatex(l + 0.14 * style.CANVAS_W / pad.GetWw(), y,
+                      style.CMS_EXTRA_TEXT)
     lat.SetTextFont(42)
     lat.SetTextAlign(31)
     lat.SetTextSize(style.LUMI_TEXT_SIZE_FRAC * t)
@@ -575,138 +569,152 @@ def plot_member(pulls, s, tag, gen, r_inj, outbase, pdf):
     save(c, outbase, pdf)
 
 
-def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
-    """Median Bias per generating member, with the +/- threshold band."""
-    n = len(results)
-    c = new_canvas(f"c_{os.path.basename(outbase)}")
-    c.SetBottomMargin(0.18)
-    frame = ROOT.TH1D(f"f_{os.path.basename(outbase)}",
-                      ";background model;median Bias", n, -0.5, n - 0.5)
+def plot_rows(groups, title, threshold, outbase, pdf):
+    """Median Bias as one row per generating member, grouped under a header
+    row per BDT bin. groups is a list of (header or None, {member: summary}).
+
+    Rows rather than columns, so a long envelope never crowds the labels:
+    the member is the axis label, its value is printed in a column on the
+    right, and a failing member is a red square with "fails" next to its
+    value. All text is in pixel fonts (precision 3), so the canvas grows
+    with the number of rows without the text changing size.
+    """
+    rows = []                                   # (label, summary or None)
+    for header, members in groups:
+        if header is not None:
+            rows.append((f"#bf{{{header}}}", None))
+        rows += [(gen, s) for gen, s in members.items()]
+    n, head = len(rows), ROW_HEADROOM
+    ny = n + head
+    w = ROWS_CANVAS_W
+    h = max(ROWS_MIN_H, ROWS_TOP_PX + ROWS_BOTTOM_PX + ROW_PX * ny)
+    style.setup_style()
+    c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
+    c.SetTopMargin(ROWS_TOP_PX / h)
+    c.SetBottomMargin(ROWS_BOTTOM_PX / h)
+    c.SetLeftMargin(ROWS_LEFT_PX / w)
+    c.SetRightMargin(ROWS_RIGHT_PX / w)
+    c.SetTicky(0)
+
+    vals = [abs(s["median_pull"]) + s["median_pull_err"]
+            for _, s in rows if s and "median_pull" in s]
+    lim = max([threshold * 2.5] + vals) * 1.12
+    frame = ROOT.TH2F(f"f_{os.path.basename(outbase)}", ";median Bias;",
+                      100, -lim, lim, ny, 0, ny)
     frame.SetDirectory(0)
-    lim = max([threshold * 2.5] +
-              [abs(r.get("median_pull", 0)) + r.get("median_pull_err", 0)
-               for r in results.values()]) * 1.3
-    frame.SetMinimum(-lim)
-    frame.SetMaximum(lim)
-    for i, gen in enumerate(results):
-        frame.GetXaxis().SetBinLabel(i + 1, gen)
-    frame.GetXaxis().SetLabelSize(0.05)
-    frame.GetXaxis().SetTitleOffset(1.6)
+    frame.SetStats(0)
+    ya = frame.GetYaxis()
+    for k, (label, _) in enumerate(rows):
+        ya.SetBinLabel(n - k, label)
+    for b in range(n + 1, ny + 1):
+        ya.SetBinLabel(b, "")
+    ya.SetLabelFont(43)
+    ya.SetLabelSize(ROW_LABEL_PX)
+    ya.SetTickLength(0)
+    xa = frame.GetXaxis()
+    xa.SetLabelFont(43)
+    xa.SetLabelSize(ROW_LABEL_PX)
+    xa.SetTitleFont(43)
+    xa.SetTitleSize(ROW_LABEL_PX + 2)
+    xa.SetTitleOffset(1.3)
+    xa.SetNdivisions(505)
     frame.Draw("AXIS")
-    band = ROOT.TBox(-0.5, -threshold, n - 0.5, threshold)
+
+    band = ROOT.TBox(-threshold, 0, threshold, n)
     band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
     band.Draw()
-    zero = ROOT.TLine(-0.5, 0, n - 0.5, 0)
+    zero = ROOT.TLine(0, 0, 0, n)
     zero.SetLineStyle(2)
     zero.Draw()
-    gr = ROOT.TGraphErrors()
-    for i, r in enumerate(results.values()):
-        if "median_pull" in r:
-            k = gr.GetN()
-            gr.SetPoint(k, i, r["median_pull"])
-            gr.SetPointError(k, 0, r["median_pull_err"])
-    gr.SetMarkerStyle(20)
-    gr.Draw("P same")
-    frame.Draw("AXIS same")
-    lat = ROOT.TLatex()
-    lat.SetNDC()
-    lat.SetTextFont(42)
-    lat.SetTextSize(0.035)
-    lat.DrawLatex(c.GetLeftMargin() + 0.04, 0.86,
-                  f"{tag}, #mu_{{inj}} = {r_inj:g}")
-    keep = [frame, band, zero, gr,  # noqa: F841 (ROOT needs them alive)
-            draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
-    save(c, outbase, pdf)
+    keep = [c, frame, band, zero]
+    # a thin line above every header row after the first
+    for k, (label, s) in enumerate(rows):
+        if s is None and k > 0:
+            ln = ROOT.TLine(-lim, n - k, lim, n - k)
+            ln.SetLineColor(ROOT.kGray)
+            ln.Draw()
+            keep.append(ln)
 
+    def ndc_y(y):
+        b, t = c.GetBottomMargin(), c.GetTopMargin()
+        return b + y / float(ny) * (1 - b - t)
 
-def family(member):
-    """bern5 -> bern: the member without its order."""
-    return member.rstrip("0123456789")
-
-
-def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
-    """Median Bias per BDT bin, one colour per background family. by_bin maps
-    a bin label to that bin's report summary; each bin has its own envelope,
-    so each point is labelled with its member (the order can differ)."""
-    fams = []
-    for summary in by_bin.values():
-        for gen in summary["members"]:
-            if family(gen) not in fams:
-                fams.append(family(gen))
-    n, nf = len(by_bin), len(fams)
-    c = new_canvas(f"c_{os.path.basename(outbase)}")
-    c.SetBottomMargin(0.18)
-    frame = ROOT.TH1D(f"f_{os.path.basename(outbase)}",
-                      ";BDT category;median Bias", n, -0.5, n - 0.5)
-    frame.SetDirectory(0)
-    vals = [abs(m.get("median_pull", 0)) + m.get("median_pull_err", 0)
-            for summary in by_bin.values()
-            for m in summary["members"].values()]
-    lim = max([threshold * 2.5] + vals) * 1.5
-    frame.SetMinimum(-lim)
-    frame.SetMaximum(lim)
-    for i, b in enumerate(by_bin):
-        frame.GetXaxis().SetBinLabel(i + 1, b)
-    frame.GetXaxis().SetLabelSize(0.05)
-    frame.GetXaxis().SetTitleOffset(1.4)
-    frame.GetXaxis().CenterTitle()
-    frame.Draw("AXIS")
-    band = ROOT.TBox(-0.5, -threshold, n - 0.5, threshold)
-    band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
-    band.Draw()
-    zero = ROOT.TLine(-0.5, 0, n - 0.5, 0)
-    zero.SetLineStyle(2)
-    zero.Draw()
-    x0 = c.GetLeftMargin() + 0.03
-    leg = ROOT.TLegend(x0, 0.775, 1 - c.GetRightMargin() - 0.03, 0.815)
-    leg.SetBorderSize(0)
-    leg.SetFillStyle(0)
-    leg.SetTextFont(42)
-    leg.SetTextSize(0.035)
-    leg.SetNColumns(nf)
-    names = ROOT.TLatex()
-    names.SetTextFont(42)
-    names.SetTextSize(0.026)
-    names.SetTextAlign(21)
-    names.SetTextColor(ROOT.kGray + 2)
-    keep = [frame, band, zero, leg, names]
-    # points of a bin are spread symmetrically about its centre, over the
-    # families that bin actually has
-    step = min(0.22, 0.7 / nf)
-    present = [[f for f in fams
-                if any(family(g) == f and "median_pull" in m
-                       for g, m in summary["members"].items())]
-               for summary in by_bin.values()]
-    for j, fam in enumerate(fams):
-        col = ROOT.TColor.GetColor(*FAMILY_RGB[j % len(FAMILY_RGB)])
-        gr = ROOT.TGraphErrors()
-        for i, summary in enumerate(by_bin.values()):
-            for gen, m in summary["members"].items():
-                if family(gen) != fam or "median_pull" not in m:
-                    continue
-                dx = (present[i].index(fam) - (len(present[i]) - 1) / 2.0) * step
-                k = gr.GetN()
-                gr.SetPoint(k, i + dx, m["median_pull"])
-                gr.SetPointError(k, 0, m["median_pull_err"])
-                names.DrawLatex(i + dx, m["median_pull"]
-                                + m["median_pull_err"] + 0.03 * lim, gen)
-        gr.SetMarkerStyle(FAMILY_MARKERS[j % len(FAMILY_MARKERS)])
-        gr.SetMarkerSize(1.3)
+    ok_col = ROOT.TColor.GetColor(*PULL_LINE_RGB)
+    bad_col = ROOT.TColor.GetColor(*PULL_GAUS_RGB)
+    ok, bad = ROOT.TGraphErrors(), ROOT.TGraphErrors()
+    val = ROOT.TLatex()
+    val.SetNDC()
+    val.SetTextFont(43)
+    val.SetTextSize(ROW_VALUE_PX)
+    val.SetTextAlign(12)
+    xv = 1 - c.GetRightMargin() + 0.015
+    for k, (label, s) in enumerate(rows):
+        if s is None:
+            continue
+        y = n - k - 0.5
+        if "median_pull" not in s:
+            val.SetTextColor(ROOT.kGray + 2)
+            val.DrawLatex(xv, ndc_y(y), s.get("status", "no toys"))
+            continue
+        gr = ok if s.get("pass") else bad
+        i = gr.GetN()
+        gr.SetPoint(i, s["median_pull"], y)
+        gr.SetPointError(i, s["median_pull_err"], 0)
+        val.SetTextColor(ROOT.kBlack if s.get("pass") else bad_col)
+        val.DrawLatex(xv, ndc_y(y), "%+.2f #pm %.2f%s" % (
+            s["median_pull"], s["median_pull_err"],
+            "" if s.get("pass") else "  fails"))
+    for gr, col, mk in ((ok, ok_col, 20), (bad, bad_col, 21)):
+        gr.SetMarkerStyle(mk)
+        gr.SetMarkerSize(1.1)
         gr.SetMarkerColor(col)
         gr.SetLineColor(col)
         gr.SetLineWidth(2)
-        gr.Draw("P same")
-        leg.AddEntry(gr, FAMILY_LABEL.get(fam, fam), "pe")
-        keep.append(gr)
+        if gr.GetN():
+            gr.Draw("P same")
     frame.Draw("AXIS same")
-    leg.Draw()
+
+    # headroom: title on the left, legend on the right, value column header
+    yh = ndc_y(n + head / 2.0)
     lat = ROOT.TLatex()
     lat.SetNDC()
-    lat.SetTextFont(42)
-    lat.SetTextSize(0.035)
-    lat.DrawLatex(x0 + 0.01, 0.86, f"{title}, #mu_{{inj}} = {r_inj:g}")
-    keep += [lat, draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
+    lat.SetTextFont(43)
+    lat.SetTextSize(ROW_LABEL_PX)
+    lat.SetTextAlign(12)
+    lat.DrawLatex(c.GetLeftMargin() + 0.02, yh, title)
+    leg = ROOT.TLegend(0.47, yh - 0.6 * ROW_PX / h,
+                       1 - c.GetRightMargin() - 0.01, yh + 0.6 * ROW_PX / h)
+    leg.SetBorderSize(0)
+    leg.SetFillStyle(0)
+    leg.SetTextFont(43)
+    leg.SetTextSize(ROW_VALUE_PX)
+    leg.SetNColumns(3)
+    leg.SetMargin(0.3)
+    leg.AddEntry(ok, "passes", "pe")
+    leg.AddEntry(bad, "fails", "pe")
+    leg.AddEntry(band, "|median| < %g" % threshold, "f")
+    leg.Draw()
+    val.SetTextColor(ROOT.kGray + 2)
+    val.DrawLatex(xv, yh, "median #pm err")
+    keep += [ok, bad, val, lat, leg,
+             draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
+
+
+def plot_summary(results, tag, r_inj, threshold, outbase, pdf):
+    """Median Bias per generating member of one tag's envelope."""
+    plot_rows([(None, results)], f"{tag}, #mu_{{inj}} = {r_inj:g}",
+              threshold, outbase, pdf)
+
+
+def plot_summary_bins(by_bin, title, r_inj, threshold, outbase, pdf):
+    """Median Bias per generating member, one block of rows per BDT bin.
+    by_bin maps a bin label to that bin's report summary; each bin has its
+    own envelope, so the members differ from block to block."""
+    groups = [(style.BIN_LABEL.get(b, b), summary["members"])
+              for b, summary in by_bin.items()]
+    plot_rows(groups, f"{title}, #mu_{{inj}} = {r_inj:g}",
+              threshold, outbase, pdf)
 
 
 def report_tag(tag, args):
