@@ -15,7 +15,13 @@ With --members families the multipdf holds every family's F-test pick
 (bkgFit.py's family_choice), the ones the goodness-of-fit cut rejected
 included, and goes to Bkg_<tag>_families_workspace.root instead. That is
 the input of biasStudy.py --mode single (the Run 2 note's truth x fit
-matrix); the limit always uses the envelope.
+matrix).
+
+With --members core the multipdf is the core-PDF of corePdfFit.py
+(Bkg_<tag>_core_params.json): core x this bin's SMF per core, the core
+parameters and the index pdfindex_<cat>_core_<year> named for the
+category, so the bins of the combined card share them. Written to
+Bkg_<tag>_core_workspace.root.
 
 Why the split: the container's ROOT (6.22) has no RooCrystalBall, and RooFit
 objects written by a newer ROOT are not guaranteed to read back in it; and
@@ -41,7 +47,7 @@ import os
 
 import ROOT
 
-from . import config
+from . import config, corePdf
 from . import pdfDefinitions as pdefs
 
 ROOT.gROOT.SetBatch(True)
@@ -115,7 +121,7 @@ def build_signal(category, tag, sigjson, wsfile):
 
 
 # file-name suffix of each --members choice
-MEMBERS_SUFFIX = {"envelope": "", "families": "_families"}
+MEMBERS_SUFFIX = {"envelope": "", "families": "_families", "core": "_core"}
 
 
 def bkg_members(rec, members):
@@ -146,16 +152,53 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope"):
     keep, store = [], ROOT.RooArgList()
     for nm in names:
         pdf, k = pdefs.create_bkg_pdf(x, tag, nm, mc_core)
-        fitted = rec["candidates"][nm]["params"]
-        for p in k["params"]:
-            if p.GetName() not in fitted:
-                raise SystemExit(f"{bkgjson}: no fitted value for "
-                                 f"{p.GetName()} ({nm})")
-            pin(p, fitted[p.GetName()]["value"], const=False)
+        pin_all(k["params"], rec["candidates"][nm]["params"], bkgjson, nm)
         store.add(pdf)
         keep.append((pdf, k))
 
     cat = ROOT.RooCategory(f"pdfindex_{tag}", f"pdfindex_{tag}")
+    write_bkg(tag, x, cat, store, rec, wsdir, wsfile, names,
+              "" if members == "envelope" else
+              f"   (all families; envelope = {', '.join(rec['envelope'])})")
+
+
+def build_core_bkg(category, tag, corejson, wsdir, wsfile):
+    """The core-PDF of corePdfFit.py: one member per core, core x this
+    bin's SMF, at the fitted values with the parameters floating. The core
+    parameters and the index carry the category's name, not the bin's, so
+    text2workspace merges them across the bins of the combined card."""
+    rec = read_json(corejson)
+    prov = rec["provenance"]
+    x = observable(category, prov["window"])
+    year = prov["year"]
+    keep, store = [], ROOT.RooArgList()
+    for core in rec["members"]:
+        core_pdf, ck = corePdf.create_core(x, category, year, core)
+        pin_all(ck["params"], rec["core_params"][core], corejson, core)
+        pdf, smf, k = corePdf.create_member(x, core_pdf, core, tag,
+                                            prov["smf_order"])
+        pin_all(smf, rec["smf_params"][core], corejson, f"{core} SMF")
+        store.add(pdf)
+        keep.append((core_pdf, ck, pdf, smf, k))
+    index = prov["index"]
+    cat = ROOT.RooCategory(index, index)
+    write_bkg(tag, x, cat, store, rec, wsdir, wsfile, rec["members"],
+              f"   (core-PDF: cores shared as {prov['core_tag']}, index "
+              f"{index}, SMF order {prov['smf_order']})")
+
+
+def pin_all(pars, fitted, source, what):
+    """Every floating parameter at its fitted value (still floating)."""
+    for p in pars:
+        if p.GetName() not in fitted:
+            raise SystemExit(f"{source}: no fitted value for "
+                             f"{p.GetName()} ({what})")
+        pin(p, fitted[p.GetName()]["value"], const=False)
+
+
+def write_bkg(tag, x, cat, store, rec, wsdir, wsfile, names, note):
+    """multipdf_<tag>_bkg over `store`, its floating norm and the data."""
+    prov = rec["provenance"]
     multi = ROOT.RooMultiPdf(f"multipdf_{tag}_bkg", "multipdf", cat, store)
 
     nrm_cfg = rec["normalization"]
@@ -181,9 +224,7 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope"):
     for obj in (cat, multi, nrm, data):  # data is FULL range, for data_obs
         getattr(w, "import")(obj, ROOT.RooFit.Silence())
     w.writeToFile(wsfile)
-    print(f"  multipdf_{tag}_bkg        {', '.join(names)}"
-          + ("" if members == "envelope" else
-             f"   (all families; envelope = {', '.join(rec['envelope'])})"))
+    print(f"  multipdf_{tag}_bkg        {', '.join(names)}{note}")
     print(f"  multipdf_{tag}_bkg_norm   = {norm_val:.1f}, floating")
     print(f"  datahist_{tag}            {data.sumEntries():.0f} events")
     print(f"wrote {wsfile}")
@@ -203,10 +244,11 @@ def main():
     ap.add_argument("--only", choices=("signal", "bkg"), default=None)
     ap.add_argument("--members", choices=tuple(MEMBERS_SUFFIX),
                     default="envelope",
-                    help="multipdf members: the envelope (default, for the "
-                         "limit) or every family's F-test pick, written to "
-                         "Bkg_<tag>_families_workspace.root for "
-                         "biasStudy.py --mode single")
+                    help="multipdf members: the envelope (default), every "
+                         "family's F-test pick (families: "
+                         "Bkg_<tag>_families_workspace.root, for "
+                         "biasStudy.py --mode single), or the core-PDF of "
+                         "corePdfFit.py (core: Bkg_<tag>_core_workspace.root)")
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
 
@@ -226,11 +268,15 @@ def main():
     if args.only != "signal":
         print("\n--- background ---")
         sfx = MEMBERS_SUFFIX[args.members]
-        build_bkg(args.category, tag,
-                  os.path.join(args.wsdir, f"Bkg_{tag}_params.json"),
-                  args.wsdir,
-                  os.path.join(args.wsdir, f"Bkg_{tag}{sfx}_workspace.root"),
-                  args.members)
+        wsfile = os.path.join(args.wsdir, f"Bkg_{tag}{sfx}_workspace.root")
+        if args.members == "core":
+            build_core_bkg(args.category, tag, os.path.join(
+                args.wsdir, f"Bkg_{tag}_core_params.json"), args.wsdir,
+                wsfile)
+        else:
+            build_bkg(args.category, tag,
+                      os.path.join(args.wsdir, f"Bkg_{tag}_params.json"),
+                      args.wsdir, wsfile, args.members)
 
 
 if __name__ == "__main__":

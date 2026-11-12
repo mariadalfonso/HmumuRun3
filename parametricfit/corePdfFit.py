@@ -1,0 +1,322 @@
+"""
+corePdfFit.py -- fit the Run 2 core-PDF (Sec. 6.4.2 of the note) to the
+sidebands of all BDT bins of a category at once.
+
+    python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3_v2
+    python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --smf-order 3 3 2
+
+The model (fitlib/corePdf.py): in every bin, one of three cores (BWZRedux,
+FEWZ x Bernstein, S-exponential; 3 parameters each) shared by all bins,
+times that bin's own Bernstein shape modifier (SMF). For each core:
+
+  1. fit the core alone to the summed sidebands of the bins (the start)
+  2. fit core x SMF_bin in every bin at once: one likelihood, the sum of
+     the bins' masked sideband NLLs, the core parameters common to all
+  3. per bin: the sideband chi2 and p-value, and the fraction of the PDF
+     in the sideband, which extrapolates the yield as bkgFit.py does
+
+A core whose simultaneous fit does not converge is left out. Minuit
+status 1 (a valid minimum, Hessian forced positive-definite) counts as
+converged: the core and the SMFs partly mimic each other, so the Hessian
+is near-singular by construction. --strict-status keeps status 0 only.
+The other cores, ordered by their total NLL (no penalty: they all have the
+same parameters), are the members of the shared envelope; the best one is
+index 0, and gives every bin's extrapolated yield.
+
+Runs in conda after bkgFit.py, from whose output it reads each bin's data
+(<wsdir>/Bkg_<tag>_data.root) and binning (<wsdir>/Bkg_<tag>_params.json).
+Writes, per bin,
+
+    <wsdir>/Bkg_<tag>_core_params.json   the shared core, this bin's SMF,
+                                         the yield, for makeWorkspaces.py
+    <plotdir>/<cat>/core_<tag>_envelope.png
+
+then buildWorkspace.py --members core makes the cards, and
+biasStudy.py --mode core runs the note's bias test on them.
+
+--smf-order: one order for every bin, or one per bin in the order of -b
+(default 2; the note used 3 in ggH-cat0 and cat1 and 2 in the others,
+from its bias study).
+"""
+
+import argparse
+import json
+import os
+from datetime import datetime, timezone
+
+import ROOT
+
+import bkgFit
+from fitlib import config, corePdf, style
+
+ROOT.gROOT.SetBatch(True)
+ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
+
+
+def read_json(path):
+    if not os.path.isfile(path):
+        raise SystemExit(f"missing {path}; run bkgFit.py for this bin first")
+    with open(path) as fh:
+        return json.load(fh)
+
+
+def load_bin(args, b, x):
+    """The data of one bin, as bkgFit.py wrote it."""
+    tag = f"{args.category}_{b}_{args.year}"
+    rec = read_json(os.path.join(args.wsdir, f"Bkg_{tag}_params.json"))
+    prov = rec["provenance"]
+    if list(prov["window"]) != [config.XLOW, config.XHIGH]:
+        raise SystemExit(f"{tag}: window {prov['window']} is not "
+                         f"{config.XLOW}-{config.XHIGH}")
+    path = os.path.join(args.wsdir, prov["data_file"])
+    f = ROOT.TFile.Open(path)
+    if not f or f.IsZombie():
+        raise SystemExit(f"cannot open {path}")
+    h = f.Get(f"data_{tag}")
+    if not h:
+        raise SystemExit(f"{path} has no data_{tag}")
+    h = h.Clone(f"h_{tag}")
+    h.SetDirectory(0)
+    f.Close()
+    sb_idx = bkgFit.sideband_bins(h)
+    return {"bin": b, "tag": tag, "h": h, "sb_idx": sb_idx,
+            "n_sb": sum(h.GetBinContent(i) for i in sb_idx),
+            "nbins": h.GetNbinsX(), "data_file": prov["data_file"],
+            "data": ROOT.RooDataHist(f"datahist_{tag}", "data",
+                                     ROOT.RooArgList(x), h)}
+
+
+def param_record(pars):
+    return {p.GetName(): {"value": p.getVal(), "error": p.getError(),
+                          "min": p.getMin(), "max": p.getMax()}
+            for p in pars}
+
+
+# Minuit status 1: the minimum is valid, but the Hessian had to be made
+# positive-definite. The core-PDF hits it by construction: the shared
+# core and the bins' polynomials can partly mimic each other (a tilt of
+# the core against the same tilt in every SMF), so the Hessian is close to
+# singular. That leaves the minimum, which is all Combine uses, intact;
+# --strict-status excludes such cores anyway, as bkgFit.py does.
+ACCEPT_STATUS = (0, 1)
+
+
+def minimize(nll, accept=ACCEPT_STATUS):
+    """Migrad twice (as bkgFit.py's fits), then Hesse, with strategy 1: the
+    FEWZ core costs ~13 ms per likelihood call (its formula sums all 161
+    spline pieces at every bin), and strategy 2's extra Hessians would
+    triple the time for the same minimum. If the status is not accepted,
+    once more from there with strategy 2."""
+    m = ROOT.RooMinimizer(nll)
+    m.setMinimizerType("Minuit2")
+    m.setPrintLevel(-1)
+    m.setPrintEvalErrors(-1)
+    for strategy in (1, 2):
+        m.setStrategy(strategy)
+        m.minimize("Minuit2", "Migrad")
+        m.minimize("Minuit2", "Migrad")
+        m.hesse()
+        res = m.save()
+        if res.status() in accept:
+            break
+    return res, strategy
+
+
+def fit_core(core, args, x, bins, sb_range, h_sum):
+    """The simultaneous fit of one core across the bins."""
+    # 1. the start: the core alone on the summed sidebands
+    data_sum = ROOT.RooDataHist("datahist_sum", "sum", ROOT.RooArgList(x),
+                                h_sum)
+    seed_tag = f"{corePdf.core_tag(args.category, args.year)}_seed"
+    seed = bkgFit.fit_candidate(x, data_sum, core, seed_tag, sb_range)
+
+    core_pdf, ckeep = corePdf.create_core(x, args.category, args.year, core)
+    ctag = corePdf.core_tag(args.category, args.year)
+    for p in ckeep["params"]:
+        rec = seed["params"].get(p.GetName().replace(ctag, seed_tag))
+        if rec:
+            p.setVal(rec["value"])
+
+    # 2. core x SMF in every bin, one likelihood
+    members, nlls, keep = {}, ROOT.RooArgList(), [core_pdf, ckeep, seed]
+    for bd in bins:
+        pdf, smf_pars, k = corePdf.create_member(x, core_pdf, core,
+                                                 bd["tag"], bd["order"])
+        nll = pdf.createNLL(bd["data"], ROOT.RooFit.Range(sb_range))
+        nlls.add(nll)
+        members[bd["bin"]] = {"pdf": pdf, "smf": smf_pars}
+        keep += [k, nll]
+    total = ROOT.RooAddition(f"nll_{core}", "total NLL", nlls)
+    res, strategy = minimize(total, args.accept)
+
+    out = {"core": core, "status": res.status(), "cov_qual": res.covQual(),
+           "edm": res.edm(), "nll": res.minNll(), "strategy": strategy,
+           "seed_status": seed["status"],
+           "core_params": param_record(ckeep["params"]), "bins": {},
+           "keep": keep + [total, res, members]}
+    # 3. per bin: sideband fraction, yield, chi2
+    nset = ROOT.RooArgSet(x)
+    for bd in bins:
+        mem = members[bd["bin"]]
+        f_sb = mem["pdf"].createIntegral(
+            nset, ROOT.RooFit.NormSet(nset),
+            ROOT.RooFit.Range(sb_range)).getVal()
+        rec = {"pdf": mem["pdf"], "sb_fraction": f_sb,
+               "smf_params": param_record(mem["smf"]),
+               "npar": corePdf.npar(core, bd["order"])}
+        rec.update(bkgFit.sideband_chi2(
+            x, bd["h"], mem["pdf"], bd["sb_idx"],
+            bkgFit.full_yield(bd["n_sb"], rec), rec["npar"]))
+        out["bins"][bd["bin"]] = rec
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("-c", "--category", default="ggHcat",
+                    choices=sorted(config.MC_LIST))
+    ap.add_argument("-b", "--bins", nargs="+", required=True,
+                    help="the BDT bins that share the core")
+    ap.add_argument("-y", "--year", default="Run3")
+    ap.add_argument("--wsdir", default=None,
+                    help="bkgFit.py's output, and where this writes "
+                         "(default WS_<year>)")
+    ap.add_argument("--smf-order", nargs="+", type=int,
+                    default=[corePdf.SMF_ORDER],
+                    help="SMF order: one for all bins, or one per bin "
+                         f"(default {corePdf.SMF_ORDER})")
+    ap.add_argument("--cores", nargs="+", default=corePdf.CORES,
+                    help=f"core functions (default {' '.join(corePdf.CORES)})")
+    ap.add_argument("--strict-status", action="store_true",
+                    help="keep only cores with Minuit status 0 (default: "
+                         "also 1, a valid minimum whose Hessian was forced "
+                         "positive-definite)")
+    ap.add_argument("--plotdir", default=None,
+                    help="default ~/public_html/HmumuFits/bkg_fits")
+    ap.add_argument("--pdf", action="store_true")
+    args = ap.parse_args()
+    args.accept = (0,) if args.strict_status else ACCEPT_STATUS
+    args.wsdir = args.wsdir or config.default_wsdir(args.year)
+    args.plotdir = args.plotdir or os.path.expanduser(
+        "~/public_html/HmumuFits/bkg_fits")
+    if len(args.smf_order) == 1:
+        args.smf_order = args.smf_order * len(args.bins)
+    if len(args.smf_order) != len(args.bins):
+        ap.error(f"--smf-order: give one order, or one per bin "
+                 f"({len(args.bins)})")
+    style.setup_style()
+
+    x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}",
+                        config.XLOW, config.XHIGH)
+    sb_range = bkgFit.setup_ranges(x)
+    bins = [load_bin(args, b, x) for b in args.bins]
+    for bd, n in zip(bins, args.smf_order):
+        bd["order"] = n
+    if len({bd["nbins"] for bd in bins}) != 1:
+        raise SystemExit("the bins have different binnings; rerun bkgFit.py "
+                         "with the same --bins-per-gev")
+    h_sum = bins[0]["h"].Clone("h_sum")
+    h_sum.SetDirectory(0)
+    for bd in bins[1:]:
+        h_sum.Add(bd["h"])
+
+    ctag = corePdf.core_tag(args.category, args.year)
+    print(f"category : {args.category}, {args.year}\n"
+          f"bins     : " + ", ".join(f"{bd['bin']} (SMF order {bd['order']}, "
+                                     f"{bd['n_sb']:.0f} sideband events)"
+                                     for bd in bins) +
+          f"\ncores    : {', '.join(args.cores)}, shared as {ctag}\n"
+          f"index    : {corePdf.index_name(args.category, args.year)}")
+
+    fits = {}
+    print(f"\n{'core':<11}{'status':>7}{'edm':>10}{'total NLL':>16}   "
+          + "  ".join(f"{bd['bin']} chi2/ndf (p)" for bd in bins))
+    for core in args.cores:
+        r = fit_core(core, args, x, bins, sb_range, h_sum)
+        fits[core] = r
+        flag = ("" if r["status"] == 0 and r["cov_qual"] == 3 else
+                "  (Hessian forced pos-def)" if r["status"] in args.accept
+                else "  <-- not converged")
+        if r["strategy"] == 2:
+            flag += "  (strategy 2 retry)"
+        print(f"{core:<11}{r['status']:>7}{r['edm']:>10.2g}{r['nll']:>16.2f}   "
+              + "  ".join(f"{r['bins'][bd['bin']]['chi2_ndf']:6.3f} "
+                          f"({r['bins'][bd['bin']]['pvalue']:.3f})"
+                          for bd in bins) + flag)
+
+    ok = sorted((c for c, r in fits.items() if r["status"] in args.accept),
+                key=lambda c: fits[c]["nll"])
+    dropped = [c for c in fits if c not in ok]
+    if dropped:
+        print("\nWARNING: not converged, left out of the envelope: "
+              + ", ".join(f"{c} (status {fits[c]['status']})"
+                          for c in dropped))
+    if not ok:
+        raise SystemExit("no core converged")
+    best = ok[0]
+    print(f"\nenvelope : {', '.join(ok)}   (best fit: {best}, "
+          f"index 0)")
+    for c in ok:
+        print(f"  {c:<11} NLL {fits[c]['nll']:14.2f}  "
+              f"(+{fits[c]['nll'] - fits[best]['nll']:.2f})")
+    print("  core parameters (" + best + "): " + ", ".join(
+        f"{k.replace('_' + ctag, '').replace(ctag, '')}="
+        f"{v['value']:.4g}" for k, v in fits[best]["core_params"].items()))
+
+    os.makedirs(args.wsdir, exist_ok=True)
+    print()
+    for bd in bins:
+        b, tag = bd["bin"], bd["tag"]
+        per = {c: fits[c]["bins"][b] for c in ok}
+        norm_val = bkgFit.full_yield(bd["n_sb"], per[best])
+        spread = [bkgFit.full_yield(bd["n_sb"], per[c]) for c in ok]
+        rec = {
+            "provenance": {
+                "written_utc": datetime.now(timezone.utc)
+                               .isoformat(timespec="seconds"),
+                "git_commit": config.git_commit(),
+                "model": "core-PDF (Run 2 note Sec. 6.4.2)",
+                "category": args.category, "bin": b, "year": args.year,
+                "tag": tag, "bins": args.bins,
+                "window": [config.XLOW, config.XHIGH], "n_bins": bd["nbins"],
+                "blind_region": [bkgFit.SR_LO, bkgFit.SR_HI],
+                "observable": x.GetName(), "data_file": bd["data_file"],
+                "core_tag": ctag,
+                "index": corePdf.index_name(args.category, args.year),
+                "smf_order": bd["order"],
+            },
+            "members": ok, "best": best, "dropped": dropped,
+            "accepted_status": list(args.accept),
+            "fits": {c: {"status": fits[c]["status"],
+                         "cov_qual": fits[c]["cov_qual"],
+                         "nll_total": fits[c]["nll"], "edm": fits[c]["edm"],
+                         "chi2": per[c]["chi2"], "ndf": per[c]["ndf"],
+                         "pvalue": per[c]["pvalue"],
+                         "sb_fraction": per[c]["sb_fraction"],
+                         "npar": per[c]["npar"]} for c in ok},
+            "core_params": {c: fits[c]["core_params"] for c in ok},
+            "smf_params": {c: per[c]["smf_params"] for c in ok},
+            "normalization": {"value": norm_val,
+                              "sideband_count": bd["n_sb"],
+                              "sb_fraction": per[best]["sb_fraction"],
+                              "norm_range": list(bkgFit.NORM_RANGE),
+                              "envelope_spread": [min(spread), max(spread)]},
+        }
+        path = os.path.join(args.wsdir, f"Bkg_{tag}_core_params.json")
+        with open(path, "w") as fh:
+            json.dump(rec, fh, indent=2, sort_keys=True)
+        print(f"{tag}: norm {norm_val:.1f} (envelope spread "
+              f"{min(spread):.1f}-{max(spread):.1f}), wrote {path}")
+
+        plot = {c: {"pdf": per[c]["pdf"], "sb_fraction": per[c]["sb_fraction"]}
+                for c in ok}
+        bkgFit.plot_envelope(
+            x, bd["data"], plot, ok, best, f"{args.category} {b} data",
+            os.path.join(args.plotdir, args.category, f"core_{tag}"),
+            args.year, sb_range, args.pdf, bd["nbins"], bd["n_sb"])
+
+
+if __name__ == "__main__":
+    main()

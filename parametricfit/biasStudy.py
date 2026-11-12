@@ -1,6 +1,7 @@
 """
 biasStudy.py -- bias on r from the background model: the discrete-profiling
-envelope (default), or each function on its own (--mode single, Run 2).
+envelope (default), each function on its own (--mode single, Run 2), or the
+Run 2 core-PDF (--mode core).
 
 For each tag = "<cat>_<bin>_<year>" and each member i of the envelope
 (multipdf_<tag>_bkg in the card, indexed by pdfindex_<tag>):
@@ -35,6 +36,21 @@ function) is chosen. The toys of a truth are generated once and fitted by
 every function. --fit-models restricts the fit functions (the note fitted
 with six, and used Landau x Bernstein only as a truth).
 
+--mode core: the Run 2 note's core-PDF test (Sec. 6.4.2)
+--------------------------------------------------------
+The fit model is corePdfFit.py's core-PDF across all the bins of -b (the
+buildWorkspace.py --members core combined card), its shared index
+pdfindex_<cat>_core_<year> floating. The truths are the families every bin
+has, the SAME family in every bin, generated from the --members families
+combined card with each bin's pdfindex_<tag> frozen to that family's pick.
+Toys from one workspace are fitted with the other; both have the same bins
+and observable. As in the note, the signal is injected in one bin at a time
+and allowed only in that bin in the fit (Combine's multiSignalModel, the
+other bins' signal scaled to 0), and then in all bins at once; the core
+parameters are constrained by every bin either way. --core-tests chooses
+the tests (default every bin, then all). The quoted Bias is the mean; the
+core-PDF passes if |Bias| < 0.20 for every test and truth.
+
 Step 6 of the chain, after buildWorkspace.py (README). Runs in the Combine
 container, from parametricfit/. --only report reads back the combine output
 and needs only ROOT, so it also runs in conda.
@@ -55,6 +71,13 @@ and plots in <plotdir>/<cat>/bias_<tag>_<r>_{<member>,summary}.png.
     bias_<tag>_<r>_matrix.json            the matrix, usable fits, choice
 and the plot <plotdir>/<cat>/bias_<tag>_<r>_matrix.png.
 
+--mode core writes to <outdir>/<name>_core/ (<name> = ggHcat_bdt_Run3):
+    core_<test>.root, families_<test>.root   text2workspace per test
+    toys_<test>_<family>_<r>_s<seed>.root    toys from that family
+    fit_<test>_<family>_<r>_s<seed>.root     fitted with the core-PDF
+    bias_<name>_core_<r>.json                the summary per test
+and the plot <plotdir>/<cat>/bias_<name>_core_<r>_summary.png.
+
 Usage (inside the Combine container, from parametricfit/)
 -----
     python biasStudy.py -c ggHcat -b incl -y 2024 --ntoys 1000 -j 8
@@ -62,6 +85,8 @@ Usage (inside the Combine container, from parametricfit/)
     python biasStudy.py -c ggHcat -b incl -y 2024 --only report
     python biasStudy.py -c ggHcat -b incl -y 2024 --dry-run
     python biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 \
+        --ntoys 2000 -j 10
+    python biasStudy.py --mode core -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 \
         --ntoys 2000 -j 10
 """
 
@@ -77,7 +102,7 @@ from concurrent.futures import ThreadPoolExecutor
 import ROOT
 
 from fitlib import pdfDefinitions as pdefs
-from fitlib import config, style
+from fitlib import config, corePdf, style
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -101,9 +126,9 @@ PULL_GAUS_RGB = (153, 0, 13)       # dark red
 SUMMARY_BAND_RGB = (217, 217, 217)  # light grey
 # summary plots: one row per generating member, sizes in pixels
 ROWS_CANVAS_W = 700
-ROWS_MIN_H = 450
+ROWS_MIN_H = 300
 ROW_PX = 24                 # height of one row
-ROW_HEADROOM = 2            # empty rows on top for the title and legend
+ROW_HEADROOM = 3            # rows on top: the title, the legend, a gap
 ROWS_TOP_PX, ROWS_BOTTOM_PX = 48, 64
 ROWS_LEFT_PX, ROWS_RIGHT_PX = 120, 150   # member names | value column
 ROW_LABEL_PX, ROW_VALUE_PX = 16, 14
@@ -136,9 +161,15 @@ COMBINE_FIT_OPTS = DISCRETE_OPTS + [
 #   envelope  toys from each envelope member, fitted with pdfindex floating
 #   single    the Run 2 note (Sec. 6.4.1): toys from every family's F-test
 #             pick, each fitted with ONE function at a time (pdfindex frozen)
+#   core      the Run 2 note's core-PDF test (Sec. 6.4.2): toys from each
+#             family (the same in every bin) fitted with the core-PDF across
+#             the bins, its shared index floating
 CARD_SUFFIX = {"envelope": "", "single": "_families"}   # buildWorkspace.py
 OUT_SUFFIX = {"envelope": "", "single": "_single"}
-DEFAULT_METRIC = {"envelope": "median", "single": "mean"}
+DEFAULT_METRIC = {"envelope": "median", "single": "mean", "core": "mean"}
+# Combine's multiSignalModel, for the core test with the signal in one bin
+MULTI_SIGNAL = "HiggsAnalysis.CombinedLimit.PhysicsModel:multiSignalModel"
+R_INIT_RANGE = "[1,-50,50]"
 MATRIX_PASS_RGB = (232, 232, 232)   # light grey
 MATRIX_FAIL_RGB = (246, 196, 190)   # light red
 
@@ -223,17 +254,19 @@ def shapes_basedir(card, candidates):
                      f"{candidates}")
 
 
-def build_t2w(card, t2w, dry):
-    """text2workspace the card, unless the output is newer than the card and
-    the workspace file it points to."""
+def build_t2w(card, t2w, dry, opts=()):
+    """text2workspace the card (with `opts`, e.g. a physics model), unless
+    the output is newer than the card."""
     base = shapes_basedir(card, [HERE, os.path.dirname(card),
                                  os.path.dirname(os.path.dirname(card)),
                                  FITS_DIR])
     if os.path.isfile(t2w) and os.path.getmtime(t2w) > os.path.getmtime(card):
         print(f"  reusing {t2w}")
         return
-    cmd = ["text2workspace.py", "-m", "%g" % MH, card, "-o", t2w]
-    log = os.path.join(os.path.dirname(t2w), "logs", "text2workspace.log")
+    cmd = ["text2workspace.py", "-m", "%g" % MH, card, "-o", t2w] + list(opts)
+    stem = os.path.basename(t2w)[:-len(".root")]
+    log = os.path.join(os.path.dirname(t2w), "logs",
+                       f"text2workspace_{stem}.log")
     if not run_cmd(cmd, base, log, dry):
         raise SystemExit(f"text2workspace failed: see {log}")
 
@@ -300,11 +333,12 @@ def read_singles(path, index_name=None):
     return out
 
 
-def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry):
+def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry, label=""):
     """r_inj -/+ R_WIDTH * sigma_r, sigma_r from an Asimov fit with the
-    envelope floating; the wider of the two errors is used."""
-    name = f"_asimov_{rlabel(r_inj)}"
-    dest = os.path.join(outdir, f"asimov_{rlabel(r_inj)}.root")
+    envelope floating; the wider of the two errors is used. `label` keeps
+    the files of several workspaces in one outdir apart."""
+    name = f"_asimov{label}_{rlabel(r_inj)}"
+    dest = os.path.join(outdir, f"asimov{label}_{rlabel(r_inj)}.root")
     cmd = (["combine", "-M", "MultiDimFit", "-d", t2w, "-m", "%g" % MH,
             "-t", "-1", "--expectSignal", "%g" % r_inj,
             "-P", "r", "--algo", "singles", "--floatOtherPOIs", "1",
@@ -752,7 +786,9 @@ def plot_rows(groups, title, threshold, outbase, pdf):
     c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
     c.SetTopMargin(ROWS_TOP_PX / h)
     c.SetBottomMargin(ROWS_BOTTOM_PX / h)
-    c.SetLeftMargin(ROWS_LEFT_PX / w)
+    # wide enough for the longest label (about 9 px a character at 16 px)
+    longest = max(len(lb.replace("#bf{", "").rstrip("}")) for lb, _ in rows)
+    c.SetLeftMargin(max(ROWS_LEFT_PX, 9 * longest + 24) / float(w))
     c.SetRightMargin(ROWS_RIGHT_PX / w)
     c.SetTicky(0)
 
@@ -836,15 +872,16 @@ def plot_rows(groups, title, threshold, outbase, pdf):
             gr.Draw("P same")
     frame.Draw("AXIS same")
 
-    # headroom: title on the left, legend on the right, value column header
-    yh = ndc_y(n + head / 2.0)
+    # headroom: the title on the top row, the legend and the value column's
+    # header on the row below it
+    yt, yh = ndc_y(n + head - 0.85), ndc_y(n + head - 1.85)
     lat = ROOT.TLatex()
     lat.SetNDC()
     lat.SetTextFont(43)
     lat.SetTextSize(ROW_LABEL_PX)
     lat.SetTextAlign(12)
-    lat.DrawLatex(c.GetLeftMargin() + 0.02, yh, title)
-    leg = ROOT.TLegend(0.47, yh - 0.6 * ROW_PX / h,
+    lat.DrawLatex(c.GetLeftMargin() + 0.02, yt, title)
+    leg = ROOT.TLegend(c.GetLeftMargin() + 0.01, yh - 0.6 * ROW_PX / h,
                        1 - c.GetRightMargin() - 0.01, yh + 0.6 * ROW_PX / h)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
@@ -1164,7 +1201,7 @@ def print_table(summary):
           f"r in [{summary['r_range'][0]:.3g}, {summary['r_range'][1]:.3g}]"
           f", |{summary.get('metric', 'median')}| < "
           f"{summary['threshold']:g} ===")
-    print(f"  {'toys from':<10} {'valid':>11}  {'median':>15}  {'mean':>6}  "
+    print(f"  {'toys from':<12} {'valid':>11}  {'median':>15}  {'mean':>6}  "
           f"{'gaus mu':>7}  {'gaus sig':>8}  {'median dr':>9}  "
           f"{'fit picks ' + '/'.join(names):<24}  status")
     for gen, s in summary["members"].items():
@@ -1172,26 +1209,270 @@ def print_table(summary):
         picks = "/".join("%.2f" % (v / float(tot))
                          for v in s["chosen_index"].values())
         if "median_pull" not in s:
-            print(f"  {gen:<10} {s['n_valid']:>5}/{s['n_toys']:<5}  "
+            print(f"  {gen:<12} {s['n_valid']:>5}/{s['n_toys']:<5}  "
                   f"{'-':>15}  {'':>6}  {'':>7}  {'':>8}  {'':>9}  "
                   f"{'':<24}  {s['status']}")
             continue
         med = "%+.3f +/- %.3f" % (s["median_pull"], s["median_pull_err"])
         gm = "%+.3f" % s["gaus_mean"] if "gaus_mean" in s else "-"
         gs = "%.3f" % s["gaus_sigma"] if "gaus_sigma" in s else "-"
-        print(f"  {gen:<10} {s['n_valid']:>5}/{s['n_toys']:<5}  {med:>15}  "
+        print(f"  {gen:<12} {s['n_valid']:>5}/{s['n_toys']:<5}  {med:>15}  "
               f"{s['mean_pull']:+6.3f}  {gm:>7}  {gs:>8}  "
               f"{s['median_dr']:+9.3f}  {picks:<24}  {s['status']}")
         dropped = {k: v for k, v in s["dropped"].items() if v}
         if dropped:
-            print(f"  {'':<10} dropped: " +
+            print(f"  {'':<12} dropped: " +
                   ", ".join(f"{k} {v}" for k, v in dropped.items()))
     failed = [st for s in summary["members"].values()
               for st in s.get("failed_jobs", [])]
     if failed:
         print(f"  !! {len(failed)} job(s) wrote no fit: {', '.join(failed)}; "
               "rerun the same command to retry them")
-    print("  envelope " + ("PASSES" if summary["pass"] else "FAILS"))
+    print(f"  {summary.get('model', 'envelope')} "
+          + ("PASSES" if summary["pass"] else "FAILS"))
+
+
+# ---------------------------------------------------------------------------
+# --mode core: the Run 2 note's core-PDF bias test (Sec. 6.4.2)
+# ---------------------------------------------------------------------------
+
+def chain_name(category, bins, year):
+    """the combined card's name, as buildWorkspace.py makes it"""
+    import types
+    import buildWorkspace
+    return buildWorkspace.chain_name(types.SimpleNamespace(
+        name=None, bins=bins, category=category, year=year,
+        members="envelope"))
+
+
+def core_outdir(category, args):
+    return os.path.abspath(os.path.join(
+        args.outdir, chain_name(category, args.bins, args.year) + "_core"))
+
+
+def signal_opts(test):
+    """text2workspace options for one test: signal in bin `test` only (the
+    other bins' signal scaled to 0), or the default model for "all"."""
+    if test == "all":
+        return []
+    return ["-P", MULTI_SIGNAL,
+            "--PO", f"map=^{test}/(?!bkg).*$:r{R_INIT_RANGE}",
+            "--PO", f"map=^(?!{test}/).*/(?!bkg).*$:0"]
+
+
+def member_family():
+    """bern5 -> bernstein: every member's family"""
+    return {m: fam for fam, ms in pdefs.BKG_FAMILIES.items() for m in ms}
+
+
+def family_indices(t2w, tags):
+    """{family: {tag: pdfindex}} for the families every bin has, from the
+    *_families workspace (each bin's multipdf, pdfindex_<tag>)."""
+    fam_of = member_family()
+    per_bin = {}
+    for tag in tags:
+        names = [short_name(n, tag) for n in read_envelope(t2w, tag)]
+        per_bin[tag] = {fam_of[n]: (i, n) for i, n in enumerate(names)
+                        if n in fam_of}
+    common = [f for f in pdefs.BKG_FAMILIES
+              if all(f in per_bin[t] for t in tags)]
+    missing = sorted({f for t in tags for f in per_bin[t]} - set(common))
+    if missing:
+        print(f"  note: {', '.join(missing)} missing in some bin; "
+              "not a truth")
+    return {f: {t: per_bin[t][f][0] for t in tags} for f in common}, \
+        {f: {t: per_bin[t][f][1] for t in tags} for f in common}
+
+
+def core_job(gen_t2w, fit_t2w, stem, truth_idx, index, r_inj, rrange,
+             ntoys, seed, outdir, extra, force, dry):
+    """Toys from one family in every bin (the families workspace, every
+    pdfindex_<tag> frozen to it), fitted with the core-PDF, its shared
+    index floating. Returns (stem, status)."""
+    toys = os.path.join(outdir, f"toys_{stem}.root")
+    fit = os.path.join(outdir, f"fit_{stem}.root")
+    if os.path.isfile(fit) and not force:
+        return stem, "exists"
+    logs = os.path.join(outdir, "logs")
+    if force or not os.path.isfile(toys):
+        setp = ",".join([f"r={r_inj:g}"] + [f"{k}={v}" for k, v in
+                                           truth_idx.items()])
+        gen = ["combine", "-M", "GenerateOnly", "-d", gen_t2w, "-m", "%g" % MH,
+               "-t", str(ntoys), "-s", str(seed), "--saveToys",
+               "--expectSignal", "%g" % r_inj, "--setParameters", setp,
+               "--freezeParameters", ",".join(list(truth_idx) + ["MH"]),
+               "-n", f"_toys_{stem}"] + extra
+        if not (run_cmd(gen, outdir, os.path.join(logs, f"toys_{stem}.log"),
+                        dry)
+                and take_output(outdir, f"_toys_{stem}", "GenerateOnly",
+                                toys, dry)):
+            return stem, "generation failed"
+    fitc = (["combine", "-M", "MultiDimFit", "-d", fit_t2w, "-m", "%g" % MH,
+             "-t", str(ntoys), "-s", str(seed), "--toysFile", toys,
+             "-P", "r", "--algo", "singles", "--floatOtherPOIs", "1",
+             "--saveSpecifiedIndex", index,
+             "--setParameters", "r=%g" % r_inj,
+             "--setParameterRanges", "r=%g,%g" % tuple(rrange),
+             "--freezeParameters", "MH", "-n", f"_fit_{stem}"]
+            + COMBINE_FIT_OPTS + extra)
+    if not (run_cmd(fitc, outdir, os.path.join(logs, f"fit_{stem}.log"), dry)
+            and take_output(outdir, f"_fit_{stem}", "MultiDimFit", fit, dry)):
+        return stem, "fit failed"
+    return stem, "done"
+
+
+def run_core(category, args):
+    """For every test (one bin, or all) and every family: toys from that
+    family in every bin, with the signal injected in the tested bin(s),
+    fitted with the core-PDF across all bins."""
+    name = chain_name(category, args.bins, args.year)
+    outdir = core_outdir(category, args)
+    os.makedirs(os.path.join(outdir, "logs"), exist_ok=True)
+    cards = {}
+    for kind, sfx in (("core", "_core"), ("families", "_families")):
+        cards[kind] = os.path.abspath(os.path.join(
+            args.carddir, f"datacard_{name}{sfx}.txt"))
+        if not os.path.isfile(cards[kind]):
+            raise SystemExit(f"missing {cards[kind]}; run buildWorkspace.py "
+                             f"--members {kind} -b {' '.join(args.bins)} "
+                             "first, or point --carddir at the cards")
+    tags = [f"{category}_{b}_{args.year}" for b in args.bins]
+    tests = args.core_tests or args.bins + ["all"]
+    bad = [t for t in tests if t != "all" and t not in args.bins]
+    if bad:
+        raise SystemExit(f"--core-tests {bad}: not among -b {args.bins}")
+    index = corePdf.index_name(category, args.year)
+    extra = shlex.split(args.combine_opts)
+    print(f"\n=== {name}: core-PDF ===\n  core card     : {cards['core']}\n"
+          f"  families card : {cards['families']}\n  index         : {index}")
+
+    t2w = {}
+    for test in tests:
+        for kind in ("core", "families"):
+            t2w[kind, test] = os.path.join(outdir, f"{kind}_{test}.root")
+            build_t2w(cards[kind], t2w[kind, test], args.dry_run,
+                      signal_opts(test))
+
+    meta_path = os.path.join(outdir, "meta.json")
+    meta = read_json(meta_path) if os.path.isfile(meta_path) else {}
+    if args.dry_run and not os.path.isfile(t2w["families", tests[0]]):
+        fam_idx = meta.get("families") or {"bernstein": {t: 0 for t in tags}}
+        fam_mem = meta.get("family_members") or {}
+    else:
+        fam_idx, fam_mem = family_indices(t2w["families", tests[0]], tags)
+    core_json = os.path.join(args.carddir, f"Bkg_{tags[0]}_core_params.json")
+    cores = (read_json(core_json)["members"] if os.path.isfile(core_json)
+             else meta.get("core_members", []))
+    meta.update({"mode": "core", "name": name, "cards": cards, "tags": tags,
+                 "tests": tests, "index": index, "core_members": cores,
+                 "families": fam_idx, "family_members": fam_mem, "mh": MH,
+                 "combine_opts": COMBINE_FIT_OPTS + extra})
+    meta.setdefault("rrange", {})
+    meta.setdefault("ntoys", {})
+    print(f"  core members  : {', '.join(cores)}")
+    print("  truths        : " + ", ".join(
+        f"{f} ({'/'.join(fam_mem.get(f, {}).get(t, '?') for t in tags)})"
+        for f in fam_idx))
+
+    nchunks = int(math.ceil(args.ntoys / float(args.toys_per_job)))
+    if nchunks >= 100:
+        raise SystemExit("more than 99 jobs per truth: raise --toys-per-job")
+    jobs = []
+    for itest, test in enumerate(tests):
+        for r_inj in args.inject:
+            key = rlabel(r_inj)
+            rr = meta["rrange"].setdefault(test, {})
+            if args.rrange:
+                rr[key] = list(args.rrange)
+            elif key not in rr or args.force:
+                rr[key] = asimov_rrange(t2w["core", test], name, r_inj,
+                                        outdir, extra, args.dry_run,
+                                        label=f"_{test}")[0]
+            print(f"  test {test}, r = {r_inj:g}: toy fits in r "
+                  f"[{rr[key][0]:.3g}, {rr[key][1]:.3g}]")
+            for ifam, fam in enumerate(fam_idx):
+                truth = {f"pdfindex_{t}": i for t, i in fam_idx[fam].items()}
+                for k in range(nchunks):
+                    n = min(args.toys_per_job, args.ntoys - k * args.toys_per_job)
+                    seed = args.seed + 10000 * itest + 100 * ifam + k
+                    stem = f"{test}_{fam}_{key}_s{seed}"
+                    meta["ntoys"][stem] = n
+                    jobs.append((t2w["families", test], t2w["core", test],
+                                 stem, truth, index, r_inj, rr[key], n, seed,
+                                 outdir, extra, args.force, args.dry_run))
+    if not args.dry_run:
+        write_json(meta_path, meta)
+    print(f"  {len(jobs)} job(s), {args.jobs} at a time")
+    status = {}
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        for stem, st in pool.map(lambda j: core_job(*j), jobs):
+            status.setdefault(st, []).append(stem)
+            if st not in ("done", "exists"):
+                print(f"  {stem}: {st}")
+    for st, stems in sorted(status.items()):
+        print(f"  {st:<18} {len(stems)}")
+
+
+def report_core(category, args):
+    """Bias per test and truth family; the core-PDF passes if every
+    |Bias| < threshold."""
+    outdir = core_outdir(category, args)
+    meta_path = os.path.join(outdir, "meta.json")
+    if not os.path.isfile(meta_path):
+        print(f"\n=== {category} core-PDF === no {meta_path}; run the toys "
+              "first")
+        return {}
+    meta = read_json(meta_path)
+    name, cores = meta["name"], meta["core_members"]
+    plotdir = os.path.join(args.plotdir, category)
+    os.makedirs(plotdir, exist_ok=True)
+    out = {}
+    for r_inj in args.inject:
+        key = rlabel(r_inj)
+        groups, per_test = [], {}
+        for test in meta["tests"]:
+            rrange = meta["rrange"].get(test, {}).get(key)
+            if rrange is None:
+                continue
+            results = {}
+            for fam in meta["families"]:
+                s, _ = collect_member(outdir, f"{test}_{fam}_{key}", r_inj,
+                                      rrange, meta["index"], meta["ntoys"],
+                                      len(cores), args.threshold, args.metric)
+                results[fam] = s
+            per_test[test] = {
+                "tag": f"{name}, signal in "
+                       + ("all bins" if test == "all" else test),
+                "r_inj": r_inj, "r_range": rrange,
+                "threshold": args.threshold, "metric": args.metric,
+                "envelope": cores, "members": results, "model": "core-PDF",
+                "pass": all(s.get("pass", False) for s in results.values())}
+            print_table(per_test[test])
+            groups.append(("signal in all bins" if test == "all" else
+                           f"signal in {style.BIN_LABEL.get(test, test)}",
+                           results))
+        if not groups:
+            print(f"\n=== {name} core-PDF, r = {r_inj:g} === no toys")
+            continue
+        summary = {"name": name, "mode": "core", "r_inj": r_inj,
+                   "threshold": args.threshold, "metric": args.metric,
+                   "core_members": cores, "families": meta["family_members"],
+                   "pull": "Bias = (mu_fit - mu_inj) / sigma_mu; toys from "
+                           "one family in every bin, fitted with the "
+                           "core-PDF (shared index floating)",
+                   "tests": per_test,
+                   "pass": all(t["pass"] for t in per_test.values())}
+        write_json(os.path.join(outdir, f"bias_{name}_core_{key}.json"),
+                   summary)
+        print(f"\n  core-PDF {'PASSES' if summary['pass'] else 'FAILS'} "
+              f"(|{args.metric} Bias| < {args.threshold:g}, every test and "
+              "truth)")
+        plot_rows(groups, f"{name} core-PDF, #mu_{{inj}} = {r_inj:g}",
+                  args.threshold,
+                  os.path.join(plotdir, f"bias_{name}_core_{key}_summary"),
+                  args.pdf)
+        out[key] = summary
+    return out
 
 
 def main():
@@ -1202,20 +1483,27 @@ def main():
     ap.add_argument("-b", "--bins", nargs="+", default=["incl"],
                     help="BDT bin label(s), as given to sigFit/bkgFit")
     ap.add_argument("-y", "--year", default="Run3")
-    ap.add_argument("--mode", choices=("envelope", "single"),
+    ap.add_argument("--mode", choices=("envelope", "single", "core"),
                     default="envelope",
                     help="envelope (default): toys from each envelope member, "
                          "fitted with pdfindex floating. single: the Run 2 "
                          "note, toys from every family's F-test pick, each "
                          "fitted with one function at a time; reads the "
-                         "buildWorkspace.py --members families cards")
+                         "buildWorkspace.py --members families cards. core: "
+                         "the Run 2 core-PDF test, toys from each family in "
+                         "every bin fitted with the core-PDF; reads the "
+                         "--members core and --members families cards")
+    ap.add_argument("--core-tests", nargs="+", default=None, metavar="BIN",
+                    help="--mode core: inject the signal in these bins one "
+                         "at a time, and/or 'all' (default every bin, then "
+                         "all)")
     ap.add_argument("--fit-models", nargs="+", default=None, metavar="NAME",
                     help="--mode single: fit with these members only "
                          "(default all); every member stays a truth")
     ap.add_argument("--metric", choices=("median", "mean"), default=None,
                     help="the quoted Bias: median (default for envelope, as "
-                         "flashggFinalFit) or mean (default for single, as "
-                         "the Run 2 note)")
+                         "flashggFinalFit) or mean (default for single and "
+                         "core, as the Run 2 note)")
     ap.add_argument("--carddir", default=None,
                     help="where buildWorkspace.py wrote datacard_<tag>.txt "
                          "(datacard_<tag>_families.txt for --mode single; "
@@ -1259,6 +1547,14 @@ def main():
         ap.error("--fit-models needs --mode single")
     if args.carddir is None:
         args.carddir = os.path.join(HERE, config.default_wsdir(args.year))
+
+    if args.mode == "core":
+        for cat in args.category:
+            if args.only != "report":
+                run_core(cat, args)
+            if args.only != "run" and not args.dry_run:
+                report_core(cat, args)
+        return
 
     tags = [f"{c}_{b}_{args.year}" for c in args.category for b in args.bins]
     if args.only != "report":

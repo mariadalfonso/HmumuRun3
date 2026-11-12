@@ -18,6 +18,7 @@ parser.add_option("-b","--whichBIN",type='string',help="Which bin of BDT (_bin1 
 parser.add_option("-y","--whichYear",type='string',help="Which year", default="2024")
 parser.add_option("-o","--output",type='string',help="Output ROOT file. [%default]", default="workspace_STAT_Rho_2018.root")
 parser.add_option("-d","--datCardName",type='string',help="Output txt file. [%default]", default="datacard_STAT_2024.txt")
+parser.add_option("","--pdfIndex",type='string',help="name of the discrete index the card declares (default pdfindex_<tag>; the core-PDF shares one across bins)", default="")
 
 opts, args = parser.parse_args()
 
@@ -390,7 +391,7 @@ datacard.write("-------------------------------------\n")
 
 if MultiPdf:
     tag = cat+"_"+opts.whichBIN+"_"+opts.whichYear
-    pdfindexSTR='pdfindex_'+tag
+    pdfindexSTR=opts.pdfIndex or 'pdfindex_'+tag
     datacard.write("\n")
     datacard.write("%s discrete\n"%pdfindexSTR)
 

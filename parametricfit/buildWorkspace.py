@@ -26,6 +26,11 @@ file name gets _families (Bkg_<tag>_families_workspace.root,
 datacard_<tag>_families.txt, <name>_families.root). The envelope files are
 not touched, so the limit cards stay as they are.
 
+--members core builds the Run 2 core-PDF (corePdfFit.py's
+Bkg_<tag>_core_params.json) the same way, as *_core files. The bins share
+the core's parameters and ONE index, pdfindex_<cat>_core_<year>, which the
+combined card declares once.
+
 Everything runs from
 parametricfit/: the shapes paths in the cards are relative to it, so run
 combine from here too.
@@ -38,7 +43,7 @@ import re
 import subprocess
 import sys
 
-from fitlib import config
+from fitlib import config, corePdf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -59,8 +64,8 @@ def in_container():
 
 
 def suffix(args):
-    """'' for the envelope, '_families' for --members families"""
-    return "" if args.members == "envelope" else "_families"
+    """'' for the envelope, '_families' or '_core' for --members"""
+    return "" if args.members == "envelope" else f"_{args.members}"
 
 
 def chain_name(args):
@@ -114,7 +119,9 @@ def make_cards(args):
              f"--inputFileSig={ws}/Signal_{tag}_workspace.root",
              f"--inputFileBKG={ws}/Bkg_{tag}{sfx}_workspace.root",
              f"--output={ws}/workspace_{tag}{sfx}_workspace.root",
-             f"--datCardName={ws}/datacard_{tag}{sfx}.txt"], args)
+             f"--datCardName={ws}/datacard_{tag}{sfx}.txt"]
+            + ([f"--pdfIndex={corePdf.index_name(args.category, args.year)}"]
+               if args.members == "core" else []), args)
 
 
 def combine_cards(args):
@@ -133,9 +140,20 @@ def combine_cards(args):
     ws = rel(args.wsdir)
     with open(card) as fh:
         text = fh.read()
-    if f"{ws}/{ws}/" in text:
+    fixed = text.replace(f"{ws}/{ws}/", f"{ws}/")
+    # the core-PDF's bins share one index: declare it once
+    lines, seen = [], set()
+    for ln in fixed.splitlines(True):
+        f = ln.split()
+        if len(f) == 2 and f[1] == "discrete":
+            if f[0] in seen:
+                continue
+            seen.add(f[0])
+        lines.append(ln)
+    fixed = "".join(lines)
+    if fixed != text:
         with open(card, "w") as fh:
-            fh.write(text.replace(f"{ws}/{ws}/", f"{ws}/"))
+            fh.write(fixed)
 
 
 def text2workspace(args):
@@ -170,7 +188,9 @@ def write_yields(args):
     tot_sig, tot_bkg = {}, 0.0
     for b, tag in zip(args.bins, tags(args)):
         sj = os.path.join(args.wsdir, f"Signal_{tag}_params.json")
-        bj = os.path.join(args.wsdir, f"Bkg_{tag}_params.json")
+        bj = os.path.join(args.wsdir, f"Bkg_{tag}_core_params.json"
+                          if args.members == "core" else
+                          f"Bkg_{tag}_params.json")
         entry = {}
         if os.path.isfile(sj):
             srec = read_json(sj)
@@ -190,7 +210,8 @@ def write_yields(args):
                 # with the best envelope member
                 "total": norm["value"],
                 "sideband_count": norm["sideband_count"],
-                "best": brec["best"], "envelope": brec["envelope"],
+                "best": brec["best"],
+                "envelope": brec.get("envelope", brec.get("members")),
                 "envelope_spread": norm.get("envelope_spread"),
             }
             out["window"] = brec["provenance"]["window"]
@@ -236,6 +257,15 @@ def print_yields(out):
 def print_next(args):
     name, ws = chain_name(args), rel(args.wsdir)
     opts = " ".join(COMBINE_OPTS)
+    if args.members == "core":
+        print(f"\nnext, from parametricfit/ (blinded, -t -1; the core-PDF "
+              f"bins share {corePdf.index_name(args.category, args.year)}):\n"
+              f"  combine -M Significance -m {MH} -t -1 --expectSignal 1 "
+              f"-d {ws}/{name}.root -n _{name}_sig {opts}\n"
+              f"  python -u biasStudy.py --mode core -c {args.category} "
+              f"-b {' '.join(args.bins)} -y {args.year} --carddir {ws} "
+              f"--ntoys 2000 -j 10   (needs --members families too)")
+        return
     if args.members != "envelope":
         print(f"\nnext, from parametricfit/ (single-function bias study):\n"
               f"  python -u biasStudy.py --mode single -c {args.category} "
@@ -268,11 +298,13 @@ def main():
     ap.add_argument("--name", default=None,
                     help="name of the combined card and workspace "
                          "(default <category>_<bins>_<year>)")
-    ap.add_argument("--members", choices=("envelope", "families"),
+    ap.add_argument("--members", choices=("envelope", "families", "core"),
                     default="envelope",
-                    help="multipdf members: the envelope (default) or every "
+                    help="multipdf members: the envelope (default); every "
                          "family's F-test pick, as *_families files for "
-                         "biasStudy.py --mode single")
+                         "biasStudy.py --mode single; or the core-PDF of "
+                         "corePdfFit.py, as *_core files, the bins sharing "
+                         "the core and its index")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the commands, run nothing")
     args = ap.parse_args()

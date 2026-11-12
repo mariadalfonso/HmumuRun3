@@ -5,7 +5,7 @@ data sidebands, and the Combine inputs built from them.
 
 ## Environments
 
-| | fits (`sigFit.py`, `mcCoreFit.py`, `bkgFit.py`) | everything else |
+| | fits (`sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`) | everything else |
 |---|---|---|
 | where | conda (`pyenv`) | Combine container (v9.2.1) |
 | why | needs ROOT ≥ 6.28 | needs the Combine libraries (ROOT 6.22) |
@@ -22,8 +22,8 @@ Run everything from `parametricfit/`.
 
 | where | what |
 |---|---|
-| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `buildWorkspace.py`, `biasStudy.py` |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
@@ -78,6 +78,22 @@ F-test pick as a truth, each fitted with one function at a time.
 ```bash
 python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --members families
 python -u biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 2000 -j 10
+```
+
+**The Run 2 core-PDF** (note Sec. 6.4.2), the model of the Run 2 ggH
+result: one core shared by every bin (an envelope of BWZRedux,
+FEWZ × Bern3 and exp2, three parameters each) times a Bernstein shape
+modifier per bin. After `bkgFit.py` (conda):
+```bash
+python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --smf-order 3 3 2
+```
+then, in the container, its cards (`*_core`), the families cards for the
+truths, the significance and the note's bias test:
+```bash
+python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --members core
+python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --members families
+combine -M Significance -m 125 -t -1 --expectSignal 1 -d WS_Run3/ggHcat_bdt_Run3_core.root -n _ggHcat_bdt_Run3_core_sig $OPTS
+python -u biasStudy.py --mode core -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 2000 -j 10
 ```
 
 ## Outputs
@@ -148,6 +164,23 @@ reads and writes there unless `--wsdir` says otherwise.
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
     is the default (`pdfindex` 0): the Asimov and the yield come from it.
   - The yield is extrapolated over 110–150 GeV.
+- **`corePdfFit.py`**: the core-PDF, fitted to the sidebands of all bins at
+  once.
+  - Each core is first fitted alone to the summed bins, then core × SMF in
+    every bin in one likelihood, the core parameters common to all bins.
+  - Status 1 (a valid minimum whose Hessian was forced positive-definite)
+    counts as converged: the core and the SMFs partly mimic each other, so
+    the Hessian is near-singular by construction. `--strict-status` keeps
+    status 0 only. A fit that stays above status 1 is retried with
+    strategy 2, and left out if it still fails.
+  - The cores, ordered by total NLL (no penalty, they all have three
+    parameters), make the shared envelope; the best is index 0 and gives
+    each bin's extrapolated yield.
+  - Writes `Bkg_<tag>_core_params.json` per bin and the plots
+    `core_<tag>_envelope.png`.
+  - The bins share the core parameters (`<name>_<cat>_core_<year>`) and one
+    index, `pdfindex_<cat>_core_<year>`; text2workspace merges the
+    same-named objects of the bins' workspaces.
 - **`fitlib/makeWorkspaces.py`**: rebuilds both models from the JSONs with Combine's
   classes. Nothing is refitted.
 - **`fitlib/bwsHrare.py`**: a copy of `analysis/FITS/bwsHrare.py`.
@@ -169,6 +202,14 @@ reads and writes there unless `--wsdir` says otherwise.
     every truth; of those, the one with the highest expected significance
     (Asimov, background frozen to it) is chosen. Output in
     `<outdir>/<tag>_single/`, plot `bias_<tag>_<r>_matrix.png`.
+  - `--mode core` is the note's core-PDF test. The truths are the families
+    every bin has, the same family in every bin (from the `*_families`
+    cards); the fit is the core-PDF across the bins, its shared index
+    floating. The signal is injected in one bin at a time, and allowed
+    only there in the fit (multiSignalModel, the other bins' signal scaled
+    to 0), then in all bins at once (`--core-tests`). Mean Bias, |Bias| <
+    0.20 for every test and truth. Output in `<outdir>/<name>_core/`, plot
+    `bias_<name>_core_<r>_summary.png`.
 
 ## Status (2026-10-29)
 
@@ -202,10 +243,19 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `--candidates`: fit exactly these members instead.
 - `--mc-core`, `--no-mc-core` (with `--extra-models`), `--bins-per-gev`.
 
+**`corePdfFit.py`**
+- `-c`, `-b` (the bins that share the core), `-y`, `--wsdir`, `--plotdir`,
+  `--pdf`.
+- `--smf-order`: one order for every bin, or one per bin (default 2; the
+  note used 3 in ggH-cat0 and cat1, 2 in the others).
+- `--cores`: default `bwzredux fewzbern3 exp2`.
+- `--strict-status`: Minuit status 0 only.
+
 **`buildWorkspace.py`**: `-c`, `-b`, `-y`, `--wsdir` (default `WS_<year>`),
-`--name`, `--dry-run`, `--members envelope|families` (`families`: every
-family's F-test pick in the multipdf, as separate `*_families` files for
-`biasStudy.py --mode single`; the limit cards are not touched).
+`--name`, `--dry-run`, `--members envelope|families|core` (`families`:
+every family's F-test pick in the multipdf, as `*_families` files for
+`biasStudy.py --mode single` and `--mode core`; `core`: the core-PDF of
+`corePdfFit.py`, as `*_core` files; the envelope cards are not touched).
 
 **`biasStudy.py`**
 - `-c`, `-b`, `-y`.
@@ -216,10 +266,12 @@ family's F-test pick in the multipdf, as separate `*_families` files for
 - `--ntoys` (default 1000), `--toys-per-job` (100), `-j`.
 - `--rrange`: fixed r range.
 - `--threshold`: default 0.20.
-- `--mode envelope|single`: the envelope floating (default), or the Run 2
-  single-function matrix.
+- `--mode envelope|single|core`: the envelope floating (default), the Run 2
+  single-function matrix, or the Run 2 core-PDF test.
+- `--core-tests`: with `--mode core`, the bins to inject the signal in one
+  at a time, and/or `all` (default every bin, then all).
 - `--fit-models`: with `--mode single`, fit with these members only (all
   stay truths). The Run 2 note used Landau × Bernstein only as a truth.
 - `--metric median|mean`: the quoted Bias. Median by default for the
-  envelope (flashggFinalFit), mean for `single` (the Run 2 note).
+  envelope (flashggFinalFit), mean for `single` and `core` (the Run 2 note).
 - `--combine-opts`, `--seed`, `--force`, `--dry-run`, `--only run|report`.

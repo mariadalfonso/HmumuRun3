@@ -8,6 +8,8 @@
   bwz             the Breit-Wigner Z families of the Run 2 note (eqs. 5.1-5.4)
   fewz            FEWZ spline x Bernstein (Run 2 note eq. 5.5); fewz_spline.root
   agnostic        exp/pow + constant, Landau x Bernstein (Run 2 note eqs. 5.9-5.11)
+  corePdf         the Run 2 core-PDF (note Sec. 6.4.2): a core shared by the
+                  bins x a Bernstein shape modifier per bin
   prepareFits     input histograms, eras and luminosities
   makeWorkspaces  step of buildWorkspace.py: rebuild the models for Combine
   bwsHrare        step of buildWorkspace.py: write the datacard
