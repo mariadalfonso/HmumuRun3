@@ -29,7 +29,8 @@ not touched, so the limit cards stay as they are.
 --members core builds the Run 2 core-PDF (corePdfFit.py's
 Bkg_<tag>_core_params.json) the same way, as *_core files. The bins share
 the core's parameters and ONE index, pdfindex_<cat>_core_<year>, which the
-combined card declares once.
+combined card declares once (combineCards.py refuses a discrete nuisance
+shared across bins, so it merges the bin cards without it).
 
 Everything runs from
 parametricfit/: the shapes paths in the cards are relative to it, so run
@@ -126,31 +127,49 @@ def make_cards(args):
 
 def combine_cards(args):
     """combineCards.py prefixes each shapes path with its card's directory,
-    so it runs next to the cards (bare file names, no prefix)."""
+    so it runs next to the cards (bare file names, no prefix).
+
+    The core-PDF's bins share ONE discrete index, which combineCards.py
+    refuses ("Cannot currently correlate discrete nuisances across
+    categories"). So for --members core it merges copies of the bin cards
+    without their `<index> discrete` line, and the combined card declares
+    the index once. text2workspace then finds the same RooCategory in every
+    bin's workspace and merges it, as it does the core parameters."""
     card = os.path.join(args.wsdir, f"datacard_{chain_name(args)}.txt")
-    cmd = ["combineCards.py"] + [f"{b}=datacard_{t}{suffix(args)}.txt"
-                                 for b, t in zip(args.bins, tags(args))]
+    cards = [f"datacard_{t}{suffix(args)}.txt" for t in tags(args)]
+    shared = (corePdf.index_name(args.category, args.year)
+              if args.members == "core" else None)
+    inputs = cards
+    if shared:
+        inputs = [c.replace(".txt", "_nodiscrete.txt") for c in cards]
+    cmd = ["combineCards.py"] + [f"{b}={c}" for b, c in zip(args.bins, inputs)]
     print(f"\n   > {rel(card)}")
     if args.dry_run:
+        if shared:
+            print(f"   (merging copies without '{shared} discrete', "
+                  "declared once in the combined card)")
         run(cmd, args, cwd=args.wsdir)
         return
-    with open(card, "w") as fh:
-        run(cmd, args, cwd=args.wsdir, stdout=fh)
+    if shared:
+        for src, dst in zip(cards, inputs):
+            with open(os.path.join(args.wsdir, src)) as fh:
+                kept = [ln for ln in fh if ln.split() != [shared, "discrete"]]
+            with open(os.path.join(args.wsdir, dst), "w") as fh:
+                fh.writelines(kept)
+    try:
+        with open(card, "w") as fh:
+            run(cmd, args, cwd=args.wsdir, stdout=fh)
+    finally:
+        if shared:
+            for dst in inputs:
+                os.remove(os.path.join(args.wsdir, dst))
     # guard: a doubled prefix if combineCards ever adds the card directory
     ws = rel(args.wsdir)
     with open(card) as fh:
         text = fh.read()
     fixed = text.replace(f"{ws}/{ws}/", f"{ws}/")
-    # the core-PDF's bins share one index: declare it once
-    lines, seen = [], set()
-    for ln in fixed.splitlines(True):
-        f = ln.split()
-        if len(f) == 2 and f[1] == "discrete":
-            if f[0] in seen:
-                continue
-            seen.add(f[0])
-        lines.append(ln)
-    fixed = "".join(lines)
+    if shared:
+        fixed = fixed.rstrip("\n") + f"\n{shared} discrete\n"
     if fixed != text:
         with open(card, "w") as fh:
             fh.write(fixed)
