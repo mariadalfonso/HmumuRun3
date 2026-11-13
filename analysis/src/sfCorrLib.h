@@ -19,7 +19,8 @@ public:
   double eval_jetCORR   (double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc);
   double eval_fatJetCORR(double area, double eta, double phi, double pt, double rho, bool isData, int run, std::string year, std::string mc);
   double eval_jesUnc    (double eta, double pt, int type);
-  double eval_jer       (double pt, double eta, double rho, double area);
+  double eval_jerSF     (double eta, double pt);
+  double eval_jerPtRes  (double eta, double pt, double rho);
   double eval_jetID     (float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity);
   double eval_jetVeto   (double eta, double phi);
   double eval_puSF      (double NumTrueInteractions, std::string weights);
@@ -52,7 +53,7 @@ private:
   correction::Correction::Ref muonTrgSF_;
 
   correction::Correction::Ref JER_;
-  correction::Correction::Ref JERsf_;
+  correction::Correction::Ref jerSF_;
   correction::CompoundCorrection::Ref JEC_;
   correction::CompoundCorrection::Ref JECdata_;
   correction::CompoundCorrection::Ref JECdata22E_;
@@ -64,6 +65,7 @@ private:
   correction::CompoundCorrection::Ref fatJECdata22F_;
   correction::CompoundCorrection::Ref fatJECdata22G_;
   correction::Correction::Ref jesUnc_;
+  correction::Correction::Ref jerUnc_;
   correction::Correction::Ref fatjesUnc_;
   correction::Correction::Ref vetoMaps_;
   correction::Correction::Ref jetID_;
@@ -188,6 +190,19 @@ MyCorrections::MyCorrections(int year) {
     if(year == 2026)   tagNameMC = "Summer24Prompt26_V1";
     JEC_ = csetJEC->compound().at(tagNameMC+"_MC_L1L2L3Res_"+jetType);
     jesUnc_ = csetJEC->at(tagNameMC+"_MC_Total_"+jetType);
+
+    std::string tagNameJER = "";
+    if(year == 12022)  tagNameJER = "Summer22_22Sep2023_JRV2";
+    if(year == 22022)  tagNameJER = "Summer22EE_22Sep2023_JRV2";
+    if(year == 12023)  tagNameJER = "Summer23Prompt23_RunCv1234_JRV3";
+    if(year == 22023)  tagNameJER = "Summer23BPixPrompt23_RunD_JRV3";
+    if(year == 2024)   tagNameJER = "Summer24Prompt24_JRV2";
+    if(year == 2025)   tagNameJER = "Summer24Prompt25_JRV2";
+    if(year == 2026)   tagNameJER = "Summer24Prompt26_JRV1";
+
+    JER_ = csetJEC->at(tagNameJER+"_MC_PtResolution_"+jetType);
+    jerSF_ = csetJEC->at(tagNameJER+"_MC_ScaleFactor_"+jetType);
+    jerUnc_ = csetJEC->at(tagNameJER+"_MC_SFUncertainty_"+jetType);
 
   }
 
@@ -328,8 +343,12 @@ double MyCorrections::eval_jesUnc(double eta, double pt, int type) {
   return 0.0;
 };
 
-double MyCorrections::eval_jer(double double1, double double2, double double3, double double4) {
-  return JER_->evaluate({double1, double2, double3, double4});
+double MyCorrections::eval_jerSF(double eta, double pt) {
+  return jerSF_->evaluate({eta,pt});
+};
+
+double MyCorrections::eval_jerPtRes(double eta, double pt, double rho) {
+  return JER_->evaluate({eta,pt,rho});
 };
 
 double MyCorrections::eval_jetID(float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity) {
