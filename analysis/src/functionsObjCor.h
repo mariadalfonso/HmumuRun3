@@ -188,36 +188,45 @@ Vec_f computeJECuncertainties(MyCorrections& corrSFs, const Vec_f& jet_pt, const
 }
 
 // central code in https://gitlab.cern.ch/cms-analysis/general/CMSJMECalculators/-/blob/main/src/JetVariationsCalculator.cc?ref_type=heads#L145
-Vec_f computeJERcorrections(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_eta, const Vec_i& jet_genJetIdx, const Vec_f& GenJet_pt, const double rho, bool isData){
+//// need to to this after the JEC redefinition
+Vec_f computeJERcorrections(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_eta, const Vec_i& jet_genJetIdx, const Vec_f& GenJet_pt, const double rho, bool isData, UInt_t run, UInt_t lumi, ULong64_t event){
 
   if(isData) return jet_pt;
+
+  // event level seed
+  const ULong64_t seed64 = (ULong64_t(run) << 20) + (ULong64_t(lumi) << 10) + event + 1
+    + (jet_eta.size() ? static_cast<int>(jet_eta[0] / 0.01) : 0);
+  const int seed = static_cast<int>(static_cast<UInt_t>(seed64));
 
   Vec_f new_jet_pt; new_jet_pt.resize(jet_pt.size());
 
   for (unsigned int idx = 0; idx < jet_pt.size(); ++idx) {
     double s_jer = corrSFs.eval_jerSF(jet_eta[idx], jet_pt[idx]); // should include up and down variation
     double pt_res_gen = corrSFs.eval_jerPtRes(jet_eta[idx], jet_pt[idx], rho);
-    double pt_diff_rel = 100.0;
     double sf = 1.0;
 
     bool isMatchedJet = false;
     if(jet_genJetIdx[idx] >= 0 && GenJet_pt.size() > (unsigned)jet_genJetIdx[idx]) {
-      pt_diff_rel = (jet_pt[idx]-GenJet_pt[jet_genJetIdx[idx]])/jet_pt[idx];
+      double pt_diff = jet_pt[idx]-GenJet_pt[jet_genJetIdx[idx]];
       double maxSigmaPtRel = 3;
-      if(pt_diff_rel < maxSigmaPtRel*pt_res_gen){
+      if(std::abs(pt_diff) < maxSigmaPtRel*jet_pt[idx]*pt_res_gen){ // check uses |dpt|
           isMatchedJet = true;
-          sf = max(1.0 + (s_jer-1.0)*pt_diff_rel, 0.0);
+	  sf = std::max(1.0 + (s_jer - 1.0) * pt_diff / jet_pt[idx], 0.0);
       }
     } // gen matched jets
-    if(isMatchedJet == false && (fabs(jet_eta[idx]) < 2.5 || fabs(jet_eta[idx]) > 3.0)) {
-      sf = max(1.0 + gRandom->Gaus(0.0,pt_res_gen) * sqrt(max(s_jer*s_jer-1.0, 0.0)), 0.0);
+    if(isMatchedJet == false && (std::abs(jet_eta[idx]) < 2.5 || std::abs(jet_eta[idx]) > 3.0)) {
+      sf = std::max( 0.0, corrSFs.eval_jerSmear(jet_pt[idx], jet_eta[idx], -1.0, rho, seed, pt_res_gen, s_jer));
     }
     // new jet pt
     new_jet_pt[idx] = jet_pt[idx] * sf;
 
+    //    std::cout << "new pt = " << new_jet_pt[idx] << " org pt = " << jet_pt[idx] << std::endl;
+
   }
 
   return new_jet_pt;
+
+  //should apply the same factor to the jet mass, not just pT
 
 }
 

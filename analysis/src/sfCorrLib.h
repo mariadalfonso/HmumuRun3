@@ -21,6 +21,7 @@ public:
   double eval_jesUnc    (double eta, double pt, int type);
   double eval_jerSF     (double eta, double pt);
   double eval_jerPtRes  (double eta, double pt, double rho);
+  double eval_jerSmear  (double pt, double eta, double genPt, double rho, int seed, double ptRes, double sf);
   double eval_jetID     (float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity);
   double eval_jetVeto   (double eta, double phi);
   double eval_puSF      (double NumTrueInteractions, std::string weights);
@@ -54,6 +55,7 @@ private:
 
   correction::Correction::Ref JER_;
   correction::Correction::Ref jerSF_;
+  correction::Correction::Ref jerSmear_;
   correction::CompoundCorrection::Ref JEC_;
   correction::CompoundCorrection::Ref JECdata_;
   correction::CompoundCorrection::Ref JECdata22E_;
@@ -204,6 +206,10 @@ MyCorrections::MyCorrections(int year) {
     jerSF_ = csetJEC->at(tagNameJER+"_MC_ScaleFactor_"+jetType);
     jerUnc_ = csetJEC->at(tagNameJER+"_MC_SFUncertainty_"+jetType);
 
+    std::string fileNameJER = dirName+"JME/JER-Smearing/"+folder+"jer_smear.json.gz";
+    auto csetJER = correction::CorrectionSet::from_file(fileNameJER);
+    jerSmear_ = csetJER->at("JERSmear");
+
   }
 
   if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
@@ -350,6 +356,12 @@ double MyCorrections::eval_jerSF(double eta, double pt) {
 double MyCorrections::eval_jerPtRes(double eta, double pt, double rho) {
   return JER_->evaluate({eta,pt,rho});
 };
+
+double MyCorrections::eval_jerSmear(double pt, double eta, double genPt, double rho,
+				    int seed, double ptRes, double sf) {
+  return jerSmear_->evaluate({pt, eta, genPt, rho, seed, ptRes, sf});
+}
+
 
 double MyCorrections::eval_jetID(float eta, float chHEF, float neHEF, float chEmEF, float neEmEF, float muEF, int chMultiplicity, int neMultiplicity) {
 
