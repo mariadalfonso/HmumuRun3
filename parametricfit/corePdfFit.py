@@ -2,18 +2,33 @@
 corePdfFit.py -- fit the Run 2 core-PDF (Sec. 6.4.2 of the note) to the
 sidebands of all BDT bins of a category at once.
 
-    python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --wsdir WS_Run3_v2
+    python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
     python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --smf-order 3 3 2
 
 The model (fitlib/corePdf.py): in every bin, one of three cores (BWZRedux,
 FEWZ x Bernstein, S-exponential; 3 parameters each) shared by all bins,
-times that bin's own Bernstein shape modifier (SMF). For each core:
+times that bin's own Bernstein shape modifier (SMF). Every fit is
+simultaneous: one likelihood, the sum of the bins' masked sideband NLLs,
+the core parameters common to all bins.
 
-  1. fit the core alone to the summed sidebands of the bins (the start)
-  2. fit core x SMF_bin in every bin at once: one likelihood, the sum of
-     the bins' masked sideband NLLs, the core parameters common to all
-  3. per bin: the sideband chi2 and p-value, and the fraction of the PDF
-     in the sideband, which extrapolates the yield as bkgFit.py does
+  1. each core alone on the summed sidebands of the bins: its start
+  2. the SMF order of each bin, by F-test, for each core: every bin starts
+     at order 1 (--smf-min-order, as the note); bin by bin the order goes
+     up by one while 2 dNLL gives p < 0.05 for the extra parameter
+     (bkgFit.py's F_THRESHOLD), and stops at the first step that does not
+     or that does not converge. Each step starts from the order below,
+     raised exactly by Bernstein degree elevation, so 2 dNLL >= 0.
+     A bin then gets the highest order any core asked for, so every member
+     of its multipdf has the same parameters and none has less freedom
+     than it needs. --smf-order fixes the orders instead.
+  3. every core at those orders; per bin, the sideband chi2 and p-value,
+     and the fraction of the PDF in the sideband, which extrapolates the
+     yield as bkgFit.py does
+
+The F-test picks the order the DATA need. The note chose its orders (3 in
+ggH-cat0 and cat1, 2 in the others) with the bias study, which may need
+more: biasStudy.py --mode core checks the choice, and --smf-order raises a
+bin that fails.
 
 A core whose simultaneous fit does not converge is left out. Minuit
 status 1 (a valid minimum, Hessian forced positive-definite) counts as
@@ -34,9 +49,8 @@ Writes, per bin,
 then buildWorkspace.py --members core makes the cards, and
 biasStudy.py --mode core runs the note's bias test on them.
 
---smf-order: one order for every bin, or one per bin in the order of -b
-(default 2; the note used 3 in ggH-cat0 and cat1 and 2 in the others,
-from its bias study).
+--smf-order: one order for every bin, or one per bin in the order of -b,
+in place of the F-test. --smf-max-order (default 4) caps the F-test.
 """
 
 import argparse
@@ -122,39 +136,46 @@ def minimize(nll, accept=ACCEPT_STATUS):
     return res, strategy
 
 
-def fit_core(core, args, x, bins, sb_range, h_sum):
-    """The simultaneous fit of one core across the bins."""
-    # 1. the start: the core alone on the summed sidebands
-    data_sum = ROOT.RooDataHist("datahist_sum", "sum", ROOT.RooArgList(x),
-                                h_sum)
-    seed_tag = f"{corePdf.core_tag(args.category, args.year)}_seed"
-    seed = bkgFit.fit_candidate(x, data_sum, core, seed_tag, sb_range)
-
-    core_pdf, ckeep = corePdf.create_core(x, args.category, args.year, core)
+def seed_core(core, args, x, sb_range, h_sum):
+    """The start of a core: the core alone on the summed sidebands.
+    Returns {core parameter name: value}, named as the shared core's."""
+    data_sum = ROOT.RooDataHist(f"datahist_sum_{core}", "sum",
+                                ROOT.RooArgList(x), h_sum)
     ctag = corePdf.core_tag(args.category, args.year)
-    for p in ckeep["params"]:
-        rec = seed["params"].get(p.GetName().replace(ctag, seed_tag))
-        if rec:
-            p.setVal(rec["value"])
+    seed_tag = f"{ctag}_seed"
+    seed = bkgFit.fit_candidate(x, data_sum, core, seed_tag, sb_range)
+    return {k.replace(seed_tag, ctag): v["value"]
+            for k, v in seed["params"].items()}, seed["status"]
 
-    # 2. core x SMF in every bin, one likelihood
-    members, nlls, keep = {}, ROOT.RooArgList(), [core_pdf, ckeep, seed]
+
+def fit_core(core, args, x, bins, sb_range, orders, start):
+    """The simultaneous fit of one core across the bins, bin b with an SMF
+    of order orders[b], from the parameter values in `start` (by name;
+    parameters not in it keep their defaults)."""
+    core_pdf, ckeep = corePdf.create_core(x, args.category, args.year, core)
+    members, nlls, keep = {}, ROOT.RooArgList(), [core_pdf, ckeep]
     for bd in bins:
         pdf, smf_pars, k = corePdf.create_member(x, core_pdf, core,
-                                                 bd["tag"], bd["order"])
+                                                 bd["tag"], orders[bd["bin"]])
         nll = pdf.createNLL(bd["data"], ROOT.RooFit.Range(sb_range))
         nlls.add(nll)
         members[bd["bin"]] = {"pdf": pdf, "smf": smf_pars}
         keep += [k, nll]
+    pars = list(ckeep["params"]) + [v for m in members.values()
+                                    for v in m["smf"]]
+    for v in pars:
+        if v.GetName() in start:
+            v.setVal(min(max(start[v.GetName()], v.getMin()), v.getMax()))
     total = ROOT.RooAddition(f"nll_{core}", "total NLL", nlls)
     res, strategy = minimize(total, args.accept)
 
     out = {"core": core, "status": res.status(), "cov_qual": res.covQual(),
            "edm": res.edm(), "nll": res.minNll(), "strategy": strategy,
-           "seed_status": seed["status"],
+           "orders": dict(orders),
+           "values": {v.GetName(): v.getVal() for v in pars},
            "core_params": param_record(ckeep["params"]), "bins": {},
            "keep": keep + [total, res, members]}
-    # 3. per bin: sideband fraction, yield, chi2
+    # per bin: sideband fraction, yield, chi2
     nset = ROOT.RooArgSet(x)
     for bd in bins:
         mem = members[bd["bin"]]
@@ -163,12 +184,65 @@ def fit_core(core, args, x, bins, sb_range, h_sum):
             ROOT.RooFit.Range(sb_range)).getVal()
         rec = {"pdf": mem["pdf"], "sb_fraction": f_sb,
                "smf_params": param_record(mem["smf"]),
-               "npar": corePdf.npar(core, bd["order"])}
+               "npar": corePdf.npar(core, orders[bd["bin"]])}
         rec.update(bkgFit.sideband_chi2(
             x, bd["h"], mem["pdf"], bd["sb_idx"],
             bkgFit.full_yield(bd["n_sb"], rec), rec["npar"]))
         out["bins"][bd["bin"]] = rec
     return out
+
+
+def elevate(values, core, tag, n, m):
+    """`values` with the SMF of (core, bin tag) raised from order n to m by
+    Bernstein degree elevation: the same function, so the higher order
+    starts exactly where the lower one ended.
+        c'_k = k/(n+1) c_(k-1) + (1 - k/(n+1)) c_k,   c_0 = 1 stays 1"""
+    out = dict(values)
+    name = "smf_{}_c{{}}_{}".format(core, tag)
+    for order in range(n, m):
+        c = [1.0] + [out.get(name.format(k), corePdf.SMF_INIT)
+                     for k in range(1, order + 1)] + [0.0]
+        for k in range(1, order + 2):
+            f = k / float(order + 1)
+            out[name.format(k)] = f * c[k - 1] + (1 - f) * c[k]
+    return out
+
+
+def smf_ftest(core, args, x, bins, sb_range, start):
+    """The SMF orders of one core by F-test, as bkgFit.py chooses a
+    family's order: every bin starts at --smf-min-order; bin by bin, the
+    order goes up by one while 2 dNLL of the simultaneous fit gives
+    p < F_THRESHOLD for the one extra parameter, and stops at the first
+    step that does not (or does not converge). The other bins keep their
+    orders meanwhile; the core is refitted at every step.
+    Returns (orders, steps, the last accepted fit)."""
+    orders = {bd["bin"]: args.smf_min_order for bd in bins}
+    cur = fit_core(core, args, x, bins, sb_range, orders, start)
+    steps = []
+    if cur["status"] not in args.accept:
+        return orders, steps, cur
+    for bd in bins:
+        b = bd["bin"]
+        while orders[b] < args.smf_max_order:
+            trial = dict(orders)
+            trial[b] += 1
+            r = fit_core(core, args, x, bins, sb_range, trial,
+                         elevate(cur["values"], core, bd["tag"], orders[b],
+                                 trial[b]))
+            step = {"bin": b, "from": orders[b], "to": trial[b]}
+            if r["status"] not in args.accept:
+                step.update(failed=True, status=r["status"])
+                steps.append(step)
+                break
+            chi2 = max(2.0 * (cur["nll"] - r["nll"]), 0.0)
+            p = ROOT.TMath.Prob(chi2, 1)
+            step.update({"2dNLL": chi2, "pvalue": p,
+                         "justified": p < bkgFit.F_THRESHOLD})
+            steps.append(step)
+            if not step["justified"]:
+                break
+            orders, cur = trial, r
+    return orders, steps, cur
 
 
 def main():
@@ -183,10 +257,14 @@ def main():
     ap.add_argument("--wsdir", default=None,
                     help="bkgFit.py's output, and where this writes "
                          "(default WS_<year>)")
-    ap.add_argument("--smf-order", nargs="+", type=int,
-                    default=[corePdf.SMF_ORDER],
-                    help="SMF order: one for all bins, or one per bin "
-                         f"(default {corePdf.SMF_ORDER})")
+    ap.add_argument("--smf-order", nargs="+", type=int, default=None,
+                    help="fix the SMF orders, one for all bins or one per "
+                         "bin, instead of choosing them by F-test")
+    ap.add_argument("--smf-min-order", type=int, default=1,
+                    help="F-test: the order every bin starts at (default 1, "
+                         "as the note)")
+    ap.add_argument("--smf-max-order", type=int, default=4,
+                    help="F-test: the highest order tried (default 4)")
     ap.add_argument("--cores", nargs="+", default=corePdf.CORES,
                     help=f"core functions (default {' '.join(corePdf.CORES)})")
     ap.add_argument("--strict-status", action="store_true",
@@ -201,19 +279,18 @@ def main():
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
     args.plotdir = args.plotdir or os.path.expanduser(
         "~/public_html/HmumuFits/bkg_fits")
-    if len(args.smf_order) == 1:
-        args.smf_order = args.smf_order * len(args.bins)
-    if len(args.smf_order) != len(args.bins):
-        ap.error(f"--smf-order: give one order, or one per bin "
-                 f"({len(args.bins)})")
+    if args.smf_order is not None:
+        if len(args.smf_order) == 1:
+            args.smf_order = args.smf_order * len(args.bins)
+        if len(args.smf_order) != len(args.bins):
+            ap.error(f"--smf-order: give one order, or one per bin "
+                     f"({len(args.bins)})")
     style.setup_style()
 
     x = ROOT.RooRealVar(f"mh{args.category}", "m_{#mu#mu}",
                         config.XLOW, config.XHIGH)
     sb_range = bkgFit.setup_ranges(x)
     bins = [load_bin(args, b, x) for b in args.bins]
-    for bd, n in zip(bins, args.smf_order):
-        bd["order"] = n
     if len({bd["nbins"] for bd in bins}) != 1:
         raise SystemExit("the bins have different binnings; rerun bkgFit.py "
                          "with the same --bins-per-gev")
@@ -224,17 +301,77 @@ def main():
 
     ctag = corePdf.core_tag(args.category, args.year)
     print(f"category : {args.category}, {args.year}\n"
-          f"bins     : " + ", ".join(f"{bd['bin']} (SMF order {bd['order']}, "
-                                     f"{bd['n_sb']:.0f} sideband events)"
-                                     for bd in bins) +
+          f"bins     : " + ", ".join(f"{bd['bin']} ({bd['n_sb']:.0f} "
+                                     f"sideband events)" for bd in bins) +
           f"\ncores    : {', '.join(args.cores)}, shared as {ctag}\n"
           f"index    : {corePdf.index_name(args.category, args.year)}")
 
+    # ---- the start of every core: alone on the summed sidebands ---------
+    starts = {}
+    for core in args.cores:
+        starts[core], st = seed_core(core, args, x, sb_range, h_sum)
+        if st != 0:
+            print(f"  note: {core} alone on the summed bins: status {st}")
+
+    # ---- the SMF orders -------------------------------------------------
+    ftests = {}
+    if args.smf_order is not None:
+        orders = dict(zip(args.bins, args.smf_order))
+        print("\nSMF orders: " + ", ".join(f"{b} {n}"
+                                           for b, n in orders.items())
+              + " (--smf-order)")
+    else:
+        print(f"\nSMF order by F-test (simultaneous fit; p < "
+              f"{bkgFit.F_THRESHOLD} justifies one more order in a bin; "
+              f"orders {args.smf_min_order}-{args.smf_max_order})")
+        picks = {}
+        for core in args.cores:
+            o, steps, last = smf_ftest(core, args, x, bins, sb_range,
+                                       starts[core])
+            ftests[core] = steps
+            if last["status"] not in args.accept:
+                print(f"  {core:<11} the order-{args.smf_min_order} fit does "
+                      f"not converge (status {last['status']}); no vote")
+                continue
+            picks[core] = o
+            starts[core] = last["values"]
+            for st in steps:
+                if st.get("failed"):
+                    print(f"  {core:<11} {st['bin']}: {st['from']} -> "
+                          f"{st['to']}  fit failed (status {st['status']}): "
+                          "stop here")
+                else:
+                    print(f"  {core:<11} {st['bin']}: {st['from']} -> "
+                          f"{st['to']}  2dNLL={st['2dNLL']:7.2f}  "
+                          f"p={st['pvalue']:.4f}  "
+                          f"{'justified' if st['justified'] else 'NOT justified'}")
+            print(f"  {core:<11} -> " + ", ".join(f"{b} {n}"
+                                                 for b, n in o.items()))
+        if not picks:
+            raise SystemExit("no core converged at the lowest SMF order")
+        # one order per bin for every core: each member of a bin's multipdf
+        # then has the same parameters (no penalty needed, as in the note),
+        # and no core is left with less freedom than it asked for
+        orders = {b: max(o[b] for o in picks.values()) for b in args.bins}
+        print("SMF orders: " + ", ".join(f"{b} {n}" for b, n in orders.items())
+              + " (per bin, the highest any core needs)")
+
+    # ---- every core at those orders -------------------------------------
     fits = {}
     print(f"\n{'core':<11}{'status':>7}{'edm':>10}{'total NLL':>16}   "
           + "  ".join(f"{bd['bin']} chi2/ndf (p)" for bd in bins))
     for core in args.cores:
-        r = fit_core(core, args, x, bins, sb_range, h_sum)
+        start = dict(starts[core])
+        prev = ftests.get(core)
+        if prev is not None:      # from the core's own F-test choice
+            mine = {b: args.smf_min_order for b in args.bins}
+            for st in prev:
+                if st.get("justified"):
+                    mine[st["bin"]] = st["to"]
+            for bd in bins:
+                start = elevate(start, core, bd["tag"], mine[bd["bin"]],
+                                orders[bd["bin"]])
+        r = fit_core(core, args, x, bins, sb_range, orders, start)
         fits[core] = r
         flag = ("" if r["status"] == 0 and r["cov_qual"] == 3 else
                 "  (Hessian forced pos-def)" if r["status"] in args.accept
@@ -285,8 +422,13 @@ def main():
                 "observable": x.GetName(), "data_file": bd["data_file"],
                 "core_tag": ctag,
                 "index": corePdf.index_name(args.category, args.year),
-                "smf_order": bd["order"],
+                "smf_order": orders[b],
+                "smf_orders": orders,
+                "smf_order_source": ("--smf-order" if args.smf_order
+                                     is not None else "F-test"),
+                "f_threshold": bkgFit.F_THRESHOLD,
             },
+            "smf_ftest": ftests,
             "members": ok, "best": best, "dropped": dropped,
             "accepted_status": list(args.accept),
             "fits": {c: {"status": fits[c]["status"],

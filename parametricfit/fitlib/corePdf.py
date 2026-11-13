@@ -43,7 +43,6 @@ import ROOT
 from . import pdfDefinitions as pdefs
 
 CORES = ["bwzredux", "fewzbern3", "exp2"]
-SMF_ORDER = 2                 # default; the note: 3 in cat0/cat1, 2 elsewhere
 SMF_INIT, SMF_RANGE, SMF_STEP = 1.0, (-10.0, 10.0), 0.05
 
 

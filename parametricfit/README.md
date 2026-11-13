@@ -83,9 +83,9 @@ python -u biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys
 **The Run 2 core-PDF** (note Sec. 6.4.2), the model of the Run 2 ggH
 result: one core shared by every bin (an envelope of BWZRedux,
 FEWZ × Bern3 and exp2, three parameters each) times a Bernstein shape
-modifier per bin. After `bkgFit.py` (conda):
+modifier per bin, its order chosen by F-test. After `bkgFit.py` (conda):
 ```bash
-python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --smf-order 3 3 2
+python corePdfFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
 ```
 then, in the container, its cards (`*_core`), the families cards for the
 truths, the significance and the note's bias test:
@@ -168,6 +168,14 @@ reads and writes there unless `--wsdir` says otherwise.
   once.
   - Each core is first fitted alone to the summed bins, then core × SMF in
     every bin in one likelihood, the core parameters common to all bins.
+  - The SMF order of each bin comes from an F-test in that simultaneous
+    fit: from order 1, a bin's order goes up by one while 2ΔNLL gives
+    p < 0.05, as in `bkgFit.py`. Each step starts from the order below
+    raised by degree elevation. A bin gets the highest order any core
+    needs, so its members all have the same parameters. This picks what the
+    data need; the note chose its orders with the bias study, which
+    `biasStudy.py --mode core` then checks (raise a failing bin with
+    `--smf-order`).
   - Status 1 (a valid minimum whose Hessian was forced positive-definite)
     counts as converged: the core and the SMFs partly mimic each other, so
     the Hessian is near-singular by construction. `--strict-status` keeps
@@ -246,8 +254,11 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 **`corePdfFit.py`**
 - `-c`, `-b` (the bins that share the core), `-y`, `--wsdir`, `--plotdir`,
   `--pdf`.
-- `--smf-order`: one order for every bin, or one per bin (default 2; the
-  note used 3 in ggH-cat0 and cat1, 2 in the others).
+- `--smf-order`: fix the orders, one for every bin or one per bin,
+  instead of the F-test (the note used 3 in ggH-cat0 and cat1, 2 in the
+  others).
+- `--smf-min-order` (default 1), `--smf-max-order` (default 4): the
+  F-test's range.
 - `--cores`: default `bwzredux fewzbern3 exp2`.
 - `--strict-status`: Minuit status 0 only.
 
