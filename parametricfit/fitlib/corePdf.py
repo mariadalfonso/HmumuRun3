@@ -21,7 +21,16 @@ penalty does not change the choice, as in the note.
 
 The SMF is a Bernstein polynomial over the fit window, its first
 coefficient fixed to 1 (the norm floats separately): order n has n free
-parameters and spans the same functions as the note's order-n polynomial.
+parameters, like the note's order-n polynomial.
+
+Its coefficients, and those of the FEWZ core's own Bernstein, are bounded
+below by 0 (POSITIVE_RANGE). A Bernstein polynomial with non-negative
+coefficients is positive everywhere, so the product and its integral can
+never reach zero; with negative coefficients allowed, Minuit's trial steps
+made them do so, and each such step left RooFit integrating a NaN to the
+end of its 20 Romberg steps (up to a million evaluations of the FEWZ
+formula, each). This leaves out the shapes that are only positive with a
+negative coefficient, a small corner for a modifier close to 1.
 The note used order 3 in ggH-cat0 and cat1 and order 2 in the others, and
 chose the orders with the bias study.
 
@@ -43,7 +52,10 @@ import ROOT
 from . import pdfDefinitions as pdefs
 
 CORES = ["bwzredux", "fewzbern3", "exp2"]
-SMF_INIT, SMF_RANGE, SMF_STEP = 1.0, (-10.0, 10.0), 0.05
+POSITIVE_RANGE = (0.0, 10.0)        # Bernstein coefficients: SMF, FEWZ core
+SMF_INIT, SMF_RANGE, SMF_STEP = 1.0, POSITIVE_RANGE, 0.05
+# the core parameters bounded to POSITIVE_RANGE: Bernstein coefficients
+POSITIVE_PREFIXES = ("fewzbern_c",)
 
 
 def core_tag(category, year):
@@ -73,6 +85,11 @@ def create_core(x, category, year, core):
         # of UNnormalised terms; pin it to the terms normalised over x, as
         # when the core is fitted alone (1.4% off for exp2 otherwise)
         pdf.fixCoefNormalization(ROOT.RooArgSet(x))
+    for p in keep["params"]:
+        if p.GetName().startswith(POSITIVE_PREFIXES):
+            p.setRange(*POSITIVE_RANGE)
+            p.setVal(min(max(p.getVal(), POSITIVE_RANGE[0]),
+                         POSITIVE_RANGE[1]))
     return pdf, keep
 
 

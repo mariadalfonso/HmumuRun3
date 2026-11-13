@@ -382,6 +382,14 @@ def main():
               + "  ".join(f"{r['bins'][bd['bin']]['chi2_ndf']:6.3f} "
                           f"({r['bins'][bd['bin']]['pvalue']:.3f})"
                           for bd in bins) + flag)
+        at_zero = [k for k, v in r["values"].items()
+                   if (k.startswith("smf_") or
+                       k.startswith(corePdf.POSITIVE_PREFIXES))
+                   and v < 1e-3 * corePdf.POSITIVE_RANGE[1]]
+        if at_zero:
+            print(f"{'':<11}  note: at the 0 bound: {', '.join(at_zero)}; "
+                  "the shape wants a negative Bernstein coefficient there "
+                  "(try a higher --smf-order)")
 
     ok = sorted((c for c, r in fits.items() if r["status"] in args.accept),
                 key=lambda c: fits[c]["nll"])
