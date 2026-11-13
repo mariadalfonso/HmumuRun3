@@ -22,13 +22,24 @@ Run everything from `parametricfit/`.
 
 | where | what |
 |---|---|
-| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` |
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py`; `optimizeBins.py` chooses the BDT bins |
 | `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
 
 Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
+
+**0. BDT bins** (conda, optional): the boundaries on `discrMVA` that
+maximise the expected significance, as the Run 2 note chose its ggH
+categories (AN-2019/124, Sec. 6.2).
+```bash
+python optimizeBins.py -c ggHcat -y Run3
+```
+It prints the best boundaries for each number of bins (s, b, Z per bin,
+in score and in signal efficiency), the current `SELMVA` cuts for
+comparison, and the recommended split as a `SELMVA` entry to put in
+`fitlib/prepareFits.py`. Everything downstream then has to be rerun.
 
 **1. Fits** (conda)
 ```bash
@@ -164,6 +175,25 @@ reads and writes there unless `--wsdir` says otherwise.
   - The member with the lowest NLL + 0.5 × npar, as Combine compares them,
     is the default (`pdfindex` 0): the Asimov and the yield come from it.
   - The yield is extrapolated over 110–150 GeV.
+- **`optimizeBins.py`**: the Run 2 note's category optimisation, adapted
+  from `analysis/MACRO/optimize_categories.py`.
+  - Z of a bin: the Asimov significance of the binned shape fit over
+    110–150 GeV (0.25 GeV bins), the signal from MC (all modes) and the
+    background a smooth fit (exp of a polynomial) to the background MC
+    (`--bkg mc`, default, as the note; `mcCoreFit.py`'s samples) or to the
+    data sidebands only (`--bkg data`, 120–130 GeV never read). The total
+    is √ΣZ².
+  - The grid is 1% steps of signal efficiency (`--grid quantile`, as the
+    note) or `--step` in score. The search is exact for each number of
+    bins; the recommended number is the last before one that gains under
+    `--min-gain` (1%, the note's rule).
+  - Every bin needs `--min-bkg` background events over 110–150 GeV
+    (default 1000; and `--min-mc-raw` unweighted MC events). The purest bin
+    tends to end on that limit, so compare a few values.
+  - `--signal-parity odd` uses the odd signal events only, as the note;
+    the default is all, since `sigFit.py` does not use the even ones only.
+  - A guide, not the result: no background-shape uncertainty, no
+    systematics. Check the candidates with the full chain.
 - **`corePdfFit.py`**: the core-PDF, fitted to the sidebands of all bins at
   once.
   - Each core is first fitted alone to the summed bins, then core × SMF in
