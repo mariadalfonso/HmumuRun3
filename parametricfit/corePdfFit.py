@@ -62,6 +62,7 @@ import ROOT
 
 import bkgFit
 from fitlib import config, corePdf, style
+from fitlib import pdfDefinitions as pdefs
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -462,10 +463,13 @@ def main():
 
         plot = {c: {"pdf": per[c]["pdf"], "sb_fraction": per[c]["sb_fraction"]}
                 for c in ok}
+        names = {c: f"{pdefs.model_label(c)} #times SMF{orders[b]}"
+                 for c in ok}
         bkgFit.plot_envelope(
             x, bd["data"], plot, ok, best, f"{args.category} {b} data",
             os.path.join(args.plotdir, args.category, f"core_{tag}"),
-            args.year, sb_range, args.pdf, bd["nbins"], bd["n_sb"])
+            args.year, sb_range, args.pdf, bd["nbins"], bd["n_sb"],
+            labels=names)
 
 
 if __name__ == "__main__":

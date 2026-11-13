@@ -389,7 +389,7 @@ def ftest(fits, family, failed=None):
 # ---------------------------------------------------------------------------
 
 def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
-                  sb_range, save_pdf, nbins, n_sb):
+                  sb_range, save_pdf, nbins, n_sb, labels=None):
     """Data with the SR suppressed, every envelope member drawn across the
     full range, and a ratio panel against the best-fit model.
 
@@ -403,7 +403,11 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         x and normalises the curve to the sideband instead, putting it
         1/f_sb too high. The explicit yield is the same extrapolation the
         chi2 and the workspace norm use, so all three agree.
+
+    The legend names each member as the Run 2 note does, with its order
+    (pdfDefinitions.model_label); `labels` overrides that per member.
     """
+    labels = labels or {}
     frame = x.frame(ROOT.RooFit.Title(""))
     data.plotOn(frame, ROOT.RooFit.Name("dat"),
                 ROOT.RooFit.CutRange(sb_range),
@@ -514,19 +518,23 @@ def plot_envelope(x, data, fits, envelope, best, label, outbase, year,
         latex.DrawLatex(style.PAD_LEFT_MARGIN + 0.05, 0.85 - i * dy, ln)
     keep.append(latex)
 
-    leg = ROOT.TLegend(1 - style.PAD_RIGHT_MARGIN - 0.32,
+    # wide enough for the note-style names: from just right of the text block
+    # on the left to the frame's edge
+    leg = ROOT.TLegend(style.PAD_LEFT_MARGIN + 0.31,
                        1 - style.PAD_TOP_MARGIN - 0.04
-                       - 0.052 * (len(envelope) + 1),
-                       1 - style.PAD_RIGHT_MARGIN - 0.02,
+                       - 0.048 * (len(envelope) + 1),
+                       1 - style.PAD_RIGHT_MARGIN - 0.01,
                        1 - style.PAD_TOP_MARGIN - 0.04)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
-    leg.SetTextSize(0.030)
+    leg.SetTextSize(0.026)
+    leg.SetMargin(0.12)
     leg.AddEntry(frame.getHist("dat"), "Data (sideband)", "pe")
     for nm in envelope:
         leg.AddEntry(frame.getCurve(nm),
-                     nm + ("  (best fit)" if nm == best else ""), "l")
+                     labels.get(nm, pdefs.model_label(nm))
+                     + ("  (best)" if nm == best else ""), "l")
     leg.Draw()
     keep.append(leg)
     keep.append(style.cms_label(pad1, year, full_year=True))

@@ -228,6 +228,41 @@ def family_members(families):
     """Every candidate of the given BKG_FAMILIES, in order."""
     return [nm for fam in families for nm in BKG_FAMILIES[fam]]
 
+
+# Plot labels, short forms of the Run 2 note's names (Fig. 6.19, Table
+# 6.13), ROOT TLatex; {n} is the member's trailing number (an order, or the
+# terms of a sum for S-Exp / S-Pow).
+FAMILY_LABEL = {
+    "bwzbern": "BWZ #times Bern{n}",
+    "bwzgamma": "BWZGamma",
+    "bwzredux": "BWZRedux",
+    "fewzbern": "FEWZ #times Bern{n}",
+    "bernstein": "Bern{n}",
+    "exponential": "S-Exp{n}",
+    "power": "S-Pow{n}",
+    "expconst": "Exp + const",
+    "powconst": "Pow + const",
+    "landbern": "Landau #times Bern{n}",
+    "dyexp": "DY #times ExpCheb{n}",
+    "dypow": "DY #times Pow{n}",
+    "mcexp": "MC 2Exp #times ExpCheb{n}",
+    "mcpow": "MC 2Pow #times ExpCheb{n}",
+    "mcdy": "MC DY #times ExpCheb{n}",
+}
+# members whose name has no number, or a different function at order 0
+MEMBER_LABEL = {"bwz": "BWZ", "landau": "Landau"}
+
+
+def model_label(name):
+    """bern5 -> "Bern5", exp2 -> "S-Exp2", fewzbern3 -> "FEWZ #times Bern3";
+    unknown names as given."""
+    if name in MEMBER_LABEL:
+        return MEMBER_LABEL[name]
+    fam = next((f for f, ms in BKG_FAMILIES.items() if name in ms), None)
+    if fam not in FAMILY_LABEL:
+        return name
+    return FAMILY_LABEL[fam].format(n=name[len(name.rstrip("0123456789")):])
+
 COMBINE_LIB = "/code/HiggsAnalysis/CombinedLimit/build/lib/" \
               "libHiggsAnalysisCombinedLimit.so"
 
