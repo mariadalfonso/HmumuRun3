@@ -16,6 +16,8 @@ def DefineBranchList(mode,mc,doSynch):
         "luminosityBlock",
         #            
         "HiggsCandCorrMass",
+        "HiggsCandCorrMassErr",
+        "HiggsCandCorrPt",
         "isZ",
         "isH",
         "isHSB",
@@ -32,6 +34,7 @@ def DefineBranchList(mode,mc,doSynch):
         "Muon2_rawpt",
         #
         "PuppiMET_pt",
+        "PuppiMET_phi",
         #
         "nGoodJetsAll",
 
@@ -43,16 +46,27 @@ def DefineBranchList(mode,mc,doSynch):
             "jetVBF1_Pt",
             "jetVBF2_Eta",
             "jetVBF1_Eta",
+            "jetVBF2_Phi",
+            "jetVBF1_Phi",
             "Mjj",
-            "nBMJets",
             "isGGH",
+            "isVBF",
+            #
+            "nBMJets",
+            "bMJet_pt",
+            "bMJet_eta",
+            "bMJet_phi",
+            "bVeto",
+            #
+            "Jet1_Pt",
+            "Jet1_Eta",
+            #
+            "METFilters",
         ],
 	"isVlep": [
-            "PuppiMET_phi",
             "category",
         ],
 	"isTTlep": [
-            "PuppiMET_phi",
             "category",
         ]
     }
@@ -81,7 +95,7 @@ def DefineBranchList(mode,mc,doSynch):
         "HiggsCandCorrMass",
         "HiggsCandCorrPt",
         "HiggsCandCorrRapidity",
-        "HiggsCandMassErr",
+        "HiggsCandCorrMassErr",
         "cosThetaCS",
         "phiStarCS",
         "classify",
@@ -126,6 +140,10 @@ def DefineBranchList(mode,mc,doSynch):
             "minDR_jetVBF1_Mu",
             "minDR_jetVBF2_Mu",
             #
+            "METFilters",
+            "isGGH",
+            "isVBF",
+            #
             "Mjj",
             "dEtaJJ",
             "dPhiJJ",
@@ -154,6 +172,9 @@ def DefineBranchList(mode,mc,doSynch):
             "deltaRJet1H",
             "Muon1_charge",
             "Muon2_charge",
+            "METFilters",
+            "isGGH",
+            "isVBF",
         ],
         "isZinv": [
             "Muon1_phi",

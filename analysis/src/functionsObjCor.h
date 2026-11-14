@@ -101,7 +101,7 @@ Vec_f reshapeBTVdiscr(MyCorrections corrSFs, Vec_f Jet_btagRobustParTAK4B, Vec_f
 }
 */
 
-Vec_f computeEleSSCorrection(MyCorrections& corrSFs, const Vec_f& ele_pt, const Vec_f& ele_eta, const Vec_f& ele_r9, const Vec_f& ele_gain, const float event, const float run, bool isData, string year){
+Vec_f computeEleSSCorrection(MyCorrections& corrSFs, const Vec_f& ele_pt, const Vec_f& ele_eta, const Vec_f& ele_r9, const Vec_f& ele_gain, const ULong64_t event, const UInt_t run, bool isData, string year){
 
   std::vector<double> random_numbers(ele_pt.size(), 0.0);
 
@@ -131,7 +131,7 @@ std::pair<float, float> computeMETforJECcorrection(MyCorrections& corrSFs,
 						   const Vec_f& Jet_muonSubtrFactor, const Vec_f& Jet_muonSubtrDeltaPhi,
 						   const Vec_f& Jet_pt_nano, const Vec_f& Jet_rawFactor,
 						   const Vec_f& Jet_eta, const Vec_f& Jet_phi, const Vec_f& Jet_area,
-						   float rho, float run, bool isData,
+						   float rho, UInt_t run, bool isData,
 						   const std::string& year, const std::string& mc)
 {
 
@@ -168,7 +168,7 @@ std::pair<float, float> computeMETforJECcorrection(MyCorrections& corrSFs,
 
 }
 
-Vec_f computeJECcorrection(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, float run, bool isData, string year, string mc, int doAk4){
+Vec_f computeJECcorrection(MyCorrections& corrSFs, const Vec_f& jet_pt, const Vec_f& jet_rawFactor, const Vec_f& jet_eta, const Vec_f& jet_phi, const Vec_f& jet_area, float rho, UInt_t run, bool isData, string year, string mc, int doAk4){
 
   Vec_f new_jet; new_jet.resize(jet_pt.size());
   Vec_f raw_jet; raw_jet.resize(jet_pt.size());
