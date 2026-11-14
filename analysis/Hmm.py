@@ -697,6 +697,10 @@ def objScaleSmear(df, year, mc):
         df = df.Redefine("Jet_pt",'computeJECcorrection(corr_sf, Jet_pt, Jet_rawFactor, Jet_eta, Jet_phi, Jet_area, rho, run, isData, "{0}","{1}",1)'.format(year,mc))
         df = df.Redefine("FatJet_pt",'computeJECcorrection(corr_sf, FatJet_pt, FatJet_rawFactor, FatJet_eta, FatJet_phi, FatJet_area, rho, run, isData, "{0}","{1}",0)'.format(year,mc))
 
+        # apply JER to AK4
+        if mc>=0:
+            df = df.Redefine("Jet_pt",'computeJERcorrections(corr_sf, Jet_pt, Jet_eta, Jet_genJetIdx, GenJet_pt, rho, isData, run, luminosityBlock, event)')
+
         # get the EGM scale
         df = df.Redefine("Electron_pt",'computeEleSSCorrection(corr_sf, Electron_pt, Electron_eta, Electron_r9, Electron_seedGain, event, run, isData, "{0}")'.format(year))
 
