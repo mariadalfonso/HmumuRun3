@@ -20,7 +20,8 @@ Here, per candidate bin (a range of discrMVA):
     (mc 10-15), with sigFit.py's per-era yield scaling
   * b_k: the background over 110-150 GeV, a smooth fit evaluated in the
     same bins. --bkg mc (default, as the note): the background MC of
-    mcCoreFit.py (prepareFits.BKG_MC_TAGS, the same era scaling), a
+    mcCoreFit.py (prepareFits.BKG_MC_TAGS, the same era scaling;
+    --bkg-samples dy for the Drell-Yan ones only), a
     Poisson fit of exp(cubic in m) to its 1 GeV histogram (the note used
     BWZRedux; any smooth fit serves here). --bkg data: the data SIDEBANDS
     only (110-120, 130-150 GeV), exp(quadratic in m), extrapolated under
@@ -97,6 +98,32 @@ def hist2d_array(h):
     return a
 
 
+def stale_files(files, branches=(SCORE, MASS)):
+    """the files whose events tree lacks one of `branches`: snapshots made
+    before the BDT score was added, say"""
+    stale = []
+    for path in files:
+        f = ROOT.TFile.Open(path)
+        t = f.Get("events") if f and not f.IsZombie() else None
+        if not t or any(not t.GetBranch(b) for b in branches):
+            stale.append(path)
+        if f:
+            f.Close()
+    return stale
+
+
+def require_branches(files, what):
+    """stop with the list of files that cannot be read for `what`"""
+    stale = stale_files(files)
+    if stale:
+        raise SystemExit(
+            f"{len(stale)} of {len(files)} {what} snapshot(s) have no "
+            f"{SCORE} (or {MASS}) branch; remake them with the current "
+            "analysis code:\n  " + "\n  ".join(stale)
+            + ("\n(--bkg-samples dy uses the Drell-Yan samples only)"
+               if what.startswith("background") else ""))
+
+
 def fill(files, filters, nmass, name, weight=True):
     df = ROOT.RDataFrame("events", files)
     for f in filters:
@@ -121,6 +148,7 @@ def load_signal(args):
     for era, scale in pf.signal_yield_scales(args.year).items():
         files = pf._collect_files([(era, tags)], args.category,
                                   args.rootfiles_dir)
+        require_branches(files, f"signal {era}")
         total += scale * scale_parity * fill(
             files, [f"mc >= 10 && mc <= 15 && !isnan({MASS})"]
             + parity_filter(args.signal_parity), nz, f"s_{era}")
@@ -137,6 +165,7 @@ def load_background(args):
     if args.bkg == "data":
         files = pf.get_data_files(args.year, args.category,
                                   args.rootfiles_dir)
+        require_branches(files, "data")
         sb = (f"({MASS} >= {SB_LO[0]} && {MASS} < {SB_LO[1]}) || "
               f"({MASS} >= {SB_HI[0]} && {MASS} < {SB_HI[1]})")
         a = fill(files, [f"mc < 0 && mc > -100 && !isnan({MASS})", sb], nm,
@@ -144,10 +173,18 @@ def load_background(args):
         print(f"  data: {len(files)} file(s), {a.sum():.0f} sideband events "
               "(120-130 GeV not read)")
         return a, a
+    eras = pf.signal_yield_scales(args.year)
+    dy_only = args.bkg_samples == "dy"
+    per_era = {era: pf.get_bkg_mc_files(args.category, era,
+                                        args.rootfiles_dir, dy_only=dy_only)
+               for era in eras}
+    # check every era first, so one run lists all the stale files
+    require_branches([f for fs in per_era.values() for f in fs],
+                     "background MC")
     w = np.zeros((N_FINE, nm))
     raw = np.zeros((N_FINE, nm))
-    for era, scale in pf.signal_yield_scales(args.year).items():
-        files = pf.get_bkg_mc_files(args.category, era, args.rootfiles_dir)
+    for era, scale in eras.items():
+        files = per_era[era]
         cut = [f"mc > 15 && !isnan({MASS})"]
         w += scale * fill(files, cut, nm, f"b_{era}")
         raw += fill(files, cut, nm, f"braw_{era}", weight=False)
@@ -323,6 +360,10 @@ def main():
     ap.add_argument("--bkg", choices=("mc", "data"), default="mc",
                     help="background from the background MC (default, as "
                          "the note) or the data sidebands")
+    ap.add_argument("--bkg-samples", choices=("all", "dy"), default="all",
+                    help="--bkg mc: every background MC sample "
+                         "(BKG_MC_TAGS, default, as the note) or the "
+                         "Drell-Yan ones only (BKG_DY_TAGS)")
     ap.add_argument("--grid", choices=("quantile", "score"),
                     default="quantile",
                     help="boundaries at signal-efficiency steps (default) "
@@ -393,7 +434,7 @@ def main():
     grid = make_grid(sig, args)
     results = best_partitions(grid, stats, args.max_bins)
 
-    out = {"category": args.category, "year": args.year, "bkg": args.bkg,
+    out = {"category": args.category, "year": args.year, "bkg": args.bkg, "bkg_samples": args.bkg_samples,
            "grid": args.grid, "min_bkg": args.min_bkg,
            "signal_parity": args.signal_parity, "modes": args.modes,
            "best": {}}
