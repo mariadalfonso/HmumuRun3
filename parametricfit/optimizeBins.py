@@ -56,7 +56,15 @@ Significance).
 Adapted from analysis/MACRO/optimize_categories.py, which counted signal and
 data in |m - 125| < 25 GeV (the blinded region included), with s^2/b, at
 least 20 background events per bin, and kept only the overall best.
-Runs in conda, from parametricfit/. Writes <wsdir>/BinScan_<cat>_<year>.json.
+Runs in conda, from parametricfit/. Writes <wsdir>/BinScan_<cat>_<year>.json
+and, in <plotdir>/<cat>/ (--plot-nbins picks the split, default the
+recommended one; --no-plots for none):
+    binscan_<cat>_<year>_score[_log].png   signal and background score at
+        unit area, the split's boundaries (signal efficiency above each)
+        and the current SELMVA ones
+    binscan_<cat>_<year>_gain.png          Z against the number of bins
+    binscan_<cat>_<year>_fits_<k>bins.png  per bin, the background histogram,
+        the fit the significance uses (chi2/ndf) and the signal scaled up
 """
 
 import argparse
@@ -68,7 +76,7 @@ import re
 import numpy as np
 import ROOT
 
-from fitlib import config, prepareFits as pf
+from fitlib import config, prepareFits as pf, style
 
 ROOT.gROOT.SetBatch(True)
 
@@ -350,6 +358,288 @@ def selmva(edges):
     return cuts
 
 
+# ---------------------------------------------------------------------------
+# validation plots
+# ---------------------------------------------------------------------------
+
+SCORE_PLOT_BINS = 50                   # score bins of the distribution plot
+SIG_COLOR = ROOT.kRed + 1
+BKG_FILL, BKG_LINE = ROOT.kAzure - 9, ROOT.kAzure + 2
+EDGE_COLOR = ROOT.kBlack
+CUR_COLOR = ROOT.kGray + 2
+FIT_SIG_COLOR = ROOT.kAzure + 2        # signal in the fit panels (fit is red)
+
+
+def _latex(size, align=11, font=42):
+    t = ROOT.TLatex()
+    t.SetNDC()
+    t.SetTextFont(font)
+    t.SetTextSize(size)
+    t.SetTextAlign(align)
+    return t
+
+
+def _save(c, stem, args):
+    os.makedirs(os.path.dirname(stem), exist_ok=True)
+    for ext in ("png", "pdf") if args.pdf else ("png",):
+        c.SaveAs(f"{stem}.{ext}")
+    print(f"  wrote {stem}.png")
+
+
+def _bkg_label(args):
+    if args.bkg == "data":
+        return "data sidebands"
+    return "background MC" + (" (DY)" if args.bkg_samples == "dy" else "")
+
+
+def plot_score(sig, bkg, edges, effs, cur, args, stem):
+    """Signal and background score, unit area, in 110-150 GeV (the data
+    sidebands only with --bkg data), with the recommended boundaries (solid,
+    the signal efficiency above each) and the current ones (dashed)."""
+    reb = N_FINE // SCORE_PLOT_BINS
+    hs = ROOT.TH1D("score_sig", "", SCORE_PLOT_BINS, 0.0, 1.0)
+    hb = ROOT.TH1D("score_bkg", "", SCORE_PLOT_BINS, 0.0, 1.0)
+    for h, a in ((hs, sig.sum(axis=1)), (hb, bkg.sum(axis=1))):
+        for i, v in enumerate(a.reshape(-1, reb).sum(axis=1)):
+            h.SetBinContent(i + 1, v)
+        h.Scale(1.0 / max(h.Integral(), 1e-30))
+        h.SetDirectory(0)
+    hb.SetFillColor(BKG_FILL)
+    hb.SetLineColor(BKG_LINE)
+    hb.SetLineWidth(2)
+    hs.SetLineColor(SIG_COLOR)
+    hs.SetLineWidth(3)
+    keep = [hs, hb]
+    for logy in (True, False):
+        c = ROOT.TCanvas(f"c_score_{logy}", "", 800, 650)
+        c.SetMargin(style.PAD_LEFT_MARGIN, style.PAD_RIGHT_MARGIN,
+                    style.PAD_BOTTOM_MARGIN, style.PAD_TOP_MARGIN)
+        c.SetLogy(logy)
+        ymax = max(hs.GetMaximum(), hb.GetMaximum())
+        pos = [h.GetBinContent(b) for h in (hs, hb)
+               for b in range(1, SCORE_PLOT_BINS + 1) if h.GetBinContent(b) > 0]
+        ylo = 0.3 * min(pos) if logy else 0.0
+        ytop = ylo * (ymax / ylo) ** 1.6 if logy else 1.55 * ymax
+        frame = hb.Clone(f"frame_{logy}")
+        frame.Reset()
+        frame.SetMinimum(ylo)
+        frame.SetMaximum(ytop)
+        frame.GetXaxis().SetTitle("BDT score (discrMVA)")
+        frame.GetYaxis().SetTitle(f"Fraction / {1.0 / SCORE_PLOT_BINS:g}")
+        frame.GetYaxis().SetTitleOffset(1.3)
+        frame.Draw("AXIS")
+        hb.Draw("HIST SAME")
+        hs.Draw("HIST SAME")
+        # boundaries up to the curves' height, so the legend stays clear
+        yline = ymax * (3 if logy else 1.08)
+        for x in cur:
+            ln = ROOT.TLine(x, ylo, x, yline)
+            ln.SetLineColor(CUR_COLOR)
+            ln.SetLineStyle(2)
+            ln.SetLineWidth(2)
+            ln.Draw()
+            keep.append(ln)
+        lab = _latex(0.026, 21)
+        last_xn, lift = -1.0, 0.0
+        for x, e in zip(edges[1:-1], effs[1:-1]):
+            ln = ROOT.TLine(x, ylo, x, yline)
+            ln.SetLineColor(EDGE_COLOR)
+            ln.SetLineWidth(2)
+            ln.Draw()
+            keep.append(ln)
+            # NDC position of the label: just above the line
+            xn = c.GetLeftMargin() + (1 - c.GetLeftMargin()
+                                      - c.GetRightMargin()) * x
+            fy = (math.log(yline / ylo) / math.log(ytop / ylo) if logy
+                  else yline / ytop)
+            yn = c.GetBottomMargin() + (1 - c.GetBottomMargin()
+                                        - c.GetTopMargin()) * fy + 0.012
+            # neighbouring labels closer than their width: stack the next
+            # one above, so the cut values never overlap
+            lift = lift + 0.065 if xn - last_xn < 0.075 else 0.0
+            last_xn = xn
+            yn += lift
+            lab.DrawLatex(xn, yn, f"{x:.3f}")
+            lab.DrawLatex(xn, yn + 0.03, f"{100 * e:.0f}%")
+        leg = ROOT.TLegend(0.19, 0.70, 0.62, 0.88)
+        leg.SetFillStyle(0)
+        leg.SetTextSize(0.030)
+        leg.AddEntry(hs, "signal (all modes)", "l")
+        leg.AddEntry(hb, _bkg_label(args), "f")
+        dummy = ROOT.TLine()
+        dummy.SetLineWidth(2)
+        leg.AddEntry(dummy, f"best {len(edges) - 1} bins (cut, sig. eff. above)",
+                     "l")
+        if cur:
+            dcur = ROOT.TLine()
+            dcur.SetLineColor(CUR_COLOR)
+            dcur.SetLineStyle(2)
+            dcur.SetLineWidth(2)
+            leg.AddEntry(dcur, "current SELMVA", "l")
+            keep.append(dcur)
+        leg.Draw()
+        keep += [frame, leg, dummy]
+        c.RedrawAxis()
+        style.cms_label(c, args.year, full_year=True)
+        _latex(0.032, 13).DrawLatex(0.65, 0.87,
+                                    style.CAT_LABEL.get(args.category,
+                                                        args.category))
+        _latex(0.028, 13).DrawLatex(0.65, 0.82, "110 < m_{#mu#mu} < 150 GeV")
+        _save(c, stem + ("_log" if logy else ""), args)
+    return keep
+
+
+def plot_gain(results, recommended, cur_z, args, stem):
+    """Z of the best split against the number of bins, the gain of each
+    added bin, the current split's Z as a dashed line."""
+    ks = sorted(results)
+    g = ROOT.TGraph(len(ks))
+    for i, k in enumerate(ks):
+        g.SetPoint(i, k, results[k][0])
+    g.SetMarkerStyle(20)
+    g.SetMarkerSize(1.3)
+    g.SetLineWidth(2)
+    c = ROOT.TCanvas("c_gain", "", 800, 650)
+    c.SetMargin(style.PAD_LEFT_MARGIN, style.PAD_RIGHT_MARGIN,
+                style.PAD_BOTTOM_MARGIN, style.PAD_TOP_MARGIN)
+    zs = [results[k][0] for k in ks] + ([cur_z] if cur_z else [])
+    lo, hi = min(zs), max(zs)
+    frame = c.DrawFrame(0.5, lo - 0.15 * (hi - lo), ks[-1] + 0.5,
+                        hi + 0.35 * (hi - lo))
+    frame.GetXaxis().SetTitle("number of BDT bins")
+    frame.GetYaxis().SetTitle("expected significance Z (shape, no syst.)")
+    frame.GetXaxis().SetNdivisions(len(ks) + 1, 0, 0)
+    frame.GetYaxis().SetTitleOffset(1.3)
+    keep = [g, frame]
+    if cur_z:
+        ln = ROOT.TLine(0.5, cur_z, ks[-1] + 0.5, cur_z)
+        ln.SetLineColor(CUR_COLOR)
+        ln.SetLineStyle(2)
+        ln.SetLineWidth(2)
+        ln.Draw()
+        keep.append(ln)
+        t = _latex(0.028, 11)
+        t.SetNDC(False)
+        t.SetTextColor(CUR_COLOR)
+        t.DrawLatex(0.6, cur_z + 0.015 * (hi - lo),
+                    f"current SELMVA: {cur_z:.3f}")
+    g.Draw("PL")
+    if recommended in results:
+        r = ROOT.TGraph(1)
+        r.SetPoint(0, recommended, results[recommended][0])
+        r.SetMarkerStyle(24)
+        r.SetMarkerSize(2.6)
+        r.SetMarkerColor(SIG_COLOR)
+        r.SetLineColor(SIG_COLOR)
+        r.Draw("P")
+        keep.append(r)
+    t = _latex(0.026, 21)
+    t.SetNDC(False)
+    for k0, k1 in zip(ks[:-1], ks[1:]):
+        z0, z1 = results[k0][0], results[k1][0]
+        t.DrawLatex(k1, z1 + 0.06 * (hi - lo), f"+{100 * (z1 / z0 - 1):.1f}%")
+    style.cms_label(c, args.year, full_year=True)
+    _latex(0.032, 13).DrawLatex(0.19, 0.87,
+                                style.CAT_LABEL.get(args.category,
+                                                    args.category))
+    _latex(0.028, 13).DrawLatex(
+        0.19, 0.82, f"circled: recommended ({recommended} bins, next "
+                    f"< {100 * args.min_gain:g}%)")
+    _save(c, stem, args)
+    return keep
+
+
+def _poisson_chi2(n, err, mu):
+    good = err > 0
+    return float(np.sum(((n[good] - mu[good]) / err[good]) ** 2)), int(good.sum())
+
+
+def plot_bin_fits(fine_edges, sig_c, bkg_c, raw_c, args, stem):
+    """Per bin of the split: the background histogram (1 GeV) the fit sees,
+    the fitted exp(poly) the significance uses, and the signal scaled up;
+    chi2/ndf of the fit in each pad. With --bkg data the 120-130 GeV bins
+    are not read and not drawn."""
+    nbin = len(fine_edges) - 1
+    ncol = min(nbin, 3)
+    nrow = (nbin + ncol - 1) // ncol
+    c = ROOT.TCanvas("c_fits", "", 460 * ncol, 420 * nrow)
+    c.Divide(ncol, nrow, 0.002, 0.002)
+    keep = []
+    nm = bkg_c.shape[1]
+    lo_m = config.XLOW
+    for k, (a, b) in enumerate(zip(fine_edges[:-1], fine_edges[1:])):
+        pad = c.cd(k + 1)
+        pad.SetMargin(0.17, 0.04, 0.13, 0.10)
+        n = bkg_c[b] - bkg_c[a]
+        raw = raw_c[b] - raw_c[a]
+        s = sig_c[b] - sig_c[a]
+        dens = background_density(n, args.bkg)
+        centres = lo_m + FIT_BIN * (np.arange(nm) + 0.5)
+        blind = ((centres >= SB_LO[1]) & (centres < SB_HI[0])
+                 if args.bkg == "data" else np.zeros(nm, bool))
+        err = np.where(raw > 0, n / np.sqrt(np.maximum(raw, 1e-30)), 0.0)
+        err[blind] = 0.0
+        hb = ROOT.TH1D(f"fit_b{k}", "", nm, lo_m, config.XHIGH)
+        for i in range(nm):
+            if not blind[i]:
+                hb.SetBinContent(i + 1, n[i])
+                hb.SetBinError(i + 1, err[i])
+        hb.SetMarkerStyle(style.DATA_MARKER_STYLE)
+        hb.SetMarkerSize(style.DATA_MARKER_SIZE)
+        mu = dens(centres) * FIT_BIN if dens else np.zeros(nm)
+        hf = ROOT.TH1D(f"fit_f{k}", "", 400, lo_m, config.XHIGH)
+        fx = lo_m + (config.XHIGH - lo_m) * (np.arange(400) + 0.5) / 400
+        if dens:
+            for i, v in enumerate(dens(fx) * FIT_BIN):
+                hf.SetBinContent(i + 1, v)
+        hf.SetLineColor(style.fit_color())
+        hf.SetLineWidth(2)
+        # the signal per 1 GeV, scaled to a round factor that makes its
+        # peak about a fifth of the background under it
+        s1 = s.reshape(nm, -1).sum(axis=1)
+        peak_b = float(np.interp(125.0, centres, mu)) or 1.0
+        raw_k = 0.2 * peak_b / max(s1.max(), 1e-30)
+        mag = 10 ** math.floor(math.log10(max(raw_k, 1e-30)))
+        kfac = max(1, int(round(raw_k / mag)) * mag) if raw_k >= 1 else 1
+        hs = ROOT.TH1D(f"fit_s{k}", "", nm, lo_m, config.XHIGH)
+        for i, v in enumerate(s1 * kfac):
+            hs.SetBinContent(i + 1, v)
+        hs.SetLineColor(FIT_SIG_COLOR)
+        hs.SetFillColorAlpha(FIT_SIG_COLOR, 0.25)
+        hs.SetLineWidth(2)
+        top = max(hb.GetMaximum(), hf.GetMaximum(), hs.GetMaximum())
+        frame = pad.DrawFrame(lo_m, 0.0, config.XHIGH, 1.45 * top)
+        frame.GetXaxis().SetTitle("m_{#mu#mu} [GeV]")
+        frame.GetYaxis().SetTitle(f"Events / {FIT_BIN:g} GeV")
+        for ax in (frame.GetXaxis(), frame.GetYaxis()):
+            ax.SetTitleSize(0.050)
+            ax.SetLabelSize(0.045)
+        frame.GetYaxis().SetTitleOffset(1.6)
+        frame.GetYaxis().SetMaxDigits(3)
+        hs.Draw("HIST SAME")
+        hf.Draw("HIST L SAME")
+        hb.Draw("E1 P SAME")
+        chi2, npts = _poisson_chi2(n[~blind], err[~blind], mu[~blind])
+        ndf = npts - (POLY[args.bkg] + 1)
+        t = _latex(0.050, 13)
+        t.DrawLatex(0.21, 0.86, f"bin {k}: [{a / N_FINE:.3f}, {b / N_FINE:.3f})")
+        t2 = _latex(0.042, 13)
+        t2.DrawLatex(0.21, 0.79, f"#chi^{{2}}/ndf = {chi2:.0f}/{ndf}")
+        t2.DrawLatex(0.21, 0.73, f"b = {n.sum():.4g}, s = {s.sum():.1f}")
+        leg = ROOT.TLegend(0.60, 0.70, 0.95, 0.88)
+        leg.SetFillStyle(0)
+        leg.SetTextSize(0.040)
+        leg.AddEntry(hb, "MC" if args.bkg == "mc" else "data", "pe")
+        leg.AddEntry(hf, f"exp(poly{POLY[args.bkg]}) fit", "l")
+        leg.AddEntry(hs, f"signal #times {kfac:g}", "f")
+        leg.Draw()
+        pad.RedrawAxis()
+        keep += [hb, hf, hs, frame, t, t2, leg]
+    c.cd(0)
+    _save(c, stem, args)
+    return keep
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -394,8 +684,19 @@ def main():
     ap.add_argument("--rootfiles-dir", default=pf.ROOTFILES_DIR)
     ap.add_argument("--wsdir", default=None,
                     help="where the JSON goes (default WS_<year>)")
+    ap.add_argument("--plotdir", default=None,
+                    help="validation plots go to <plotdir>/<cat>/ "
+                         "(default ~/public_html/HmumuFits/bin_scan)")
+    ap.add_argument("--plot-nbins", type=int, default=None,
+                    help="the split the plots show (default the "
+                         "recommended one)")
+    ap.add_argument("--no-plots", action="store_true")
+    ap.add_argument("--pdf", action="store_true",
+                    help="also write the plots as PDF")
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
+    args.plotdir = args.plotdir or os.path.expanduser(
+        "~/public_html/HmumuFits/bin_scan")
     if args.grid == "score":
         step = args.step * N_FINE
         if abs(step - round(step)) > 1e-9 or N_FINE % int(round(step)):
@@ -439,11 +740,12 @@ def main():
            "signal_parity": args.signal_parity, "modes": args.modes,
            "best": {}}
     cur = current_edges(args.category)
+    cur_z = None
     if cur:
         fe = [0] + [int(round(v * N_FINE)) for v in cur] + [N_FINE]
         if all(stats(a, b) is not None for a, b in zip(fe[:-1], fe[1:])):
             rows = describe(fe, stats, eff_above)
-            z = math.sqrt(sum(r["Z2"] for r in rows))
+            z = cur_z = math.sqrt(sum(r["Z2"] for r in rows))
             print(f"\ncurrent  : edges {', '.join(f'{v:g}' for v in cur)} "
                   f"(prepareFits.SELMVA)   Z = {z:.3f}")
             print_rows(rows)
@@ -479,6 +781,22 @@ def main():
         print(f"\nrecommended: {recommended} bin(s) (the next gains < "
               f"{100 * args.min_gain:g}%), as a prepareFits.SELMVA entry:\n  "
               + json.dumps(out["best"][recommended]["selmva"]))
+    if results and not args.no_plots:
+        k = args.plot_nbins or out["recommended"]
+        if k not in results:
+            print(f"\nno {k}-bin split to plot (have {sorted(results)})")
+        else:
+            fe = results[k][1]
+            stem = os.path.join(args.plotdir, args.category,
+                                f"binscan_{args.category}_{args.year}")
+            print(f"\nvalidation plots, the {k}-bin split:")
+            style.setup_style()
+            plot_score(sig, bkg, [i / N_FINE for i in fe],
+                       [eff_above(i) for i in fe], cur, args, stem + "_score")
+            plot_gain(results, out["recommended"], cur_z, args,
+                      stem + "_gain")
+            plot_bin_fits(fe, sig_c, bkg_c, raw_c, args,
+                          stem + f"_fits_{k}bins")
     os.makedirs(args.wsdir, exist_ok=True)
     path = os.path.join(args.wsdir,
                         f"BinScan_{args.category}_{args.year}.json")

@@ -192,6 +192,14 @@ reads and writes there unless `--wsdir` says otherwise.
     tends to end on that limit, so compare a few values.
   - `--signal-parity odd` uses the odd signal events only, as the note;
     the default is all, since `sigFit.py` does not use the even ones only.
+  - `--bkg-samples dy`: the Drell-Yan MC only. Every snapshot is checked
+    for `discrMVA` first; stale ones are listed and the run stops.
+  - Plots in `<plotdir>/<cat>/` (default `~/public_html/HmumuFits/bin_scan`)
+    for the recommended split (`--plot-nbins` for another): the score
+    distributions with the boundaries and the current `SELMVA` ones
+    (`_score[_log]`), Z against the number of bins (`_gain`), and each bin's
+    background histogram with the fit the significance uses, χ²/ndf and the
+    signal (`_fits_<k>bins`).
   - A guide, not the result: no background-shape uncertainty, no
     systematics. Check the candidates with the full chain.
 - **`corePdfFit.py`**: the core-PDF, fitted to the sidebands of all bins at
