@@ -61,7 +61,7 @@ from datetime import datetime, timezone
 import ROOT
 
 import bkgFit
-from fitlib import config, corePdf, style
+from fitlib import bdtBins, config, corePdf, style
 from fitlib import pdfDefinitions as pdefs
 
 ROOT.gROOT.SetBatch(True)
@@ -80,6 +80,8 @@ def load_bin(args, b, x):
     tag = f"{args.category}_{b}_{args.year}"
     rec = read_json(os.path.join(args.wsdir, f"Bkg_{tag}_params.json"))
     prov = rec["provenance"]
+    bdtBins.check_selection(prov, args.category, b,
+                            f"Bkg_{tag}_params.json")
     if list(prov["window"]) != [config.XLOW, config.XHIGH]:
         raise SystemExit(f"{tag}: window {prov['window']} is not "
                          f"{config.XLOW}-{config.XHIGH}")
@@ -425,6 +427,7 @@ def main():
                 "git_commit": config.git_commit(),
                 "model": "core-PDF (Run 2 note Sec. 6.4.2)",
                 "category": args.category, "bin": b, "year": args.year,
+                **bdtBins.selection_record(args.category, b),
                 "tag": tag, "bins": args.bins,
                 "window": [config.XLOW, config.XHIGH], "n_bins": bd["nbins"],
                 "blind_region": [bkgFit.SR_LO, bkgFit.SR_HI],

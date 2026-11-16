@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 import ROOT
 
 # importing style (signal imports it too) sets ROOT up for batch plotting
-from fitlib import config, signal, style
+from fitlib import bdtBins, config, signal, style
 
 
 def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
@@ -70,6 +70,7 @@ def run_category(category, binMVA, year, modes, plotdir, wsdir, freeze,
             "written_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "config.git_commit": config.git_commit(),
             "category": category, "bin": binMVA, "year": year,
+            **bdtBins.selection_record(category, binMVA),
             "yield_scales": scales,
             "lumi": {e: LUMIS[e]
                      for e in expand_year(year, DATA_YEAR_GROUPS)},

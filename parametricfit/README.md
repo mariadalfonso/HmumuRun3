@@ -23,7 +23,7 @@ Run everything from `parametricfit/`.
 | where | what |
 |---|---|
 | top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py`; `optimizeBins.py` chooses the BDT bins |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
@@ -34,12 +34,22 @@ Example: ggHcat, BDT bins, full Run 3. For one bin use e.g. `-b incl`.
 maximise the expected significance, as the Run 2 note chose its ggH
 categories (AN-2019/124, Sec. 6.2).
 ```bash
-python optimizeBins.py -c ggHcat -y Run3
+python optimizeBins.py -c ggHcat -y Run3            # look
+python optimizeBins.py -c ggHcat -y Run3 --apply    # use the recommended split
 ```
 It prints the best boundaries for each number of bins (s, b, Z per bin,
-in score and in signal efficiency), the current `SELMVA` cuts for
-comparison, and the recommended split as a `SELMVA` entry to put in
-`fitlib/prepareFits.py`. Everything downstream then has to be rerun.
+in score and in signal efficiency) and the current cuts for comparison.
+`--apply` writes the recommended split (`--nbins` for another) to
+`fitlib/bdt_bins.json`, with how it was chosen and the cuts it replaces.
+`fitlib/bdtBins.py` reads that file in place of its default `SELMVA` entry
+for the category, so every fit uses it. Commit the file, then rerun
+everything downstream with the new bins (`-b bdt0 ... bdt<n>`) in a new
+`--wsdir`.
+
+The fits record their cut (`provenance.selection`). `bkgFit.py` (for
+`MCcore_*.json`), `corePdfFit.py` and `buildWorkspace.py` stop on an input
+made with another cut than the one in force. Files from before this change
+have no record and give a warning only.
 
 **1. Fits** (conda)
 ```bash

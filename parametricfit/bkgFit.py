@@ -73,7 +73,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-from fitlib import config, mcCore, style
+from fitlib import bdtBins, config, mcCore, style
 from fitlib.gof import (CHI2_MIN_BIN_SIGNIFICANCE, GOF_THRESHOLD,
                         merge_chi2_bins)
 from fitlib import pdfDefinitions as pdefs
@@ -650,7 +650,10 @@ def main():
         print("\nMC cores : off (--no-mc-core)")
     elif os.path.isfile(mc_file):
         with open(mc_file) as fh:
-            mc_core = json.load(fh)["cores"] or None
+            mc_rec = json.load(fh)
+        bdtBins.check_selection(mc_rec["provenance"], args.category,
+                                args.bin, os.path.basename(mc_file))
+        mc_core = mc_rec["cores"] or None
         print(f"\nMC cores : {', '.join(mc_core or []) or 'none'} "
               f"from {mc_file}")
     elif args.mc_core:
@@ -801,6 +804,7 @@ def main():
                            .isoformat(timespec="seconds"),
             "git_commit": config.git_commit(),
             "category": args.category, "bin": args.bin,
+            **bdtBins.selection_record(args.category, args.bin),
             "year": args.year, "tag": tag,
             "window": [config.XLOW, config.XHIGH], "n_bins": nbins,
             "blind_region": [SR_LO, SR_HI],

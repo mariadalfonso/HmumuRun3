@@ -49,7 +49,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-from fitlib import config, dyCore, mcCore, style
+from fitlib import bdtBins, config, dyCore, mcCore, style
 from fitlib.gof import (CHI2_MIN_BIN_SIGNIFICANCE, GOF_THRESHOLD,
                         merge_chi2_bins)
 
@@ -322,6 +322,7 @@ def run_bin(args, binMVA, rng):
                            .isoformat(timespec="seconds"),
             "git_commit": config.git_commit(),
             "category": args.category, "bin": binMVA, "year": args.year,
+            **bdtBins.selection_record(args.category, binMVA),
             "tag": tag, "window": [config.XLOW, config.XHIGH],
             "n_bins": nbins,
             "gof_pmin": args.gof_pmin,

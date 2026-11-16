@@ -57,8 +57,14 @@ Significance).
 Adapted from analysis/MACRO/optimize_categories.py, which counted signal and
 data in |m - 125| < 25 GeV (the blinded region included), with s^2/b, at
 least 20 background events per bin, and kept only the overall best.
+--apply writes the split (--nbins, default the recommended one) to
+fitlib/bdt_bins.json, which fitlib/bdtBins.py reads in place of its
+default SELMVA entry for the category: every fit then uses it. Commit the
+file with the change and rerun the chain in a new --wsdir; the fits record
+their cut, and outputs made with other cuts are refused.
+
 Runs in conda, from parametricfit/. Writes <wsdir>/BinScan_<cat>_<year>.json
-and, in <plotdir>/<cat>/ (--plot-nbins picks the split, default the
+and, in <plotdir>/<cat>/ (--nbins picks the split, default the
 recommended one; --no-plots for none):
     binscan_<cat>_<year>_score[_log].png   signal and background score at
         unit area, the split's boundaries (signal efficiency above each)
@@ -73,11 +79,12 @@ import json
 import math
 import os
 import re
+from datetime import datetime, timezone
 
 import numpy as np
 import ROOT
 
-from fitlib import config, prepareFits as pf, style
+from fitlib import bdtBins, config, prepareFits as pf, style
 
 ROOT.gROOT.SetBatch(True)
 
@@ -693,9 +700,13 @@ def main():
     ap.add_argument("--plotdir", default=None,
                     help="validation plots go to <plotdir>/<cat>/ "
                          "(default ~/public_html/HmumuFits/bin_scan)")
-    ap.add_argument("--plot-nbins", type=int, default=None,
-                    help="the split the plots show (default the "
-                         "recommended one)")
+    ap.add_argument("--nbins", "--plot-nbins", dest="nbins", type=int,
+                    default=None,
+                    help="the split the plots show and --apply writes "
+                         "(default the recommended one)")
+    ap.add_argument("--apply", action="store_true",
+                    help="write that split to fitlib/bdt_bins.json, the "
+                         "cuts every fit then uses (commit the file)")
     ap.add_argument("--no-plots", action="store_true")
     ap.add_argument("--pdf", action="store_true",
                     help="also write the plots as PDF")
@@ -755,7 +766,7 @@ def main():
             rows = describe(fe, stats, eff_above)
             z = cur_z = math.sqrt(sum(r["Z2"] for r in rows))
             print(f"\ncurrent  : edges {', '.join(f'{v:g}' for v in cur)} "
-                  f"(prepareFits.SELMVA)   Z = {z:.3f}")
+                  f"({pf.SELMVA_SOURCE[args.category]})   Z = {z:.3f}")
             print_rows(rows)
             out["current"] = {"edges": [0.0] + cur + [1.0], "Z": z,
                               "bins": rows}
@@ -789,28 +800,70 @@ def main():
         print(f"\nrecommended: {recommended} bin(s) (the next gains < "
               f"{100 * args.min_gain:g}%), as a prepareFits.SELMVA entry:\n  "
               + json.dumps(out["best"][recommended]["selmva"]))
+    k = (args.nbins or out.get("recommended")) if results else None
+    if k is not None and k not in results:
+        raise SystemExit(f"\nno {k}-bin split (have {sorted(results)})")
     if results and not args.no_plots:
-        k = args.plot_nbins or out["recommended"]
-        if k not in results:
-            print(f"\nno {k}-bin split to plot (have {sorted(results)})")
-        else:
-            fe = results[k][1]
-            stem = os.path.join(args.plotdir, args.category,
-                                f"binscan_{args.category}_{args.year}")
-            print(f"\nvalidation plots, the {k}-bin split:")
-            style.setup_style()
-            plot_score(sig, bkg, [i / N_FINE for i in fe],
-                       [eff_above(i) for i in fe], cur, args, stem + "_score")
-            plot_gain(results, out["recommended"], cur_z, args,
-                      stem + "_gain")
-            plot_bin_fits(fe, sig_c, bkg_c, raw_c, args,
-                          stem + f"_fits_{k}bins")
+        fe = results[k][1]
+        stem = os.path.join(args.plotdir, args.category,
+                            f"binscan_{args.category}_{args.year}")
+        print(f"\nvalidation plots, the {k}-bin split:")
+        style.setup_style()
+        plot_score(sig, bkg, [i / N_FINE for i in fe],
+                   [eff_above(i) for i in fe], cur, args, stem + "_score")
+        plot_gain(results, out["recommended"], cur_z, args,
+                  stem + "_gain")
+        plot_bin_fits(fe, sig_c, bkg_c, raw_c, args,
+                      stem + f"_fits_{k}bins")
     os.makedirs(args.wsdir, exist_ok=True)
     path = os.path.join(args.wsdir,
                         f"BinScan_{args.category}_{args.year}.json")
     with open(path, "w") as fh:
         json.dump(out, fh, indent=2)
     print(f"\nwrote {path}")
+    if args.apply:
+        if k is None:
+            raise SystemExit("--apply: no split passed the minimum statistics")
+        apply_split(args, k, out)
+    elif k is not None:
+        print(f"\n(--apply writes the {k}-bin split to "
+              f"{os.path.relpath(bdtBins.BINS_FILE)})")
+
+
+def apply_split(args, k, out):
+    """Write the k-bin split to fitlib/bdt_bins.json, with how it was
+    chosen and the cuts it replaces."""
+    best = out["best"][k]
+    entries = bdtBins.read_bins_file()
+    entry = {
+        "bins": best["selmva"],
+        "edges": best["edges"],
+        "signal_eff_edges": best["signal_eff_edges"],
+        "Z": best["Z"],
+        "applied_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git_commit": config.git_commit(),
+        "scan": {key: out.get(key) for key in
+                 ("year", "bkg", "bkg_samples", "grid", "min_bkg",
+                  "signal_parity", "modes", "recommended")},
+        "replaces": {b: c for b, c in pf.SELMVA[args.category].items()
+                     if b not in bdtBins.INCLUSIVE},
+    }
+    entry["scan"].update(nbins=k, min_gain=args.min_gain,
+                         min_mc_raw=args.min_mc_raw,
+                         step=(args.quantile_step if args.grid == "quantile"
+                               else args.step))
+    entries[args.category] = entry
+    with open(bdtBins.BINS_FILE, "w") as fh:
+        json.dump(entries, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    bins = " ".join(sorted(best["selmva"], key=lambda b: int(b[3:])))
+    print(f"\napplied: {k} bins for {args.category} written to "
+          f"{os.path.relpath(bdtBins.BINS_FILE)}")
+    for b in sorted(best["selmva"], key=lambda b: int(b[3:])):
+        print(f"  {b}: {best['selmva'][b]}")
+    print("every fit now uses these cuts. Commit the file, and rerun the "
+          f"chain with -b {bins} in a new --wsdir: outputs made with the old "
+          "cuts are refused.")
 
 
 if __name__ == "__main__":

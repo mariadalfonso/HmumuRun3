@@ -44,7 +44,7 @@ import re
 import subprocess
 import sys
 
-from fitlib import config, corePdf
+from fitlib import bdtBins, config, corePdf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -200,6 +200,21 @@ def signal_yields(rec):
     return by_mode, None
 
 
+def check_inputs(args):
+    """Every bin's fit outputs were made with the BDT cut in force now
+    (fitlib/bdtBins.py), before anything is built from them."""
+    for b, tag in zip(args.bins, tags(args)):
+        names = [f"Signal_{tag}_params.json", f"Bkg_{tag}_params.json"]
+        if args.members == "core":
+            names.append(f"Bkg_{tag}_core_params.json")
+        for nm in names:
+            path = os.path.join(args.wsdir, nm)
+            if os.path.isfile(path):
+                bdtBins.check_selection(read_json(path)["provenance"],
+                                        args.category, b, nm)
+    print(f"BDT cuts : {bdtBins.SELMVA_SOURCE.get(args.category)}")
+
+
 def write_yields(args):
     name = chain_name(args)
     out = {"name": name, "category": args.category, "year": args.year,
@@ -337,6 +352,7 @@ def main():
             "/work/submit/jaeyserm/software/docker/"
             "combine-standalone_v9.2.1.sif")
 
+    check_inputs(args)
     make_workspaces(args)
     make_cards(args)
     if len(args.bins) > 1:

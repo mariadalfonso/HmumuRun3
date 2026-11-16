@@ -40,30 +40,12 @@ LUMIS = {
 # shared configuration and helpers
 # ---------------------------------------------------------------------------
 
-# BDT-bin selection thresholds, keyed by category then bin label.
-# Single source of truth: both getHisto and getHistoSignal read from here.
-# VLcat: 1 W->e; 2 Z->ee; 3 W->mu; 4 Z->mumu
-SELMVA = {
-    "ggHcat":  {"bdt2":"discrMVA>=0.78", "bdt1":"discrMVA>=0.5 && discrMVA<0.78",
-                "bdt0":"discrMVA<0.5",   "incl":"true", "":"true"},
-    "VBFcat":  {"bdt3":"discrMVA>=0.96", "bdt2":"discrMVA>=0.90 && discrMVA<0.96",
-                "bdt1":"discrMVA>=0.72 && discrMVA<0.90",
-                "bdt0":"discrMVA<0.72",  "incl":"true", "":"true"},
-    "VLcat":   {"bdt3":"discrMVA>=0.80", "bdt2":"discrMVA>=0.68 && discrMVA<0.80",
-                "bdt1":"discrMVA>=0.34 && discrMVA<0.68",
-                "bdt0":"discrMVA<0.34",  "incl":"true", "":"true"},
-    "Zinvcat": {"bdt2":"discrMVA>=0.98", "bdt1":"discrMVA>=0.72 && discrMVA<0.98",
-                "bdt0":"discrMVA<0.72",  "incl":"true", "":"true"},
-    "VHcat":   {"bdt2":"discrMVA>=0.90", "bdt1":"discrMVA>=0.50 && discrMVA<0.90",
-                "bdt0":"discrMVA<0.50",  "incl":"true", "":"true"},
-    "TTHcat":  {"bdt2":"discrMVA>=0.94", "bdt1":"discrMVA>=0.78 && discrMVA<0.94",
-                "bdt0":"discrMVA<0.78",  "incl":"true", "":"true"},
-    # TODO: thresholds NOT synced. analysis/FITS has bdt2 >= 0.58 and
-    # bdt1 "discrMVA>=0.58 && discrMVA<0.36", which is empty -- keep the old
-    # two-bin split until those are fixed there.
-    "TTLcat":  {"bdt1":"discrMVA>=0.54", "bdt0":"discrMVA<0.54",
-                "incl":"true", "":"true"},
-}
+# BDT-bin selection thresholds: SELMVA and get_selection live in bdtBins.py
+# (fitlib/bdt_bins.json, written by optimizeBins.py --apply, or the
+# defaults there). Single source of truth for getHisto, getHistoSignal and
+# getHistoBkgMC.
+from .bdtBins import (SELMVA, SELMVA_SOURCE, get_selection,  # noqa: F401
+                      selection_record)
 
 # production mode -> file tag(s)
 SIGNAL_TAGS = {
@@ -194,17 +176,6 @@ def get_lumi(year, groups=SIGNAL_YEAR_GROUPS):
         print(f"⚠️ no luminosity for era(s) {missing} (requested {year})")
         return 0.0
     return sum(LUMIS[e] for e in eras)
-
-
-def get_selection(category, binMVA):
-    """Return the RDataFrame filter string for a (category, BDT bin)."""
-    if category not in SELMVA:
-        raise ValueError(f"Unknown category {category}")
-    cuts = SELMVA[category]
-    if binMVA not in cuts:
-        raise ValueError(f"Unknown BDT bin '{binMVA}' for category {category} "
-                         f"(have: {sorted(cuts)})")
-    return cuts[binMVA]
 
 
 def _snapshot_path(dirLOCAL_, tag, era, category):
