@@ -78,8 +78,8 @@ JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 mode_map = MODE_MAP
 
 MVA_map = {
-    "isGGH":   "MVA/output/classification_model_ggHcat_sept.root",
-    "isVBF":   "MVA/output/classification_model_VBFcat_sept.root",
+    "isGGH":   "MVA/output/classification_model_ggHcat_nov.root",
+    "isVBF":   "MVA/output/classification_model_VBFcat_nov.root",
     #
     "isVlep":  "MVA/output/classification_model_VLcat_sept.root",
     "isTTlep":  "MVA/output/classification_model_TTLcat_sept.root",
