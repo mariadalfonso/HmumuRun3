@@ -20,8 +20,9 @@ Here, per candidate bin (a range of discrMVA):
     (mc 10-15), with sigFit.py's per-era yield scaling
   * b_k: the background over 110-150 GeV, a smooth fit evaluated in the
     same bins. --bkg mc (default, as the note): the background MC of
-    mcCoreFit.py (prepareFits.BKG_MC_TAGS, the same era scaling;
-    --bkg-samples dy for the Drell-Yan ones only), a
+    mcCoreFit.py (the same era scaling; --bkg-samples: the Drell-Yan ones,
+    prepareFits.BKG_DY_TAGS, by default in ggHcat, where DY is the
+    background; every sample, BKG_MC_TAGS, in the other categories), a
     Poisson fit of exp(cubic in m) to its 1 GeV histogram (the note used
     BWZRedux; any smooth fit serves here). --bkg data: the data SIDEBANDS
     only (110-120, 130-150 GeV), exp(quadratic in m), extrapolated under
@@ -85,6 +86,8 @@ SCORE = "discrMVA"
 SB_LO = (config.XLOW, 120.0)          # the data sidebands, --bkg data
 SB_HI = (130.0, config.XHIGH)
 FIT_BIN = 1.0                          # GeV, the background fit's histogram
+# --bkg-samples per category: ggH's background is Drell-Yan
+DEFAULT_BKG_SAMPLES = {"ggHcat": "dy"}
 Z_BIN = 0.25                           # GeV, the significance's mass bins
 N_FINE = 1000                          # score histogram bins over [0, 1]
 POLY = {"mc": 3, "data": 2}            # degree of ln(b) in m
@@ -650,10 +653,13 @@ def main():
     ap.add_argument("--bkg", choices=("mc", "data"), default="mc",
                     help="background from the background MC (default, as "
                          "the note) or the data sidebands")
-    ap.add_argument("--bkg-samples", choices=("all", "dy"), default="all",
+    ap.add_argument("--bkg-samples", choices=("all", "dy"), default=None,
                     help="--bkg mc: every background MC sample "
-                         "(BKG_MC_TAGS, default, as the note) or the "
-                         "Drell-Yan ones only (BKG_DY_TAGS)")
+                         "(BKG_MC_TAGS) or the Drell-Yan ones only "
+                         "(BKG_DY_TAGS); default "
+                         + ", ".join(f"{k} for {c}" for c, k in
+                                     DEFAULT_BKG_SAMPLES.items())
+                         + ", all otherwise")
     ap.add_argument("--grid", choices=("quantile", "score"),
                     default="quantile",
                     help="boundaries at signal-efficiency steps (default) "
@@ -694,6 +700,8 @@ def main():
     ap.add_argument("--pdf", action="store_true",
                     help="also write the plots as PDF")
     args = ap.parse_args()
+    args.bkg_samples = args.bkg_samples or DEFAULT_BKG_SAMPLES.get(
+        args.category, "all")
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
     args.plotdir = args.plotdir or os.path.expanduser(
         "~/public_html/HmumuFits/bin_scan")
@@ -703,7 +711,7 @@ def main():
             ap.error(f"--step must be a multiple of {1 / N_FINE:g} dividing 1")
 
     print(f"category : {args.category}, {args.year}\n"
-          f"background: {'background MC' if args.bkg == 'mc' else 'data sidebands'}"
+          f"background: {_bkg_label(args)}"
           f", fitted over 110-150 GeV\n"
           f"grid     : "
           + (f"{100 * args.quantile_step:g}% signal efficiency"

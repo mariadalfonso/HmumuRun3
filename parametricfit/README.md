@@ -192,7 +192,8 @@ reads and writes there unless `--wsdir` says otherwise.
     tends to end on that limit, so compare a few values.
   - `--signal-parity odd` uses the odd signal events only, as the note;
     the default is all, since `sigFit.py` does not use the even ones only.
-  - `--bkg-samples dy`: the Drell-Yan MC only. Every snapshot is checked
+  - `--bkg-samples dy`: the Drell-Yan MC only, the default in `ggHcat`
+    (`all` elsewhere; `--bkg-samples all` for every sample). Every snapshot is checked
     for `discrMVA` first; stale ones are listed and the run stops.
   - Plots in `<plotdir>/<cat>/` (default `~/public_html/HmumuFits/bin_scan`)
     for the recommended split (`--plot-nbins` for another): the score
