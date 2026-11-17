@@ -36,6 +36,12 @@ function) is chosen. The toys of a truth are generated once and fitted by
 every function. --fit-models restricts the fit functions (the note fitted
 with six, and used Landau x Bernstein only as a truth).
 
+With the index frozen, every fit (the toys' and the significance) also
+freezes the parameters of the other members: Combine freezes them itself
+only while it profiles the index, and floating they are flat directions
+on which Minuit2 can abort a whole job. Fits made before this are refused
+(delete them; the toys stay valid).
+
 --mode core: the Run 2 note's core-PDF test (Sec. 6.4.2)
 --------------------------------------------------------
 The fit model is corePdfFit.py's core-PDF across all the bins of -b (the
@@ -96,6 +102,7 @@ import json
 import math
 import os
 import shlex
+import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
@@ -202,6 +209,12 @@ def write_json(path, obj):
 # combine
 # ---------------------------------------------------------------------------
 
+# Line-buffer the output of every command: written to a file, it is
+# otherwise buffered, and a job that aborts loses its last lines, the
+# message saying why among them (RooFit writes to stdout).
+LINE_BUFFER = (["stdbuf", "-oL", "-eL"] if shutil.which("stdbuf") else [])
+
+
 def run_cmd(cmd, cwd, log, dry):
     """Run one command, its output to `log`. Returns True on exit code 0."""
     line = " ".join(shlex.quote(c) for c in cmd)
@@ -212,10 +225,25 @@ def run_cmd(cmd, cwd, log, dry):
     with open(log, "w") as fh:
         fh.write(f"# cwd: {cwd}\n# {line}\n\n")
         fh.flush()
-        rc = subprocess.call(cmd, cwd=cwd, stdout=fh, stderr=subprocess.STDOUT)
+        rc = subprocess.call(LINE_BUFFER + list(cmd), cwd=cwd, stdout=fh,
+                             stderr=subprocess.STDOUT,
+                             env=dict(os.environ, LIBC_FATAL_STDERR_="1"))
     if rc != 0:
         print(f"  !! exit code {rc}: see {log}")
+        last = last_line(log)
+        if last:
+            print(f"     last line: {last}")
     return rc == 0
+
+
+def last_line(path, width=160):
+    """The last non-empty line of a text file, cut to `width`."""
+    try:
+        with open(path, errors="replace") as fh:
+            lines = [l.strip() for l in fh if l.strip()]
+    except OSError:
+        return ""
+    return lines[-1][:width] if lines else ""
 
 
 def take_output(cwd, name, method, dest, dry):
@@ -287,6 +315,41 @@ def find_multipdf(w, tag):
 
 def read_envelope(t2w, tag):
     """Names of the envelope members, in pdfindex order."""
+    return read_members(t2w, tag)[0]
+
+
+def model_set(w, name):
+    """The named set of a text2workspace workspace, as names ({} if none)."""
+    s = w.set(name)
+    return {v.GetName() for v in s} if s else set()
+
+
+def member_params(pdfs, observables, keep=()):
+    """Per pdf, the names of its floating RooRealVar parameters, the
+    observables and the names in `keep` left out."""
+    keep = set(keep)
+    out = []
+    for pdf in pdfs:
+        pars = pdf.getParameters(observables)
+        out.append(sorted(p.GetName() for p in pars
+                          if p.InheritsFrom("RooRealVar")
+                          and not p.isConstant()
+                          and p.GetName() not in keep))
+    return out
+
+
+def others_frozen(params):
+    """{i: the parameters to freeze when fitting with member i alone}: those
+    of the other members that member i does not use itself."""
+    every = set().union(*params) if params else set()
+    return {i: sorted(every - set(p)) for i, p in enumerate(params)}
+
+
+def read_members(t2w, tag):
+    """(names of the envelope members in pdfindex order, per member the
+    names of its own floating shape parameters). The POI, the constrained
+    nuisances and the global observables are never counted as a member's,
+    so they are never frozen."""
     if not pdefs.load_combine(quiet=True):
         raise SystemExit("needs libHiggsAnalysisCombinedLimit: run inside "
                          "the Combine container")
@@ -297,9 +360,16 @@ def read_envelope(t2w, tag):
     if not w:
         raise SystemExit(f"{t2w}: no workspace 'w'")
     multi = find_multipdf(w, tag)
-    names = [multi.getPdf(i).GetName() for i in range(multi.getNumPdfs())]
+    pdfs = [multi.getPdf(i) for i in range(multi.getNumPdfs())]
+    names = [p.GetName() for p in pdfs]
+    obs = w.set("observables")
+    if not obs:
+        raise SystemExit(f"{t2w}: no 'observables' set in the workspace")
+    keep = (model_set(w, "POI") | model_set(w, "nuisances")
+            | model_set(w, "globalObservables"))
+    params = member_params(pdfs, obs, keep)
     f.Close()
-    return names
+    return names, params
 
 
 def read_singles(path, index_name=None):
@@ -389,10 +459,24 @@ def gen_toys(t2w, tag, igen, r_inj, ntoys, seed, outdir, extra, force, dry):
     return stem, toys
 
 
+def frozen_list(idx, freeze):
+    """The --freezeParameters value with pdfindex frozen: MH, the index, and
+    `freeze`, the parameters of the other members."""
+    return ",".join(["MH", idx] + list(freeze))
+
+
 def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
-             extra, dry, ifit=None):
+             extra, dry, ifit=None, freeze=()):
     """Fit the toys of `stem`: pdfindex floating (ifit None), as in the
-    limit, or frozen to member ifit. Returns the fit output's stem."""
+    limit, or frozen to member ifit, with `freeze` (the other members'
+    parameters) frozen too. Returns the fit output's stem.
+
+    With the index frozen Combine does not freeze the other members'
+    parameters itself (MINIMIZER_freezeDisassociatedParams acts only while
+    it profiles the index), so they would float without changing the
+    likelihood: flat directions that leave Migrad's Hessian singular, and
+    Minuit2's VariableMetricBuilder then aborts the job on an assertion
+    (s0.IsValid()), taking every toy of the job with it."""
     idx = f"pdfindex_{tag}"
     fstem = stem if ifit is None else stem.replace("_", f"_fit{ifit}_", 1)
     if ifit is None:
@@ -401,7 +485,7 @@ def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
                  "--freezeParameters", "MH"]
     else:
         index = ["--setParameters", f"r={r_inj:g},{idx}={ifit}",
-                 "--freezeParameters", f"MH,{idx}"]
+                 "--freezeParameters", frozen_list(idx, freeze)]
     fitc = (["combine", "-M", "MultiDimFit", "-d", t2w, "-m", "%g" % MH,
              "-t", str(ntoys), "-s", str(seed), "--toysFile", toys,
              "-P", "r", "--algo", "singles", "--floatOtherPOIs", "1",
@@ -415,10 +499,11 @@ def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
 
 
 def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
-            force, dry, fits=None):
+            force, dry, fits=None, frozen=None):
     """One chunk of toys from member igen, then its fits: with the envelope
     floating (fits None), or once per member in `fits` with the index
-    frozen. Fits whose output exists are skipped (unless force). Returns
+    frozen, and frozen[member] (the others' parameters) with it. Fits whose
+    output exists are skipped (unless force). Returns
     [(fit stem, status)]."""
     stem = f"gen{igen}_{rlabel(r_inj)}_s{seed}"
     todo = [None] if fits is None else list(fits)
@@ -440,12 +525,13 @@ def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
         return done + [(out(i)[0], "generation failed") for i in todo]
     for ifit in todo:
         fstem, ok = fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys,
-                             seed, outdir, extra, dry, ifit)
+                             seed, outdir, extra, dry, ifit,
+                             (frozen or {}).get(ifit, ()))
         done.append((fstem, "done" if ok else "fit failed"))
     return done
 
 
-def sig_job(t2w, tag, ifit, outdir, extra, force, dry):
+def sig_job(t2w, tag, ifit, outdir, extra, force, dry, freeze=()):
     """Expected significance with the background frozen to member ifit:
     Asimov (-t -1) from the pre-fit model, r = 1. The figure of merit the
     Run 2 note chooses the function by (its Table 6.14)."""
@@ -457,7 +543,7 @@ def sig_job(t2w, tag, ifit, outdir, extra, force, dry):
     cmd = (["combine", "-M", "Significance", "-d", t2w, "-m", "%g" % MH,
             "-t", "-1", "--expectSignal", "1",
             "--setParameters", f"{idx}={ifit}",
-            "--freezeParameters", f"MH,{idx}", "-n", name]
+            "--freezeParameters", frozen_list(idx, freeze), "-n", name]
            + DISCRETE_OPTS + extra)
     ok = (run_cmd(cmd, outdir, os.path.join(outdir, "logs", f"{name[1:]}.log"),
                   dry)
@@ -498,6 +584,23 @@ def tag_outdir(tag, args):
                                         tag + OUT_SUFFIX[args.mode]))
 
 
+def check_single_fits(outdir, meta, args):
+    """Stop if --mode single fits made before the other members' parameters
+    were frozen are still in `outdir`: their pulls are not comparable, and a
+    rerun would skip them. Their toys can stay."""
+    if args.force or meta.get("freeze_others"):
+        return
+    old = (glob.glob(os.path.join(outdir, "fit_gen*_fit*_s*.root"))
+           + glob.glob(os.path.join(outdir, "sig_fit*.root")))
+    if old:
+        raise SystemExit(
+            f"{outdir} has {len(old)} fit(s) made with the other members' "
+            "parameters floating (before biasStudy.py froze them). Delete "
+            "them and rerun; the toys stay valid:\n"
+            f"    rm {outdir}/fit_gen*_fit*.root {outdir}/sig_fit*.root\n"
+            "(or --force, which also regenerates the toys)")
+
+
 def run_tag(tag, args):
     outdir = tag_outdir(tag, args)
     os.makedirs(os.path.join(outdir, "logs"), exist_ok=True)
@@ -517,15 +620,19 @@ def run_tag(tag, args):
     meta = read_json(meta_path) if os.path.isfile(meta_path) else {}
     if args.dry_run and not os.path.isfile(t2w):
         names = meta.get("envelope") or [f"member{i}_{tag}" for i in range(3)]
+        params = [[] for _ in names]
     else:
-        names = read_envelope(t2w, tag)
+        names, params = read_members(t2w, tag)
     if meta.get("envelope") not in (None, names):
         print(f"  !! envelope changed since the last run "
               f"({meta['envelope']} -> {names}); rerun with --force")
-    fits = None
+    fits = frozen = None
     if args.mode == "single":
         fits = fit_indices(names, tag, args.fit_models)
+        frozen = others_frozen(params)
+        check_single_fits(outdir, meta, args)
         meta["fits"] = fits
+        meta["freeze_others"] = True
     meta.update({"tag": tag, "card": card, "workspace": t2w, "mode": args.mode,
                  "envelope": names, "mh": MH,
                  "combine_opts": COMBINE_FIT_OPTS + extra})
@@ -539,6 +646,9 @@ def run_tag(tag, args):
         print("  fitted   : " + ", ".join(short_name(names[i], tag)
                                          for i in fits)
               + "   (one at a time, pdfindex frozen)")
+        print("  frozen   : with each, the other members' parameters ("
+              + ", ".join(f"{short_name(names[i], tag)} {len(frozen[i])}"
+                          for i in fits) + ")")
 
     jobs = []
     for r_inj in args.inject:
@@ -570,7 +680,7 @@ def run_tag(tag, args):
                           f"gen{igen}_fit{ifit}_{key}_s{seed}")
                     meta["ntoys"][fs] = n
                 jobs.append((t2w, tag, igen, r_inj, rrange, n, seed, outdir,
-                             extra, args.force, args.dry_run, fits))
+                             extra, args.force, args.dry_run, fits, frozen))
     if not args.dry_run:
         write_json(meta_path, meta)
 
@@ -581,7 +691,7 @@ def run_tag(tag, args):
         if fits is not None:     # the significances first: one fit each
             for ifit, st in pool.map(
                     lambda i: sig_job(t2w, tag, i, outdir, extra, args.force,
-                                      args.dry_run), fits):
+                                      args.dry_run, frozen[i]), fits):
                 if st not in ("done", "exists"):
                     print(f"  significance with "
                           f"{short_name(names[ifit], tag)}: {st}")

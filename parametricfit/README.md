@@ -259,6 +259,9 @@ reads and writes there unless `--wsdir` says otherwise.
     every truth; of those, the one with the highest expected significance
     (Asimov, background frozen to it) is chosen. Output in
     `<outdir>/<tag>_single/`, plot `bias_<tag>_<r>_matrix.png`.
+    Each of these fits also freezes the other functions' parameters:
+    Combine does that itself only while the index floats, and left floating
+    they can make Minuit2 abort a whole job of toys.
   - `--mode core` is the note's core-PDF test. The truths are the families
     every bin has, the same family in every bin (from the `*_families`
     cards); the fit is the core-PDF across the bins, its shared index
