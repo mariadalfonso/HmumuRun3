@@ -635,7 +635,7 @@ def doCategories(df,mc,year):
                      .Define("jetVBF1_LHE","jetAll_LHE[index_VBFJets[0]]") # LHE not ideal
                      .Define("jetVBF2_LHE","jetAll_LHE[index_VBFJets[1]]")
                      .Define("jetVBF1_genJetIdx","VBFjetCond ? Jet_genJetIdx[goodJetsAll][index_VBFJets[0]] : -1")
-                     .Define("jetVBF2_genJetIdx","VBFjetCond ? Jet_genJetIdx[goodJetsAll][index_VBFJets[0]] : -1")
+                     .Define("jetVBF2_genJetIdx","VBFjetCond ? Jet_genJetIdx[goodJetsAll][index_VBFJets[1]] : -1")
                  )
 
    # --- Apply category ---

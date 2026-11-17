@@ -43,6 +43,7 @@ base:
   - Muon2_eta
   - PuppiMET_pt
   - PuppiMET_phi
+  - nGoodJetsAll
   - discrMVA
 
 # ---------------------------------------------------------------------
@@ -70,6 +71,9 @@ per_mode:
     - jetVBF1_Phi
     - minDR_jetVBF1_Mu
     - minDR_jetVBF2_Mu
+    - METFilters
+    - isGGH
+    - isVBF
     - Mjj
     - dEtaJJ
     - dPhiJJ
@@ -88,8 +92,13 @@ per_mode:
     - nGoodJetsAll
     - Jet1_Pt
     - Jet1_Eta
+    - nGoodJetsTrk
+    - deltaRJet1H
     - Muon1_charge
     - Muon2_charge
+    - METFilters
+    - isGGH
+    - isVBF
 
   isZinv:
     - Muon1_phi
@@ -186,6 +195,8 @@ per_mode_mc_only:
     - jetAll_LHE
     - boson_genMassZ
     - boson_genPtZ
+    - jetVBF1_genJetIdx
+    - jetVBF2_genJetIdx
 
   isGGH:
     - boson_genMassZ
