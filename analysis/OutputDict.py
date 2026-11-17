@@ -288,6 +288,8 @@ def DefineBranchList(mode,mc,doSynch):
             "jetAll_LHE",
             "boson_genMassZ",
             "boson_genPtZ",
+            "jetVBF1_genJetIdx",
+            "jetVBF2_genJetIdx",
         ],
         "isTTlep": [
             "Muon1_genPartFlav",
