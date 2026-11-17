@@ -78,8 +78,8 @@ JSON = "isGoodRunLS(isData, run, luminosityBlock)"
 mode_map = MODE_MAP
 
 MVA_map = {
-    "isGGH":   "MVA/output/classification_model_ggHcat_sept.root",
-    "isVBF":   "MVA/output/classification_model_VBFcat_sept.root",
+    "isGGH":   "MVA/output/classification_model_ggHcat_nov.root",
+    "isVBF":   "MVA/output/classification_model_VBFcat_nov.root",
     #
     "isVlep":  "MVA/output/classification_model_VLcat_sept.root",
     "isTTlep":  "MVA/output/classification_model_TTLcat_sept.root",
@@ -595,6 +595,10 @@ def doCategories(df,mc,year):
              .Define("Mjj","VBFjetCond ?  Pair12Minv(jetVBF1_Pt, jetVBF1_Eta, jetVBF1_Phi, jetVBF1_Mass, jetVBF2_Pt, jetVBF2_Eta, jetVBF2_Phi, jetVBF2_Mass) : -1")
              .Define("dEtaJJ","VBFjetCond ? abs(jetVBF1_Eta-jetVBF2_Eta) : -999")
              .Define("dPhiJJ","VBFjetCond ? deltaPhi(jetVBF1_Phi,jetVBF2_Phi) : -999")
+             #
+             .Define("isGGH","Sum(goodJetsAll)<2 ? true : (Mjj <= 400 || dEtaJJ <= 2.5 || (jetVBF1_Pt <= 35 && jetVBF2_Pt <= 35))") # added for SYNCH
+             .Define("isVBF","VBFjetCond ? (Mjj>400 && dEtaJJ>2.5 && (jetVBF1_Pt > 35 || jetVBF2_Pt > 35)): false ") # added for SYNCH
+             .Define("METFilters","{}".format(selections["METFilters"]))
              )
         if mode == "isGGH":
             df= (df.Define("hardestGoodJet_idx","hardest_pt_idx(Jet_pt[goodJetsAll])")
@@ -630,6 +634,8 @@ def doCategories(df,mc,year):
                      .Define("jetAll_LHE","getLHEPart_match(jetAll_Eta, jetAll_Phi, LHEPart_eta, LHEPart_phi, LHEPart_status, LHEPart_pdgId, isData)")
                      .Define("jetVBF1_LHE","jetAll_LHE[index_VBFJets[0]]") # LHE not ideal
                      .Define("jetVBF2_LHE","jetAll_LHE[index_VBFJets[1]]")
+                     .Define("jetVBF1_genJetIdx","VBFjetCond ? Jet_genJetIdx[goodJetsAll][index_VBFJets[0]] : -1")
+                     .Define("jetVBF2_genJetIdx","VBFjetCond ? Jet_genJetIdx[goodJetsAll][index_VBFJets[0]] : -1")
                  )
 
    # --- Apply category ---
@@ -771,6 +777,7 @@ def analysis(files,year,mc,sumW):
           #
           .Define("isZ","abs(HiggsCandCorrMass-91)<15")
           .Define("isH","abs(HiggsCandCorrMass-125)<10")
+          .Define("isHfit","abs(HiggsCandCorrMass-125)<5")
           .Define("isHSB","(HiggsCandCorrMass > 110 and HiggsCandCorrMass < 150 and abs(HiggsCandCorrMass - 125) >= 10)")
           .Define("isZandHSB","(HiggsCandCorrMass > 76 and HiggsCandCorrMass < 115) or (HiggsCandCorrMass > 130 and HiggsCandCorrMass < 150)")
           )

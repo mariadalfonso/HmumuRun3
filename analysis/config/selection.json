@@ -11,7 +11,7 @@
 
     "GOODJETStrk" : "(Jet_pt>25 and abs(Jet_eta)<2.5 and dRjetMu1_mask and dRjetMu2_mask and dRjetVlep1_mask and dRjetVlep2_mask and jetID_mask and jetVeto_mask {})",
     "GOODJETSJME" : "(( (abs(Jet_eta)>2.5 && abs(Jet_eta)<4.7 && Jet_pt>50) || (Jet_pt>30 && abs(Jet_eta)<=2.5)) and dRjetMu1_mask and dRjetMu2_mask and jetID_mask and jetVeto_mask {})",
-    "GOODJETSJME2024" : "(( (abs(Jet_eta)>2.5 && abs(Jet_eta)<=3. && Jet_pt>50) || (Jet_pt>30 and abs(Jet_eta)<=2.5) || ( Jet_pt>30 and abs(Jet_eta)>=3. and abs(Jet_eta)<4.7)) and dRjetMu1_mask and dRjetMu2_mask and jetID_mask and jetVeto_mask {})",
+    "GOODJETSJME2024" : "(( (abs(Jet_eta)>2.5 && abs(Jet_eta)<=3. && Jet_pt>50) || (Jet_pt>25 and abs(Jet_eta)<=2.5) || ( Jet_pt>25 and abs(Jet_eta)>=3. and abs(Jet_eta)<4.7)) and dRjetMu1_mask and dRjetMu2_mask and jetID_mask and jetVeto_mask {})",
 
     "BJETS" : "(Jet_pt>25 and abs(Jet_eta)<2.5 and Jet_btag{} and dRjetMu1_mask and dRjetMu2_mask and dRjetVlep1_mask and dRjetVlep2_mask and jetID_mask and jetVeto_mask)",
 

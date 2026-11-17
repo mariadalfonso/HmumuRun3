@@ -45,7 +45,7 @@ mytree = ROOT.TChain('events')
 for year in years:
     mytree = loadTree(mytree, myDir, category, year )
 
-doMultiClass=True
+doMultiClass=False
 if category=="Zinvcat": doMultiClass=False
 if category=="TTHcat": doMultiClass=False
 if category=="VHcat": doMultiClass=False
@@ -86,8 +86,8 @@ class_map = {
     "TTLcat": {
 	0: ["15"],                    # 3l
         1: ["12","13","14"],
-        2: tt2l+ ["221", "222", "224","226","227","228","229"] + ["107","105","106"] + ["242","243","244","245"] + ["225","227","228","230"],
-        3: ["223","225"] + ["230","231","232","233","234","235","236"],
+        2: tt2l+ ["221", "222", "224","225","226"] + ["107","105","106"] + ["242","243","244","245"],
+        3: ["223"] + ["230","231","232","233","234","235","236"] + ["227","228","229"],
     }
 }
 
@@ -133,8 +133,8 @@ extraFolder = ""
 if doMultiClass: extraFolder = "multiclass/"
 
 dir_map = {
-    "VBFcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/VBF/{extraFolder}",
-    "ggHcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/ggH/{extraFolder}",
+    "VBFcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA_NOV/VBF/{extraFolder}",
+    "ggHcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA_NOV/ggH/{extraFolder}",
     "VHcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/VH/{extraFolder}",
     "VLcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/VL/{extraFolder}",
     "Zinvcat": f"/home/submit/mariadlf/public_html/HMUMU_MVA/Zinv/{extraFolder}",
@@ -197,7 +197,7 @@ def make_plots(df):
     sig_filter = " || ".join([f"mc == {mid}" for mid in sig_ids])
     bkg_filter = " || ".join([f"mc == {mid}" for mid in bkg_ids])
     df_sig = df.Filter(sig_filter, f"Signal ({sig_filter})")
-    df_bkg = df.Filter(bkg_filter, f"Signal ({bkg_filter})")
+    df_bkg = df.Filter(bkg_filter, f"Background ({bkg_filter})")
     df_sig = df_sig.Define("absweight", "fabs(weight)")
     df_bkg = df_bkg.Define("absweight", "fabs(weight)")
 
@@ -1075,7 +1075,7 @@ def correlation_diagnostics(train_variables):
     variables_hm = (
         train_variables
         + ["HiggsCandCorrMass"]
-        + ["HiggsCandMassErr"]
+        + ["HiggsCandCorrMassErr"]
     )
 
     # --------------------------
@@ -1154,8 +1154,8 @@ def correlation_diagnostics(train_variables):
         print("\nCorrelation with mass error")
 
         err_corr = (
-            corr_df["HiggsCandMassErr"]
-            .drop("HiggsCandMassErr")
+            corr_df["HiggsCandCorrMassErr"]
+            .drop("HiggsCandCorrMassErr")
             .sort_values(
                 key=lambda x: np.abs(x),
                 ascending=False
@@ -1182,7 +1182,7 @@ def correlation_diagnostics(train_variables):
         print("  unique:", len(np.unique(x)))
 
 
-
+'''
 def build_training_weights(data,
                            doMultiClass=False,
                            flatten_background=True,
@@ -1192,6 +1192,7 @@ def build_training_weights(data,
     w = data["weight"].abs().to_numpy().clip(min=1e-10)
 
     weights = w.copy()
+'''
 
 def build_training_weights(data,
                            doMultiClass=False,
@@ -1244,7 +1245,7 @@ def build_training_weights(data,
     # Signal weighting
     ###############################################################
 
-    sigma = data["HiggsCandMassErr"].to_numpy()
+    sigma = data["HiggsCandCorrMassErr"].to_numpy()
 
     sigma_safe = np.where(
         (sigma <= 0) | (~np.isfinite(sigma)),
@@ -1327,7 +1328,7 @@ def _test_XGB_class(label):
 
     train_variables = variables_map[category] + variables_resolution[category]
 
-    aux_variables = ["HiggsCandCorrMass", "HiggsCandMassErr", "event"]
+    aux_variables = ["HiggsCandCorrMass", "HiggsCandCorrMassErr", "event"]
 
     variables = train_variables + aux_variables
 
