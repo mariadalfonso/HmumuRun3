@@ -25,6 +25,14 @@ workspace does not need this file.
 
 Bern_n is the same Bernstein as bwz.py: on the fit window mapped onto
 [0, 1], first coefficient fixed to 1.
+
+The normalisation is numeric, and RooFit's default 1D integrator (Romberg,
+at most 20 steps) gets the integral of this 161-piece formula wrong by
+~8e-4, by an amount that changes with the coefficients. With ~1e6 events
+that is enough to move the minimum: fewzbern3 fitted to its own Asimov in
+ggHcat bdt0 (5 bins) gave a Bias of -1.0. Every FEWZ pdf therefore carries
+its own integrator, adaptive Gauss-Kronrod (error < 1e-7); the setting is
+stored with the pdf, so Combine reading the workspace uses it too.
 """
 
 import ctypes
@@ -40,6 +48,13 @@ FEWZ_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 SPLINE = "fewz_spline"
 MREF = 125.0                # the spline is divided by its value here
 MAX_ORDER = 4               # fewzbern1-4
+
+# the normalisation integral: see the docstring. A tighter tolerance only
+# adds "roundoff error" messages (the pieces meet to rounding), not accuracy
+# that matters
+INT_METHOD = "RooAdaptiveGaussKronrodIntegrator1D"
+INT_EPS = 1e-5              # relative and absolute; the result is ~4e-8 off
+INT_MAX_SEGMENTS = 1000     # the default 100 is too few for 161 pieces
 
 NPAR = {f"fewzbern{n}": n for n in range(1, MAX_ORDER + 1)}
 FAMILIES = {"fewzbern": list(NPAR)}
@@ -87,6 +102,17 @@ def spline_expr(lo, hi, m="@0"):
     return "(" + "+".join(terms) + ")"
 
 
+def precise_integration(pdf):
+    """Give `pdf` its own numeric integrator (INT_METHOD), kept with it
+    when it is written to a workspace."""
+    cfg = pdf.specialIntegratorConfig(True)
+    cfg.method1D().setLabel(INT_METHOD)
+    cfg.setEpsRel(INT_EPS)
+    cfg.setEpsAbs(INT_EPS)
+    cfg.getConfigSection(INT_METHOD).setRealValue("maxSeg", INT_MAX_SEGMENTS)
+    return pdf
+
+
 def create_pdfs(x, tag):
     """Every fewzbern candidate in x. Returns (pdfs, params), keyed like
     PDFDefinitions.create_bkg_pdfs."""
@@ -104,7 +130,7 @@ def create_pdfs(x, tag):
         for k in range(1, n + 1):
             args.add(params[f"fewzbern_c{k}"])
         coefs = ["1.0"] + [f"@{k}" for k in range(1, n + 1)]
-        pdfs[f"fewzbern{n}"] = RooGenericPdf(
+        pdfs[f"fewzbern{n}"] = precise_integration(RooGenericPdf(
             f"fewzbern{n}_{tag}", f"fewzbern{n}",
-            f"{core}*{bernstein(u, coefs)}", args)
+            f"{core}*{bernstein(u, coefs)}", args))
     return pdfs, params
