@@ -22,7 +22,7 @@ Run everything from `parametricfit/`.
 
 | where | what |
 |---|---|
-| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py`; `optimizeBins.py` chooses the BDT bins |
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` (with `biasDiagnose.py` to see why a bias cell fails); `optimizeBins.py` chooses the BDT bins |
 | `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
@@ -99,6 +99,16 @@ F-test pick as a truth, each fitted with one function at a time.
 ```bash
 python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --members families
 python -u biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 2000 -j 10
+```
+To see why a cell of that matrix fails, `biasDiagnose.py` (container)
+plots, per truth and fit function, one toy with the S+B fit, the fitted
+and the true background under the peak, and the cell's pull and μ_fit
+distributions; `--asimov` fits each truth's Asimov instead and prints the
+matrix of expected Biases (the shape difference alone, no toy scatter):
+```bash
+python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS
+python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS --asimov
+python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS --truth bern5 --fit bwz --toy 3
 ```
 
 **The Run 2 core-PDF** (note Sec. 6.4.2), the model of the Run 2 ggH
@@ -262,6 +272,15 @@ reads and writes there unless `--wsdir` says otherwise.
     Each of these fits also freezes the other functions' parameters:
     Combine does that itself only while the index floats, and left floating
     they can make Minuit2 abort a whole job of toys.
+  - **`biasDiagnose.py`** shows why a cell fails. Per (truth, fit), one
+    plot in `<plotdir>/<cat>/bias_diag_<tag>_<r>[_asimov]/`: a toy (or
+    the truth's Asimov) with the S+B fit of that function, its background
+    and the truth's; per bin, the toy minus the fit, the fitted minus the
+    true background and the injected signal (where the fitted background
+    misses the truth under the peak, μ_fit makes up for it); and the
+    cell's pulls and μ_fit from combine, with the toys stuck at an edge of
+    the r range counted. Its fit is RooFit's, MH and the constrained
+    nuisances at nominal, so μ_fit is close to combine's, not equal.
   - `--mode core` is the note's core-PDF test. The truths are the families
     every bin has, the same family in every bin (from the `*_families`
     cards); the fit is the core-PDF across the bins, its shared index
