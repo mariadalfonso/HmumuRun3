@@ -192,6 +192,10 @@ def load_model(t2w, tag):
     terms = [(p, c, bool(p.dependsOn(multi)))
              for p, c in zip(add.pdfList(), add.coefList())]
     index = w.cat(f"pdfindex_{tag}")
+    # constant, so the minimizer never sees it: ROOT 6.22's RooMinimizerFcn
+    # removes a floating category from its parameter list while iterating
+    # over it, which throws for some orders of the parameters
+    index.setConstant(True)
     globs = bs.model_set(w, "globalObservables")
     fixed = sorted(n for n in bs.model_set(w, "nuisances")
                    if f"{n}_In" in globs) + ["MH"]
