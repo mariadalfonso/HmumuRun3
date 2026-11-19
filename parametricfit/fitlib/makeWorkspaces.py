@@ -12,12 +12,13 @@ the workspaces bwsHrare.py reads, with tag = "<cat>_<bin>_<year>":
                                   multipdf_<tag>_bkg_norm, datahist_<tag>
 
 With --members families the multipdf holds every family's F-test pick
-(bkgFit.py's family_choice), the ones the goodness-of-fit cut rejected
-included, and goes to Bkg_<tag>_families_workspace.root instead. That is
-the input of biasStudy.py --mode single (the Run 2 note's truth x fit
-matrix). --order FAMILY=N replaces a family's pick by its order-N member
+(bkgFit.py's family_choice, each passing the goodness of fit) and goes to
+Bkg_<tag>_families_workspace.root instead. That is the input of
+biasStudy.py --mode single (the Run 2 note's truth x fit matrix).
+--order FAMILY=N replaces a family's pick by its order-N member
 (buildWorkspace.py uses it to give each Bernstein family one order in
-every bin).
+every bin); a member that fails the goodness of fit in this bin leaves
+its family out here.
 
 With --members core the multipdf is the core-PDF of corePdfFit.py
 (Bkg_<tag>_core_params.json): core x this bin's SMF per core, the core
@@ -129,24 +130,33 @@ MEMBERS_SUFFIX = {"envelope": "", "families": "_families", "core": "_core"}
 def bkg_members(rec, members, orders=None, source=""):
     """The multipdf members, in pdfindex order. "envelope": bkgFit.py's
     envelope, best first. "families": one member per family, the envelope's
-    first (in its order), then every other family's F-test pick (rejected
-    by the goodness-of-fit cut), lowest penalised NLL first. orders
-    {family: N} replaces a family's pick by its order-N member."""
+    first (in its order), then any other family's F-test pick (JSONs from
+    before bkgFit.py applied the goodness of fit in the F-test), lowest
+    penalised NLL first. orders {family: N} replaces a family's pick by its
+    order-N member; one that fails the goodness of fit in this bin (or did
+    not converge) drops its family here."""
     env = list(rec["envelope"])
     if members == "envelope":
         return env
     cand = rec["candidates"]
+    gof = rec["provenance"].get("gof_threshold", 0.0)
     choice = dict(rec["family_choice"])
     for fam, n in (orders or {}).items():
         if fam not in choice:
-            continue                    # not fitted in this bin
+            continue                    # no pick in this bin
         nm = pdefs.family_member(fam, n)
-        if nm not in cand:
-            raise SystemExit(f"--order {fam}={n}: {nm} has no fit in "
-                             f"{source or 'the JSON'}")
+        why = ("no converged fit" if nm not in cand else
+               "GOF p=%.4f <= %g" % (cand[nm]["pvalue"], gof)
+               if cand[nm].get("pvalue", 1.0) <= gof else None)
+        if why:
+            print(f"  !! --order {fam}={n}: {nm} has {why} in "
+                  f"{source or 'the JSON'}; {fam} left out of this bin")
+            del choice[fam]
+            continue
         choice[fam] = nm
     fam_of = {m: f for f, ms in pdefs.BKG_FAMILIES.items() for m in ms}
-    env = [choice.get(fam_of.get(n), n) for n in env]
+    env = [choice[fam_of[n]] if fam_of.get(n) in choice else n
+           for n in env if fam_of.get(n) in choice or n not in fam_of]
     rest = sorted({nm for nm in choice.values() if nm not in env},
                   key=lambda n: cand[n].get("nll_pen", cand[n]["nll"]))
     return env + rest

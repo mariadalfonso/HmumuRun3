@@ -23,7 +23,7 @@ Run everything from `parametricfit/`.
 | where | what |
 |---|---|
 | top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` (with `biasDiagnose.py` to see why a bias cell fails); `optimizeBins.py` chooses the BDT bins |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `bkgTable` (the table of background picks), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
@@ -74,6 +74,10 @@ give one of them its own `--wsdir` (and the signal there: `sigFit.py
 --wsdir`), and `biasStudy.py` its own `--carddir` and `--outdir`, since it
 skips toy jobs whose output already exists. Look for `CHECK THIS FIT` /
 `<-- check` in the output.
+Each `bkgFit.py` run also redraws the note's Table 6.13 over every BDT bin
+fitted so far in its `--wsdir` (shape degrees of freedom and χ²/ndf per
+family; `bkg_fits/<cat>/bkg_table_<cat>_<year>.png`), complete after the
+last bin.
 
 **2. Cards and workspace** (container)
 ```bash
@@ -188,8 +192,10 @@ reads and writes there unless `--wsdir` says otherwise.
   exp(Chebyshev) (`mcexp`, `mcpow`, `mcdy`).
   - The order of each family, the goodness-of-fit cut and the envelope
     are ours; the Run 2 note excerpt only asks for χ²/dof ≈ 1.
-  - The F-test picks one order per family; a goodness-of-fit cut builds the
-    envelope. Failed fits are dropped, and a failed order ends its family:
+  - The F-test picks one order per family, over the orders that pass the
+    goodness-of-fit cut (χ² p > 0.01): an order that fails it is skipped,
+    never picked, and a family with no passing order is left out. The
+    envelope is every family's pick. Failed fits are dropped, and a failed order ends its family:
     the order below it is kept, never one above the gap. Status 1 (a valid
     minimum whose covariance was forced positive-definite, e.g. BWZRedux's
     near-degenerate c, a, b) counts as converged and is flagged;
@@ -269,7 +275,7 @@ reads and writes there unless `--wsdir` says otherwise.
   - Toys come from the pre-fit model, so the blinded region is never fitted.
   - Finished jobs are skipped, so a crashed run resumes.
   - `--mode single` is the Run 2 note's version. The truths are every
-    family's F-test pick, the ones the goodness-of-fit cut rejected included
+    family's F-test pick, each passing the goodness of fit
     (`buildWorkspace.py --members families`, `*_families` files). Each truth's
     toys are fitted once per function with `pdfindex` frozen: a truth × fit
     matrix of the mean Bias. A function is usable if |Bias| < 0.20 against
@@ -352,7 +358,8 @@ every family's F-test pick in the multipdf, as `*_families` files for
 `biasStudy.py --mode single` and `--mode core`; `core`: the core-PDF of
 `corePdfFit.py`, as `*_core` files; the envelope cards are not touched).
 With `families`, each Bernstein family (FEWZ × Bern, Landau × Bern, …) has
-one order in every bin: its highest F-test pick over the bins of `-b`, or
+one order in every bin: its highest F-test pick over the bins of `-b` that
+converged and passes the goodness of fit in every bin, or
 `--bern-order FAMILY=N` (e.g. `--bern-order fewzbern=3 landbern=2`).
 
 **`biasStudy.py`**

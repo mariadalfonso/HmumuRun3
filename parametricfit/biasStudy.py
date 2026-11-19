@@ -25,8 +25,8 @@ the blinded 120-130 GeV region included.
 
 --mode single: the Run 2 note's single-function study (Sec. 6.4.1)
 ------------------------------------------------------------------
-The truths are every family's F-test pick, the ones the goodness-of-fit cut
-rejected included (the buildWorkspace.py --members families cards), and
+The truths are every family's F-test pick, each passing the goodness of
+fit (bkgFit.py; the buildWorkspace.py --members families cards), and
 each toy is fitted once per function, pdfindex FROZEN to it: a truth x fit
 matrix of Bias. As in the note, the Bias is the MEAN of the pulls
 (--metric), a function is usable if |Bias| < 0.20 against every truth,

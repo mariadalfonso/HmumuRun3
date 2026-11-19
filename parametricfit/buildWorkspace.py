@@ -21,12 +21,14 @@ and prints the combine commands for the expected limit and significance.
 
 --members families builds a second set, for biasStudy.py --mode single (the
 Run 2 note's single-function bias study): the multipdf holds every family's
-F-test pick, the ones the goodness-of-fit cut rejected included, and every
+F-test pick (each passes the goodness of fit), and every
 file name gets _families (Bkg_<tag>_families_workspace.root,
 datacard_<tag>_families.txt, <name>_families.root). The envelope files are
 not touched, so the limit cards stay as they are. Each Bernstein family
 (FEWZ x Bern, Landau x Bern, ...) gets ONE order in every bin: the highest
-of its F-test picks over the bins of -b, or --bern-order FAMILY=N.
+of its F-test picks over the bins of -b that converged and passes the
+goodness of fit in every bin, or --bern-order FAMILY=N (a bin where that
+order fails the goodness of fit leaves the family out).
 
 --members core builds the Run 2 core-PDF (corePdfFit.py's
 Bkg_<tag>_core_params.json) the same way, as *_core files. The bins share
@@ -107,17 +109,23 @@ def run(cmd, args, cwd=HERE, stdout=None):
 # ---------------------------------------------------------------------------
 
 def bern_orders(args):
-    """{family: order} for --members families: each Bernstein family's
-    highest F-test pick over the bins, unless --bern-order sets it. Every
-    order is fitted in every bin, so any of them can be used."""
-    picks = {}
+    """{family: order} for --members families, one order per Bernstein
+    family in every bin: --bern-order, or by default the highest F-test
+    pick over the bins that converged and passes the goodness of fit in
+    every bin that has the family (else the highest order that does). An
+    order that fails in a bin leaves the family out of that bin
+    (makeWorkspaces.py says so)."""
+    recs = []
     for tag in tags(args):
         path = os.path.join(args.wsdir, f"Bkg_{tag}_params.json")
-        if not os.path.isfile(path):
-            continue                    # --dry-run before the fits
-        for fam, nm in read_json(path)["family_choice"].items():
-            if fam in pdefs.bern_families():
-                picks.setdefault(fam, []).append(pdefs.member_order(nm))
+        if os.path.isfile(path):        # not before the fits (--dry-run)
+            recs.append(read_json(path))
+
+    def usable(rec, nm):
+        c = rec["candidates"].get(nm)
+        gof = rec["provenance"].get("gof_threshold", 0.0)
+        return c is not None and c.get("pvalue", 1.0) > gof
+
     fixed = {}
     for it in args.bern_order:
         fam, _, n = it.partition("=")
@@ -125,14 +133,31 @@ def bern_orders(args):
             raise SystemExit(f"--bern-order {it}: want FAMILY=N, FAMILY "
                              f"one of {', '.join(pdefs.bern_families())}")
         fixed[fam] = int(n)
-    out = {fam: fixed.get(fam, max(ns)) for fam, ns in picks.items()}
-    for fam, n in fixed.items():
-        out.setdefault(fam, n)
-    for fam, n in out.items():
-        how = ("--bern-order" if fam in fixed else
-               "highest F-test pick")
-        print(f"order    : {pdefs.family_member(fam, n)} in every bin ({how}; "
-              f"F-test picks {'/'.join(map(str, picks.get(fam, [])))})")
+    out = {}
+    for fam in pdefs.bern_families():
+        have = [r for r in recs if fam in r["family_choice"]]
+        picks = [pdefs.member_order(r["family_choice"][fam]) for r in have]
+        if fam in fixed:
+            out[fam], how = fixed[fam], "--bern-order"
+        elif not have:
+            continue
+        else:
+            orders = sorted({pdefs.member_order(m)
+                             for m in pdefs.BKG_FAMILIES[fam]}, reverse=True)
+            good = [o for o in orders if all(
+                usable(r, pdefs.family_member(fam, o)) for r in have)]
+            ok_picks = [o for o in sorted(set(picks), reverse=True)
+                        if o in good]
+            if ok_picks:
+                out[fam], how = ok_picks[0], "highest F-test pick"
+            elif good:
+                out[fam], how = good[0], ("no pick passes in every bin; "
+                                          "highest order that does")
+            else:
+                out[fam], how = max(picks), ("no order passes in every "
+                                             "bin; highest pick")
+        print(f"order    : {pdefs.family_member(fam, out[fam])} in every bin "
+              f"({how}; F-test picks {'/'.join(map(str, picks)) or '-'})")
     return out
 
 

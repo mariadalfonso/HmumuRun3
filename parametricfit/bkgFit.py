@@ -30,9 +30,13 @@ Model selection
      power law + constant. --extra-models adds EXTRA_FAMILIES: the DY-core families dyexp and
      dypow and -- when mcCoreFit.py has written MCcore_<tag>.json -- the
      MC-tuned-core families mcexp, mcpow and mcdy.
-  2. Goodness-of-fit across families: keep every family's choice whose
-     chi2 p-value exceeds GOF_THRESHOLD.
-  3. Order the survivors by penalised NLL, NLL + 0.5 * npar, as Combine
+     The F-test runs over the orders whose sideband chi2 p-value exceeds
+     GOF_THRESHOLD: an order that fails the goodness of fit is skipped and
+     never picked, so each family's pick passes it and is the order that
+     describes the sideband best. A family with no passing order is left
+     out (rejected_by_gof in the JSON).
+  2. The envelope: every family's pick.
+  3. Order the picks by penalised NLL, NLL + 0.5 * npar, as Combine
      compares them: the lowest is pdfindex 0, the default member.
 
 Everything that survives goes into the RooMultiPdf envelope, which covers
@@ -46,6 +50,10 @@ It runs in conda (ROOT >= 6.28) and writes everything the workspace needs:
     Bkg_<tag>_params.json   envelope, fitted parameters of every
                             candidate, extrapolated norm
     Bkg_<tag>_data.root     TH1D data_<tag>, the FULL-range data
+
+and redraws the note's Table 6.13 (fitlib/bkgTable.py) over every BDT bin
+fitted so far in --wsdir: <plotdir>/<cat>/bkg_table_<cat>_<year>.png,
+complete once the last bin is fitted.
 
 makeWorkspaces.py then rebuilds the PDFs from these inside the Combine
 container and writes the RooMultiPdf workspace bwsHrare.py reads, with
@@ -77,7 +85,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-from fitlib import bdtBins, config, mcCore, style
+from fitlib import bdtBins, bkgTable, config, mcCore, style
 from fitlib.gof import (CHI2_MIN_BIN_SIGNIFICANCE, GOF_THRESHOLD,
                         merge_chi2_bins)
 from fitlib import pdfDefinitions as pdefs
@@ -352,32 +360,45 @@ def seed_values(name, family, prev, tag):
     return vals
 
 
-def ftest(fits, family, failed=None):
-    """Lowest order in `family` whose successor is not justified.
+def ftest(fits, family, failed=None, gof_ok=None):
+    """Lowest order in `family` that passes the goodness of fit and whose
+    successor is not justified.
 
     2*(NLL_low - NLL_high) is compared with chi2 at the difference in
     parameter count. Both NLLs come from the same masked likelihood, so
     the comparison is valid; mixing a blinded and an unblinded fit here
     would not be.
 
-    failed: the members whose fit failed. The chain starts at the lowest
-    order that fitted and stops at the first failed order after it: the
-    order below is kept, rather than comparing across the gap with an
-    order whose predecessor was never tested.
+    gof_ok(name): whether an order passes the goodness of fit. An order
+    that fails it is never picked: it is skipped, and the F-test compares
+    the orders that pass (the next one up against the last one kept). A
+    family with no passing order has no pick.
+
+    failed: the members whose fit failed. Once an order is kept, the chain
+    stops at the first failed order after it: the order below is kept,
+    rather than comparing across the gap with an order whose predecessor
+    was never tested.
     """
     failed = failed or {}
+    gof_ok = gof_ok or (lambda n: True)
     names = [n for n in family if n in fits or n in failed]
-    while names and names[0] not in fits:
-        names.pop(0)
-    if not names:
-        return None, []
     steps = []
-    chosen = names[0]
-    for lo, hi in zip(names, names[1:]):
+    chosen = None
+    for hi in names:
         if hi in failed:
-            steps.append({"from": lo, "to": hi, "failed": True,
-                          "status": failed[hi]["status"]})
-            break
+            if chosen is not None:
+                steps.append({"from": chosen, "to": hi, "failed": True,
+                              "status": failed[hi]["status"]})
+                break
+            continue
+        if not gof_ok(hi):
+            steps.append({"from": chosen, "to": hi, "gof_failed": True,
+                          "gof_pvalue": fits[hi]["pvalue"]})
+            continue
+        if chosen is None:
+            chosen = hi
+            continue
+        lo = chosen
         dnll = fits[lo]["nll"] - fits[hi]["nll"]
         dnpar = fits[hi]["npar"] - fits[lo]["npar"]
         if dnpar <= 0:
@@ -738,17 +759,29 @@ def main():
     if not fits:
         raise SystemExit("no candidate fitted")
 
-    # ---- F-test within families ----------------------------------------
+    # ---- F-test within families, over the orders that pass the GOF ----
+    def gof_ok(nm):
+        return fits[nm]["pvalue"] > GOF_THRESHOLD
     print(f"\nF-test within families (p < {F_THRESHOLD} justifies the "
-          f"extra parameter)")
-    chosen, ftests = {}, {}
+          f"extra parameter), over the orders with GOF p > {GOF_THRESHOLD}")
+    chosen, ftests, rejected = {}, {}, {}
     for fam, members in pdefs.BKG_FAMILIES.items():
-        pick, steps = ftest(fits, members, failed)
+        pick, steps = ftest(fits, members, failed, gof_ok)
+        tried = [n for n in members if n in fits]
         if pick is None:
+            if tried:               # fitted, but no order passes the GOF
+                rejected[fam] = {n: fits[n]["pvalue"] for n in tried}
+                print(f"  {fam:<12} no order passes the GOF ("
+                      + ", ".join(f"{n} p={fits[n]['pvalue']:.4f}"
+                                  for n in tried) + "): not used")
             continue
         chosen[fam] = pick
         ftests[fam] = steps
         for st in steps:
+            if st.get("gof_failed"):
+                print(f"  {fam:<12} {'':>6}    {st['to']:<6} GOF "
+                      f"p={st['gof_pvalue']:.4f}: skipped")
+                continue
             if st.get("failed"):
                 print(f"  {fam:<12} {st['from']:>6} -> {st['to']:<6} "
                       f"fit failed (status {st['status']}): stop here")
@@ -757,16 +790,10 @@ def main():
                   f"2dNLL={st['2dNLL']:7.2f} dnpar={st['dnpar']} "
                   f"p={st['pvalue']:.4f}  "
                   f"{'justified' if st['justified'] else 'NOT justified'}")
-        print(f"  {fam:<12} -> {pick}")
+        print(f"  {fam:<12} -> {pick}  (GOF p={fits[pick]['pvalue']:.4f})")
 
-    # ---- GOF across families -------------------------------------------
-    envelope = [nm for nm in chosen.values()
-                if fits[nm]["pvalue"] > GOF_THRESHOLD]
-    rejected = [nm for nm in chosen.values() if nm not in envelope]
-    print(f"\nGOF cut (p > {GOF_THRESHOLD})")
-    for nm in sorted(set(chosen.values())):
-        print(f"  {nm:<11} p={fits[nm]['pvalue']:.4f}  "
-              f"{'IN' if nm in envelope else 'rejected'}")
+    # ---- the envelope: every family's pick (each passes the GOF) --------
+    envelope = list(chosen.values())
     if not envelope:
         raise SystemExit("no candidate passed the goodness-of-fit cut; "
                          "inspect the fits before lowering GOF_THRESHOLD")
@@ -862,6 +889,11 @@ def main():
         json.dump(rec, fh, indent=2, sort_keys=True)
     print(f"wrote {jf}")
     print(f"plots {outbase}_envelope.png")
+    # the note's Table 6.13 over every bin fitted so far in this wsdir
+    table = bkgTable.write_table(args.wsdir, args.category, args.year,
+                                 args.plotdir, args.pdf)
+    if table:
+        print(f"table {table}")
     bin_arg = args.bin or '""'
     sig = os.path.join(args.wsdir, f"Signal_{tag}_params.json")
     if not os.path.isfile(sig):
