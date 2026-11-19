@@ -17,8 +17,11 @@ Model selection
      adding the next parameter is not justified at p < F_THRESHOLD. Each
      order is fitted from its default start and from the fit of the order
      below (seed_values); the better one is kept, so a higher order does
-     not lose to a local minimum. A failed fit (status != 0) ends its
-     family: the order below it is kept.
+     not lose to a local minimum. A failed fit ends its family: the
+     order below it is kept. Minuit status 1 (a valid minimum, its
+     Hessian forced positive-definite) counts as converged and is
+     flagged; anything above 1 has failed. --strict-status keeps status
+     0 only.
      The families are the six of the Run 2 note's single-function bias
      study, Sec. 6.4.1 (DEFAULT_FAMILIES in pdfDefinitions.py):
      BWZRedux, BWZGamma, FEWZ x Bernstein, exponential and power-law
@@ -108,6 +111,12 @@ F_THRESHOLD = 0.05
 # when Combine profiles pdfindex (its correction factor, 0.5). The envelope
 # member with the lowest penalised NLL becomes pdfindex 0, the default.
 NLL_PENALTY_PER_PAR = 0.5
+# Minuit status 1: the minimum is valid (EDM below tolerance, no call
+# limit), but the Hessian had to be made positive-definite. It comes from
+# near-degenerate parameters -- a sum's extra term, BWZRedux's c against
+# a and b -- and leaves the NLL, which is all the F-test, the GOF and
+# Combine use, intact. As corePdfFit.py; --strict-status keeps 0 only.
+ACCEPT_STATUS = (0, 1)
 # GOF_THRESHOLD and CHI2_MIN_BIN_SIGNIFICANCE: fitlib/gof.py, shared with
 # mcCoreFit.py
 
@@ -177,13 +186,14 @@ def full_yield(n_sb, fit):
 # fitting
 # ---------------------------------------------------------------------------
 
-def fit_candidate(x, data, name, tag, sb_range, mc_core=None, seed=None):
+def fit_candidate(x, data, name, tag, sb_range, mc_core=None, seed=None,
+                  accept=ACCEPT_STATUS):
     """Fit one candidate on the sideband only.
 
     seed: {parameter name: value}, a second start (seed_values: the fit of
     the order below, carried over). The fit is run from the default start
-    and, if given, from the seed; the better result is kept (status 0
-    first, then the lower NLL). `start` records which one it was.
+    and, if given, from the seed; the better result is kept (an accepted
+    status first, then the lower NLL). `start` records which one it was.
 
     Returns a dict with the masked NLL (for the F-test), the sideband
     chi2 and its p-value (for the GOF cut), and the fraction of the PDF
@@ -217,7 +227,7 @@ def fit_candidate(x, data, name, tag, sb_range, mc_core=None, seed=None):
                     p.setError(e)
 
     def rank(r):
-        return (r.status() != 0, r.minNll())
+        return (r.status() not in accept, r.minNll())
 
     init = state()
     res, start = run(), "default"
@@ -597,11 +607,16 @@ def main():
     ap.add_argument("--no-mc-core", action="store_true",
                     help="with --extra-models: leave out the "
                          "mcexp/mcpow/mcdy families")
+    ap.add_argument("--strict-status", action="store_true",
+                    help="Minuit status 0 only (default: 0 or 1, a valid "
+                         "minimum whose covariance was forced "
+                         "positive-definite)")
     ap.add_argument("--plotdir", default=None,
                     help="default ~/public_html/HmumuFits/bkg_fits")
     ap.add_argument("--pdf", action="store_true")
     ap.add_argument("--bins-per-gev", type=float, default=None)
     args = ap.parse_args()
+    args.accept = (0,) if args.strict_status else ACCEPT_STATUS
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
     args.plotdir = args.plotdir or os.path.expanduser(
         "~/public_html/HmumuFits/bkg_fits")
@@ -693,21 +708,25 @@ def main():
         seed = (seed_values(nm, fam, fits[prev], tag) if prev in fits
                 else None)
         try:
-            f = fit_candidate(x, data, nm, tag, sb_range, mc_core, seed)
+            f = fit_candidate(x, data, nm, tag, sb_range, mc_core, seed,
+                              args.accept)
         except Exception as exc:
             print(f"{nm:<11}  failed: {exc}")
             failed[nm] = {"status": -1, "error": str(exc)}
             continue
         f.update(sideband_chi2(x, h, f["pdf"], sb_idx,
                                full_yield(n_sb, f), f["npar"]))
+        ok = f["status"] in args.accept
         flag = "" if f["status"] == 0 and f["cov_qual"] == 3 else "  <-- check"
+        if ok and f["status"] == 1:
+            flag += "  (kept: valid minimum, covariance forced)"
         if f["start"] == "seeded":
             flag += "  (from the order below)"
         print(f"{nm:<11}{f['npar']:>5}{f['nll']:>14.2f}"
               f"{f['chi2_ndf']:>10.3f}{f['pvalue']:>9.3f}"
               f"{f['sb_fraction']:>8.3f}{f['status']:>8}{flag}")
-        # a failed fit (status != 0) never enters the F-test or the envelope
-        if f["status"] != 0:
+        # a failed fit never enters the F-test or the envelope
+        if not ok:
             failed[nm] = f
         else:
             fits[nm] = f
@@ -814,6 +833,7 @@ def main():
             "window": [config.XLOW, config.XHIGH], "n_bins": nbins,
             "blind_region": [SR_LO, SR_HI],
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
+            "accepted_status": list(args.accept),
             "nll_penalty_per_par": NLL_PENALTY_PER_PAR,
             "model_set": model_set,
             "observable": x.GetName(), "data_file": os.path.basename(datafile),

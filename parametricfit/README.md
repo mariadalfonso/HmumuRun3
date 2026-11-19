@@ -189,8 +189,11 @@ reads and writes there unless `--wsdir` says otherwise.
   - The order of each family, the goodness-of-fit cut and the envelope
     are ours; the Run 2 note excerpt only asks for χ²/dof ≈ 1.
   - The F-test picks one order per family; a goodness-of-fit cut builds the
-    envelope. Failed fits (status ≠ 0) are dropped, and a failed order ends
-    its family: the order below it is kept, never one above the gap.
+    envelope. Failed fits are dropped, and a failed order ends its family:
+    the order below it is kept, never one above the gap. Status 1 (a valid
+    minimum whose covariance was forced positive-definite, e.g. BWZRedux's
+    near-degenerate c, a, b) counts as converged and is flagged;
+    `--strict-status` keeps status 0 only.
   - Each order is fitted twice, from its default start and from the fit of
     the order below (a Bernstein raised one degree reproduces it exactly),
     and the better fit is kept, so a higher order does not end in a worse
@@ -329,6 +332,7 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 - `--extra-models`: add `dyexp`/`dypow` and, with `mcCoreFit.py`'s
   output, `mcexp`/`mcpow`/`mcdy`.
 - `--candidates`: fit exactly these members instead.
+- `--strict-status`: Minuit status 0 only (default 0 or 1).
 - `--mc-core`, `--no-mc-core` (with `--extra-models`), `--bins-per-gev`.
 
 **`corePdfFit.py`**

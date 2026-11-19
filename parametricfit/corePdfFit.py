@@ -114,7 +114,7 @@ def param_record(pars):
 # core and the bins' polynomials can partly mimic each other (a tilt of
 # the core against the same tilt in every SMF), so the Hessian is close to
 # singular. That leaves the minimum, which is all Combine uses, intact;
-# --strict-status excludes such cores anyway, as bkgFit.py does.
+# --strict-status excludes such cores anyway (bkgFit.py has the same switch).
 ACCEPT_STATUS = (0, 1)
 
 
