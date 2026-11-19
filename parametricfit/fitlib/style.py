@@ -76,9 +76,7 @@ CAT_LABEL = {
 }
 BIN_LABEL = {
     "incl": "inclusive",
-    "bdt0": "BDT bin 0",
-    "bdt1": "BDT bin 1",
-    "bdt2": "BDT bin 2",
+    **{f"bdt{i}": f"BDT bin {i}" for i in range(10)},
     "":     "inclusive",
 }
 MODE_LABEL = {

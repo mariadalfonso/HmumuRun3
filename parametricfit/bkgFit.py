@@ -19,11 +19,12 @@ Model selection
      below (seed_values); the better one is kept, so a higher order does
      not lose to a local minimum. A failed fit (status != 0) ends its
      family: the order below it is kept.
-     The families are those of the Run 2 analysis note, Sec. 5.3
-     (RUN2_FAMILIES in pdfDefinitions.py): BWZ x Bernstein, BWZGamma,
-     BWZRedux, FEWZ x Bernstein, Bernstein, exponential and power-law
-     sums, exponential / power law + constant, Landau x Bernstein.
-     --extra-models adds EXTRA_FAMILIES: the DY-core families dyexp and
+     The families are the six of the Run 2 note's single-function bias
+     study, Sec. 6.4.1 (DEFAULT_FAMILIES in pdfDefinitions.py):
+     BWZRedux, BWZGamma, FEWZ x Bernstein, exponential and power-law
+     sums, Landau x Bernstein. --all-run2 adds the rest of the note's
+     Sec. 5.3 (RUN2_FAMILIES): BWZ x Bernstein, Bernstein, exponential /
+     power law + constant. --extra-models adds EXTRA_FAMILIES: the DY-core families dyexp and
      dypow and -- when mcCoreFit.py has written MCcore_<tag>.json -- the
      MC-tuned-core families mcexp, mcpow and mcdy.
   2. Goodness-of-fit across families: keep every family's choice whose
@@ -575,6 +576,11 @@ def main():
                     help="BDT bin label; pass \"\" to reproduce the "
                          "double-underscore tag the existing datacards use")
     ap.add_argument("-y", "--year", default="Run3")
+    ap.add_argument("--all-run2", action="store_true",
+                    help="every family of the Run 2 note's Sec. 5.3 "
+                         "(RUN2_FAMILIES), not only the six of its bias "
+                         "study (DEFAULT_FAMILIES): adds bwzbern, "
+                         "bernstein, expconst, powconst")
     ap.add_argument("--extra-models", action="store_true",
                     help="add the families beyond the Run 2 note "
                          "(EXTRA_FAMILIES in pdfDefinitions): dyexp, "
@@ -582,7 +588,7 @@ def main():
                          "has run")
     ap.add_argument("--candidates", nargs="+", default=None,
                     help="fit exactly these members instead (overrides "
-                         "--extra-models)")
+                         "--all-run2 and --extra-models)")
     ap.add_argument("--wsdir", default=None,
                     help="fit JSONs and workspaces (default WS_<year>)")
     ap.add_argument("--mc-core", default=None,
@@ -601,12 +607,12 @@ def main():
         "~/public_html/HmumuFits/bkg_fits")
     if args.candidates:
         model_set = "candidates"
-    elif args.extra_models:
-        model_set = "run2+extra"
     else:
-        model_set = "run2"
+        model_set = ("run2" if args.all_run2 else "bias6") + (
+            "+extra" if args.extra_models else "")
     # the MC cores only matter when mc* members can be asked for
-    use_mc = model_set != "run2" and not args.no_mc_core
+    use_mc = bool(args.candidates or args.extra_models) \
+        and not args.no_mc_core
 
     style.setup_style()
     if args.bins_per_gev:
@@ -643,7 +649,7 @@ def main():
     # ---- MC-tuned cores (mcCoreFit.py) ---------------------------------
     mc_file = args.mc_core or os.path.join(args.wsdir, f"MCcore_{tag}.json")
     mc_core = None
-    if model_set == "run2":
+    if not (args.candidates or args.extra_models):
         print("\nMC cores : not used (Run 2 families; --extra-models "
               "adds the MC-tuned cores)")
     elif not use_mc:
@@ -668,11 +674,10 @@ def main():
             nm.rstrip("0123456789") in (mc_core or {})
     if args.candidates:
         names = args.candidates
-    elif args.extra_models:
-        names = pdefs.family_members(pdefs.RUN2_FAMILIES
-                                     + pdefs.EXTRA_FAMILIES)
     else:
-        names = pdefs.family_members(pdefs.RUN2_FAMILIES)
+        names = pdefs.family_members(
+            (pdefs.RUN2_FAMILIES if args.all_run2 else pdefs.DEFAULT_FAMILIES)
+            + (pdefs.EXTRA_FAMILIES if args.extra_models else []))
     absent = [nm for nm in names if not available(nm)]
     if args.candidates and absent:
         raise SystemExit(f"no MC core for {absent}; run mcCoreFit.py")

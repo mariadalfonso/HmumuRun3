@@ -15,7 +15,9 @@ With --members families the multipdf holds every family's F-test pick
 (bkgFit.py's family_choice), the ones the goodness-of-fit cut rejected
 included, and goes to Bkg_<tag>_families_workspace.root instead. That is
 the input of biasStudy.py --mode single (the Run 2 note's truth x fit
-matrix).
+matrix). --order FAMILY=N replaces a family's pick by its order-N member
+(buildWorkspace.py uses it to give each Bernstein family one order in
+every bin).
 
 With --members core the multipdf is the core-PDF of corePdfFit.py
 (Bkg_<tag>_core_params.json): core x this bin's SMF per core, the core
@@ -124,29 +126,40 @@ def build_signal(category, tag, sigjson, wsfile):
 MEMBERS_SUFFIX = {"envelope": "", "families": "_families", "core": "_core"}
 
 
-def bkg_members(rec, members):
+def bkg_members(rec, members, orders=None, source=""):
     """The multipdf members, in pdfindex order. "envelope": bkgFit.py's
-    envelope, best first. "families": the envelope, then every other
-    family's F-test pick (rejected by the goodness-of-fit cut), lowest
-    penalised NLL first; index 0 stays the envelope's best, which the
-    norm comes from."""
+    envelope, best first. "families": one member per family, the envelope's
+    first (in its order), then every other family's F-test pick (rejected
+    by the goodness-of-fit cut), lowest penalised NLL first. orders
+    {family: N} replaces a family's pick by its order-N member."""
     env = list(rec["envelope"])
     if members == "envelope":
         return env
     cand = rec["candidates"]
-    rest = sorted({nm for nm in rec["family_choice"].values()
-                   if nm not in env},
+    choice = dict(rec["family_choice"])
+    for fam, n in (orders or {}).items():
+        if fam not in choice:
+            continue                    # not fitted in this bin
+        nm = pdefs.family_member(fam, n)
+        if nm not in cand:
+            raise SystemExit(f"--order {fam}={n}: {nm} has no fit in "
+                             f"{source or 'the JSON'}")
+        choice[fam] = nm
+    fam_of = {m: f for f, ms in pdefs.BKG_FAMILIES.items() for m in ms}
+    env = [choice.get(fam_of.get(n), n) for n in env]
+    rest = sorted({nm for nm in choice.values() if nm not in env},
                   key=lambda n: cand[n].get("nll_pen", cand[n]["nll"]))
     return env + rest
 
 
-def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope"):
+def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope",
+              orders=None):
     """The RooMultiPdf, each member at its sideband-fit values with its
     parameters floating, plus the floating norm and the data."""
     rec = read_json(bkgjson)
     prov = rec["provenance"]
     x = observable(category, prov["window"])
-    names = bkg_members(rec, members)
+    names = bkg_members(rec, members, orders, bkgjson)
 
     mc_core = (rec.get("mc_core") or {}).get("cores")   # mc* members
     keep, store = [], ROOT.RooArgList()
@@ -230,6 +243,18 @@ def write_bkg(tag, x, cat, store, rec, wsdir, wsfile, names, note):
     print(f"wrote {wsfile}")
 
 
+def parse_orders(items, ap):
+    """["fewzbern=3"] -> {"fewzbern": 3}"""
+    out = {}
+    for it in items:
+        fam, _, n = it.partition("=")
+        if fam not in pdefs.BKG_FAMILIES or not n.isdigit():
+            ap.error(f"--order {it}: want FAMILY=N, FAMILY one of "
+                     f"{', '.join(pdefs.BKG_FAMILIES)}")
+        out[fam] = int(n)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -249,8 +274,15 @@ def main():
                          "Bkg_<tag>_families_workspace.root, for "
                          "biasStudy.py --mode single), or the core-PDF of "
                          "corePdfFit.py (core: Bkg_<tag>_core_workspace.root)")
+    ap.add_argument("--order", nargs="+", default=[], metavar="FAMILY=N",
+                    help="with --members families: this order of the "
+                         "family instead of its F-test pick, e.g. "
+                         "fewzbern=3")
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
+    orders = parse_orders(args.order, ap)
+    if orders and args.members != "families":
+        ap.error("--order needs --members families")
 
     # before writing anything: the workspaces must be built with Combine's classes
     if not pdefs.load_combine(quiet=True):
@@ -276,7 +308,7 @@ def main():
         else:
             build_bkg(args.category, tag,
                       os.path.join(args.wsdir, f"Bkg_{tag}_params.json"),
-                      args.wsdir, wsfile, args.members)
+                      args.wsdir, wsfile, args.members, orders)
 
 
 if __name__ == "__main__":

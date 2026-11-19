@@ -56,9 +56,13 @@ have no record and give a warning only.
 python sigFit.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3
 for b in bdt0 bdt1 bdt2; do python bkgFit.py -c ggHcat -b $b -y Run3; done
 ```
-By default `bkgFit.py` fits the background families of the Run 2 analysis
-note (Sec. 5.3, eqs. 5.1–5.11; `RUN2_FAMILIES` in `fitlib/pdfDefinitions.py`),
-every parameter on data. `--extra-models` adds the families beyond it
+By default `bkgFit.py` fits the six background families of the Run 2
+analysis note's single-function bias study (Sec. 6.4.1, Fig. 6.20;
+`DEFAULT_FAMILIES` in `fitlib/pdfDefinitions.py`): BWZRedux, BWZGamma,
+FEWZ × Bernstein, S-exponential, S-power-law and Landau × Bernstein, every
+parameter on data. `--all-run2` adds the rest of the note's Sec. 5.3
+(`RUN2_FAMILIES`: BWZ × Bernstein, Bernstein, exp / power law + constant).
+`--extra-models` adds the families beyond the note
 (`EXTRA_FAMILIES`): `dyexp`/`dypow`, and `mcexp`/`mcpow`/`mcdy` once
 `mcCoreFit.py` has run:
 ```bash
@@ -268,7 +272,10 @@ reads and writes there unless `--wsdir` says otherwise.
     matrix of the mean Bias. A function is usable if |Bias| < 0.20 against
     every truth; of those, the one with the highest expected significance
     (Asimov, background frozen to it) is chosen. Output in
-    `<outdir>/<tag>_single/`, plot `bias_<tag>_<r>_matrix.png`.
+    `<outdir>/<tag>_single/`, plot `bias_<tag>_<r>_matrix.png`. With
+    several bins, also the note's Fig. 6.20 with a panel per truth:
+    `bias_<cat>_<year>_<r>_single_bins.png`, the Bias against the BDT bin,
+    a line per fit function.
     Each of these fits also freezes the other functions' parameters:
     Combine does that itself only while the index floats, and left floating
     they can make Minuit2 abort a whole job of toys.
@@ -317,8 +324,10 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 
 **`bkgFit.py`**
 - `-c`, `-b`, `-y`, `--wsdir` (default `WS_<year>`), `--plotdir`, `--pdf`.
+- `--all-run2`: every Run 2 family of Sec. 5.3, not only the six of the
+  bias study.
 - `--extra-models`: add `dyexp`/`dypow` and, with `mcCoreFit.py`'s
-  output, `mcexp`/`mcpow`/`mcdy` to the Run 2 families.
+  output, `mcexp`/`mcpow`/`mcdy`.
 - `--candidates`: fit exactly these members instead.
 - `--mc-core`, `--no-mc-core` (with `--extra-models`), `--bins-per-gev`.
 
@@ -338,6 +347,9 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 every family's F-test pick in the multipdf, as `*_families` files for
 `biasStudy.py --mode single` and `--mode core`; `core`: the core-PDF of
 `corePdfFit.py`, as `*_core` files; the envelope cards are not touched).
+With `families`, each Bernstein family (FEWZ × Bern, Landau × Bern, …) has
+one order in every bin: its highest F-test pick over the bins of `-b`, or
+`--bern-order FAMILY=N` (e.g. `--bern-order fewzbern=3 landbern=2`).
 
 **`biasStudy.py`**
 - `-c`, `-b`, `-y`.

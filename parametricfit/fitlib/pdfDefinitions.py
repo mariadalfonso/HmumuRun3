@@ -218,6 +218,14 @@ RUN2_FAMILIES = [
     "bernstein", "exponential", "power",                    # 5.6-5.8
     "expconst", "powconst", "landbern",                     # 5.9-5.11
 ]
+# bkgFit.py's default: the six families of the Run 2 note's single-function
+# bias study (Sec. 6.4.1, Fig. 6.20). --all-run2 adds the rest of
+# RUN2_FAMILIES (BWZ x Bernstein, Bernstein, exp / power law + constant).
+DEFAULT_FAMILIES = [
+    "bwzredux", "bwzgamma", "fewzbern",                     # 5.3-5.5
+    "exponential", "power", "landbern",                     # 5.7, 5.8, 5.11
+]
+assert set(DEFAULT_FAMILIES) <= set(RUN2_FAMILIES)
 # Beyond the Run 2 note, added by bkgFit.py --extra-models: the LO DY core
 # x a data correction, and the cores tuned to MC (mcCoreFit.py) x exp(Cheb).
 EXTRA_FAMILIES = [*dyCore.FAMILIES, *mcCore.FAMILIES]
@@ -227,6 +235,29 @@ assert sorted(RUN2_FAMILIES + EXTRA_FAMILIES) == sorted(BKG_FAMILIES)
 def family_members(families):
     """Every candidate of the given BKG_FAMILIES, in order."""
     return [nm for fam in families for nm in BKG_FAMILIES[fam]]
+
+
+def member_order(name):
+    """bern5 -> 5, fewzbern3 -> 3; a member without a number (landau,
+    bwzredux) -> 0"""
+    digits = name[len(name.rstrip("0123456789")):]
+    return int(digits) if digits else 0
+
+
+def family_member(fam, order):
+    """("fewzbern", 3) -> "fewzbern3": the member of that order"""
+    found = [m for m in BKG_FAMILIES[fam] if member_order(m) == order]
+    if not found:
+        raise ValueError(f"{fam} has no order {order}: "
+                         f"{', '.join(BKG_FAMILIES[fam])}")
+    return found[0]
+
+
+def bern_families():
+    """The families built on a Bernstein polynomial (bern, BWZ x Bern,
+    FEWZ x Bern, Landau x Bern): the ones labelled with their order, and
+    whose order buildWorkspace.py --members families fixes across bins."""
+    return [f for f in BKG_FAMILIES if "Bern{n}" in FAMILY_LABEL.get(f, "")]
 
 
 # Plot labels, short forms of the Run 2 note's names (Fig. 6.19, Table

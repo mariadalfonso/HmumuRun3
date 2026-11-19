@@ -75,7 +75,11 @@ and plots in <plotdir>/<cat>/bias_<tag>_<r>_{<member>,summary}.png.
     fit_gen<i>_fit<j>_<r>_s<seed>.root    those toys fitted with member j
     sig_fit<j>.root                       expected significance with j
     bias_<tag>_<r>_matrix.json            the matrix, usable fits, choice
-and the plot <plotdir>/<cat>/bias_<tag>_<r>_matrix.png.
+and the plot <plotdir>/<cat>/bias_<tag>_<r>_matrix.png. With more than one
+bin, also <plotdir>/<cat>/bias_<cat>_<year>_<r>_single_bins.png, the
+note's Fig. 6.20 with a panel per truth: the Bias against the bin, a line
+per fit function, matched by family (the F-test order can differ from bin
+to bin).
 
 --mode core writes to <outdir>/<name>_core/ (<name> = ggHcat_bdt_Run3):
     core_<test>.root, families_<test>.root   text2workspace per test
@@ -179,6 +183,18 @@ MULTI_SIGNAL = "HiggsAnalysis.CombinedLimit.PhysicsModel:multiSignalModel"
 R_INIT_RANGE = "[1,-50,50]"
 MATRIX_PASS_RGB = (232, 232, 232)   # light grey
 MATRIX_FAIL_RGB = (246, 196, 190)   # light red
+# --mode single across the bins (the note's Fig. 6.20): one colour and
+# marker per family, in a fixed order (DEFAULT_FAMILIES first), so a family
+# keeps its colour from plot to plot
+SERIES_HEX = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4",
+              "#008300", "#6250d6", "#e34948"]
+SERIES_MARKERS = [20, 21, 22, 23, 33, 34, 29, 47]
+SINGLE_BINS_NCOL = 3
+SINGLE_BINS_PANEL_PX = (520, 420)   # one panel, pixels
+SINGLE_BINS_YMAX = 1.5              # frame -YMAX to +YMAX, as in the note;
+                                    # beyond it, a triangle on the edge
+SINGLE_BINS_LEGEND_COLS = 2         # a panel's legend, top right
+SINGLE_BINS_LABEL_PX = 205          # the truth's label, top left, width
 
 # quantileExpected of the three rows --algo singles writes per toy
 Q_BEST, Q_LO, Q_HI = -1.0, -0.32, 0.32
@@ -1270,6 +1286,242 @@ def plot_matrix(summary, outbase, pdf):
     save(c, outbase, pdf)
 
 
+def family_label(fam):
+    """exponential -> "S-Exp": the family's plot label without the order"""
+    return pdefs.FAMILY_LABEL.get(fam, fam).format(n="")
+
+
+def single_by_family(by_bin):
+    """{truth family: {fit family: {bin: cell summary}}} from the
+    --mode single reports of several bins. The F-test order of a family
+    can differ from bin to bin, so the bins are matched by family."""
+    fam_of = member_family()
+    out = {}
+    for b, summary in by_bin.items():
+        for fit, row in summary["matrix"].items():
+            for truth, s in row.items():
+                out.setdefault(fam_of.get(truth, truth), {}).setdefault(
+                    fam_of.get(fit, fit), {})[b] = s
+    return out
+
+
+def family_orders(by_bin):
+    """{family: [its member's order in each bin, None where absent]}"""
+    fam_of = member_family()
+    out = {}
+    for i, summary in enumerate(by_bin.values()):
+        names = set(summary["matrix"]) | {
+            t for row in summary["matrix"].values() for t in row}
+        for n in names:
+            out.setdefault(fam_of.get(n, n), [None] * len(by_bin))[i] = \
+                pdefs.member_order(n)
+    return out
+
+
+def ordered_label(fam, orders):
+    """A Bernstein family with its order, "FEWZ #times Bern3" (one order
+    in every bin, as buildWorkspace.py --members families builds them;
+    older cards may differ, "Bern3/2/1"); the others as family_label."""
+    present = {o for o in orders or [] if o is not None}
+    if fam not in pdefs.bern_families() or not present:
+        return family_label(fam)
+    n = (str(present.pop()) if len(present) == 1   # absent bins aside
+         else "/".join("-" if o is None else str(o) for o in orders))
+    return pdefs.FAMILY_LABEL[fam].format(n=n)
+
+
+def family_order(names):
+    """DEFAULT_FAMILIES first, then the other families, then the rest"""
+    order = pdefs.DEFAULT_FAMILIES + [f for f in pdefs.BKG_FAMILIES
+                                      if f not in pdefs.DEFAULT_FAMILIES]
+    return sorted(names, key=lambda f: (order.index(f) if f in order
+                                        else len(order), f))
+
+
+def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
+    """The Run 2 note's Fig. 6.20 across the BDT bins, one panel per truth
+    family (the note has one per fit function): the Bias against the bin,
+    one line per fit family. Each panel has its own labels, as in the
+    note: in a box across the top of the frame, the truth on the left and
+    the legend of the fit functions on the right, the Bernstein ones with
+    their order. A
+    point beyond +/- SINGLE_BINS_YMAX is an open triangle on that edge,
+    with its value next to it. Pixel fonts, so the canvas grows with the
+    number of panels."""
+    cells = single_by_family(by_bin)          # truth -> fit -> bin -> s
+    orders = family_orders(by_bin)
+    panels = family_order(cells)
+    series = family_order({s for row in cells.values() for s in row})
+    bins = list(by_bin)
+    nb = len(bins)
+    ncol = min(SINGLE_BINS_NCOL, len(panels))
+    nrow = int(math.ceil(len(panels) / float(ncol)))
+    pw, ph = SINGLE_BINS_PANEL_PX
+    w, h = ncol * pw, nrow * ph
+    style.setup_style()
+    c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
+    keep = [c]
+    colors = {s: ROOT.TColor.GetColor(SERIES_HEX[i % len(SERIES_HEX)])
+              for i, s in enumerate(series)}
+    markers = {s: SERIES_MARKERS[i % len(SERIES_MARKERS)]
+               for i, s in enumerate(series)}
+    proxies = {}
+    for s in series:
+        g = ROOT.TGraph()
+        g.SetLineColor(colors[s])
+        g.SetMarkerColor(colors[s])
+        g.SetMarkerStyle(markers[s])
+        g.SetLineWidth(2)
+        proxies[s] = g
+    leg_rows = int(math.ceil(len(series) / float(SINGLE_BINS_LEGEND_COLS)))
+    ymax = ytop = SINGLE_BINS_YMAX
+    # series side by side within a bin, so the error bars do not overlap
+    dx = min(0.6 / max(len(series), 1), 0.12)
+    left, right, top, bottom = 70.0, 14.0, 30.0, 46.0     # pixels
+    for k, p in enumerate(panels):
+        col, row = k % ncol, k // ncol
+        x1, x2 = col / float(ncol), (col + 1) / float(ncol)
+        y2 = 1 - row * ph / float(h)
+        y1 = y2 - ph / float(h)
+        pad = ROOT.TPad(f"p{k}_{os.path.basename(outbase)}", "",
+                        x1, y1, x2, y2)
+        pad.SetLeftMargin(left / pw)
+        pad.SetRightMargin(right / pw)
+        pad.SetTopMargin(top / ph)
+        pad.SetBottomMargin(bottom / ph)
+        pad.SetTicky(1)
+        c.cd()
+        pad.Draw()
+        pad.cd()
+        frame = ROOT.TH1F(f"f{k}_{os.path.basename(outbase)}",
+                          ";;Bias" if metric == "mean" else
+                          f";;{metric} Bias", nb, -0.5, nb - 0.5)
+        frame.SetDirectory(0)
+        frame.SetStats(0)
+        frame.SetMinimum(-ymax)
+        frame.SetMaximum(ytop)
+        for i, b in enumerate(bins):
+            frame.GetXaxis().SetBinLabel(i + 1, style.BIN_LABEL.get(b, b))
+        for ax in (frame.GetXaxis(), frame.GetYaxis()):
+            ax.SetLabelFont(43)
+            ax.SetLabelSize(14)
+            ax.SetTitleFont(43)
+            ax.SetTitleSize(15)
+        frame.GetYaxis().SetTitleOffset(1.9)
+        frame.GetYaxis().SetNdivisions(505)
+        frame.GetXaxis().SetLabelOffset(0.012)
+        frame.Draw("AXIS")
+        band = ROOT.TBox(-0.5, -threshold, nb - 0.5, threshold)
+        band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
+        band.Draw()
+        zero = ROOT.TLine(-0.5, 0, nb - 0.5, 0)
+        zero.SetLineStyle(2)
+        zero.SetLineColor(ROOT.kGray + 2)
+        zero.Draw()
+        keep += [pad, frame, band, zero]
+        edge = ROOT.TLatex()
+        edge.SetTextFont(43)
+        edge.SetTextSize(11)
+        edge.SetTextAlign(12)
+        stacked = {}                    # off-scale points per bin and side
+        for j, s in enumerate(series):
+            per_bin = cells[p].get(s, {})
+            gr = ROOT.TGraphErrors()
+            off = {True: ROOT.TGraph(), False: ROOT.TGraph()}   # above?
+            for i, b in enumerate(bins):
+                cell = per_bin.get(b, {})
+                if "bias" not in cell:
+                    continue
+                x = i + (j - 0.5 * (len(series) - 1)) * dx
+                v = cell["bias"]
+                if -ymax <= v <= ytop:
+                    n = gr.GetN()
+                    gr.SetPoint(n, x, v)
+                    gr.SetPointError(n, 0, cell.get("bias_err", 0))
+                    continue
+                up = v > 0
+                k_off = stacked.get((i, up), 0)
+                stacked[i, up] = k_off + 1
+                step = 0.11 * ymax * (k_off + 0.6)
+                yy = ytop - step if up else -ymax + step
+                off[up].SetPoint(off[up].GetN(), x, yy)
+                edge.SetTextColor(colors[s])
+                edge.DrawLatex(x + 0.04, yy, "%+.0f" % v if abs(v) >= 10
+                               else "%+.1f" % v)
+            gr.SetLineColor(colors[s])
+            gr.SetMarkerColor(colors[s])
+            gr.SetMarkerStyle(markers[s])
+            gr.SetMarkerSize(1.0)
+            gr.SetLineWidth(2)
+            if gr.GetN():
+                gr.Draw("PL same" if gr.GetN() > 1 else "P same")
+            for up, g in off.items():
+                g.SetMarkerColor(colors[s])
+                g.SetMarkerStyle(26 if up else 32)
+                g.SetMarkerSize(1.2)
+                if g.GetN():
+                    g.Draw("P same")
+            keep += [gr, off]
+        keep.append(edge)
+        frame.Draw("AXIS same")
+
+        # a box across the top of the frame: the truth on the left, the
+        # legend of the fit functions on the right
+        yf = 1 - top / ph                          # top of the frame
+        xa, xb = (left + 2.0) / pw, 1 - (right + 2.0) / pw
+        box_px = max(46.0, 15.0 * leg_rows + 10.0)
+        box = ROOT.TPave(xa, yf - box_px / ph, xb, yf - 1.0 / ph, 0, "NDC")
+        box.SetFillColorAlpha(ROOT.kWhite, 0.88)
+        box.SetFillStyle(1001)
+        box.Draw()
+        lat = ROOT.TLatex()
+        lat.SetNDC()
+        lat.SetTextFont(43)
+        lat.SetTextAlign(13)
+        xl = (left + 8.0) / pw
+        lat.SetTextSize(14)
+        lat.DrawLatex(xl, yf - 7.0 / ph,
+                      "Toys from #bf{%s}" % ordered_label(p, orders.get(p)))
+        lat.SetTextSize(12)
+        lat.DrawLatex(xl, yf - 26.0 / ph,
+                      f"m_{{H}} = {MH:g} GeV, #mu_{{inj}} = {r_inj:g}")
+        leg = ROOT.TLegend((left + SINGLE_BINS_LABEL_PX) / pw,
+                           yf - (15.0 * leg_rows + 6.0) / ph, xb,
+                           yf - 4.0 / ph)
+        leg.SetBorderSize(0)
+        leg.SetFillStyle(0)
+        leg.SetTextFont(43)
+        leg.SetTextSize(12)
+        leg.SetNColumns(SINGLE_BINS_LEGEND_COLS)
+        leg.SetMargin(0.2)
+        for s in series:
+            leg.AddEntry(proxies[s], ordered_label(s, orders.get(s)), "lp")
+        leg.Draw()
+        keep += [box]
+        frame.Draw("AXIS same")
+        # CMS label in pixels: draw_label spaces it by the canvas width
+        cms = ROOT.TLatex()
+        cms.SetNDC()
+        cms.SetTextAlign(13)
+        yb = 1 - 6.0 / ph
+        cms.SetTextFont(63)
+        cms.SetTextSize(18)
+        cms.DrawLatex(left / pw, yb, style.CMS_TEXT)
+        if style.CMS_EXTRA_TEXT:
+            cms.SetTextFont(53)
+            cms.SetTextSize(15)
+            cms.DrawLatex((left + 48.0) / pw, yb - 2.0 / ph,
+                          style.CMS_EXTRA_TEXT)
+        cms.SetTextFont(43)
+        cms.SetTextSize(13)
+        cms.SetTextAlign(33)
+        cms.DrawLatex(1 - right / pw, yb - 2.0 / ph,
+                      "%s (%.1f TeV)" % (title, style.SQRT_S_TEV))
+        keep += [lat, leg, cms]
+    keep.append(proxies)
+    save(c, outbase, pdf)
+
+
 def print_matrix(summary):
     truths, fits = summary["truths"], summary["fits"]
     print(f"\n=== {summary['tag']}, r_inj = {summary['r_inj']:g}, "
@@ -1672,6 +1924,21 @@ def main():
             run_tag(tag, args)
     if args.only != "run" and not args.dry_run:
         reports = {tag: report_tag(tag, args) for tag in tags}
+        if len(args.bins) > 1 and args.mode == "single":
+            for cat in args.category:
+                for r_inj in args.inject:
+                    key = rlabel(r_inj)
+                    by_bin = {b: reports[f"{cat}_{b}_{args.year}"][key]
+                              for b in args.bins
+                              if key in reports[f"{cat}_{b}_{args.year}"]}
+                    if len(by_bin) < 2:
+                        continue
+                    plot_single_bins(
+                        by_bin, f"{cat}, {args.year}", r_inj,
+                        args.threshold, args.metric,
+                        os.path.join(args.plotdir, cat,
+                                     f"bias_{cat}_{args.year}_{key}"
+                                     "_single_bins"), args.pdf)
         if len(args.bins) > 1 and args.mode == "envelope":
             for cat in args.category:
                 for r_inj in args.inject:

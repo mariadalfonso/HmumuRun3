@@ -24,7 +24,9 @@ Run 2 note's single-function bias study): the multipdf holds every family's
 F-test pick, the ones the goodness-of-fit cut rejected included, and every
 file name gets _families (Bkg_<tag>_families_workspace.root,
 datacard_<tag>_families.txt, <name>_families.root). The envelope files are
-not touched, so the limit cards stay as they are.
+not touched, so the limit cards stay as they are. Each Bernstein family
+(FEWZ x Bern, Landau x Bern, ...) gets ONE order in every bin: the highest
+of its F-test picks over the bins of -b, or --bern-order FAMILY=N.
 
 --members core builds the Run 2 core-PDF (corePdfFit.py's
 Bkg_<tag>_core_params.json) the same way, as *_core files. The bins share
@@ -45,6 +47,7 @@ import subprocess
 import sys
 
 from fitlib import bdtBins, config, corePdf
+from fitlib import pdfDefinitions as pdefs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -103,11 +106,44 @@ def run(cmd, args, cwd=HERE, stdout=None):
 # steps
 # ---------------------------------------------------------------------------
 
+def bern_orders(args):
+    """{family: order} for --members families: each Bernstein family's
+    highest F-test pick over the bins, unless --bern-order sets it. Every
+    order is fitted in every bin, so any of them can be used."""
+    picks = {}
+    for tag in tags(args):
+        path = os.path.join(args.wsdir, f"Bkg_{tag}_params.json")
+        if not os.path.isfile(path):
+            continue                    # --dry-run before the fits
+        for fam, nm in read_json(path)["family_choice"].items():
+            if fam in pdefs.bern_families():
+                picks.setdefault(fam, []).append(pdefs.member_order(nm))
+    fixed = {}
+    for it in args.bern_order:
+        fam, _, n = it.partition("=")
+        if fam not in pdefs.bern_families() or not n.isdigit():
+            raise SystemExit(f"--bern-order {it}: want FAMILY=N, FAMILY "
+                             f"one of {', '.join(pdefs.bern_families())}")
+        fixed[fam] = int(n)
+    out = {fam: fixed.get(fam, max(ns)) for fam, ns in picks.items()}
+    for fam, n in fixed.items():
+        out.setdefault(fam, n)
+    for fam, n in out.items():
+        how = ("--bern-order" if fam in fixed else
+               "highest F-test pick")
+        print(f"order    : {pdefs.family_member(fam, n)} in every bin ({how}; "
+              f"F-test picks {'/'.join(map(str, picks.get(fam, [])))})")
+    return out
+
+
 def make_workspaces(args):
+    orders = bern_orders(args) if args.members == "families" else {}
+    opt = (["--order"] + [f"{f}={n}" for f, n in orders.items()]
+           if orders else [])
     for b in args.bins:
         run([sys.executable, "-m", "fitlib.makeWorkspaces", "-c", args.category,
              "-b", b, "-y", args.year, "--wsdir", args.wsdir,
-             "--members", args.members], args)
+             "--members", args.members] + opt, args)
 
 
 def make_cards(args):
@@ -339,9 +375,16 @@ def main():
                          "biasStudy.py --mode single; or the core-PDF of "
                          "corePdfFit.py, as *_core files, the bins sharing "
                          "the core and its index")
+    ap.add_argument("--bern-order", nargs="+", default=[],
+                    metavar="FAMILY=N",
+                    help="with --members families: the order of a "
+                         "Bernstein family in every bin, e.g. fewzbern=3 "
+                         "(default: its highest F-test pick over the bins)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the commands, run nothing")
     args = ap.parse_args()
+    if args.bern_order and args.members != "families":
+        ap.error("--bern-order needs --members families")
 
     args.wsdir = os.path.abspath(os.path.join(
         HERE, args.wsdir or config.default_wsdir(args.year)))
