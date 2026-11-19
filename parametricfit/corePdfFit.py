@@ -439,6 +439,7 @@ def main():
                 "smf_order_source": ("--smf-order" if args.smf_order
                                      is not None else "F-test"),
                 "f_threshold": bkgFit.F_THRESHOLD,
+                "bernstein_coefficients": pdefs.BERN_COEFFICIENTS,
             },
             "smf_ftest": ftests,
             "members": ok, "best": best, "dropped": dropped,

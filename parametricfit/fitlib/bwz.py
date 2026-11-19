@@ -14,9 +14,10 @@ parameter floats on the data; mZ and GammaZ are fixed (dyCore.MZ, GZ):
                         half-width (130 and 20 GeV): t in [-1, 1]
 
 Bern_n is the Bernstein polynomial of order n on the fit window mapped onto
-[0, 1], with its first coefficient fixed to 1 (only the shape is fitted),
-written out here rather than with RooBernstein so the mapping never depends
-on the fit range. BWZ is Bern_0, so BWZ and BWZ x Bern_n are one nested
+[0, 1], with its first coefficient fixed to 1 (only the shape is fitted)
+and the others the squares of the fitted parameters, c_k = p_k^2, so that
+it is never negative (BERN_RANGE). It is written out here rather than with
+RooBernstein so the mapping never depends on the fit range. BWZ is Bern_0, so BWZ and BWZ x Bern_n are one nested
 family for the F-test:
 
     family    members                        free parameters
@@ -54,7 +55,15 @@ C_INIT, C_RANGE, C_STEP = 2.0, (0.5, 5.0), 0.05       # BWZRedux: BW exponent
 # a +/- 0.5 per GeV and b +/- 2e-3 per GeV^2 is about a +/- 10, b +/- 0.8
 RA_INIT, RA_RANGE, RA_STEP = 0.0, (-20.0, 20.0), 0.02
 RB_INIT, RB_RANGE, RB_STEP = 0.0, (-10.0, 10.0), 0.02
-BERN_INIT, BERN_RANGE, BERN_STEP = 1.0, (-10.0, 10.0), 0.05   # as bern
+# Bernstein coefficients, every family (bern, BWZ / FEWZ / Landau x Bern):
+# each parameter p_k enters SQUARED, c_k = p_k^2 (bernstein()), so the
+# polynomial is >= 0 on the whole window, as flashggFinalFit's
+# PdfModelBuilder::getBernstein. With signed c_k a toy fit could drive the
+# background negative under the peak and trade it against r; RooFit then
+# forces the PDF to 0 there and Minuit fails (bias study, Nov 2026).
+# p_k in [-5, 5] is c_k in [0, 25]; p_k = 1 starts every c_k at 1 (a flat
+# polynomial), away from p_k = 0, where dc_k/dp_k = 0.
+BERN_INIT, BERN_RANGE, BERN_STEP = 1.0, (-5.0, 5.0), 0.05
 
 NPAR = {"bwz": 1,
         **{f"bwzbern{n}": 1 + n for n in range(1, MAX_ORDER + 1)},
@@ -85,11 +94,14 @@ def _binom(n, k):
 
 
 def bernstein(u, coefs):
-    """sum_k coefs[k] C(n,k) u^k (1-u)^(n-k), n = len(coefs) - 1."""
+    """sum_k coefs[k]^2 C(n,k) u^k (1-u)^(n-k), n = len(coefs) - 1: every
+    coefficient squared (BERN_RANGE), so the sum is >= 0 for u in [0, 1].
+    coefs are formula terms ("1.0", "@2")."""
     n = len(coefs) - 1
     terms = []
     for k, ck in enumerate(coefs):
-        t = [f"{_binom(n, k)}*{ck}"] + [u] * k + [f"(1-{u})"] * (n - k)
+        t = ([f"{_binom(n, k)}*{ck}*{ck}"] + [u] * k
+             + [f"(1-{u})"] * (n - k))
         terms.append("*".join(t))
     return "(" + "+".join(terms) + ")"
 

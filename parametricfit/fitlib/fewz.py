@@ -24,7 +24,8 @@ workspace does not need this file.
     fewzbern  fewzbern1 ... fewzbern4      Bernstein c1..cn    (n)
 
 Bern_n is the same Bernstein as bwz.py: on the fit window mapped onto
-[0, 1], first coefficient fixed to 1.
+[0, 1], first coefficient fixed to 1, the others c_k = p_k^2 (never
+negative; bwz.BERN_RANGE).
 
 The normalisation is numeric, and RooFit's default 1D integrator (Romberg,
 at most 20 steps) gets the integral of this 161-piece formula wrong by

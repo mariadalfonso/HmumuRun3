@@ -80,6 +80,7 @@ Usage
 
 import argparse
 import json
+import math
 import os
 from datetime import datetime, timezone
 
@@ -336,8 +337,9 @@ def seed_values(name, family, prev, tag):
 
     Parameters the two share keep prev's fitted values. Then, per family:
       Bernstein types   degree elevation, c'_k = k/(n+1) c_(k-1)
-                        + (1 - k/(n+1)) c_k: the same polynomial, so the
-                        start reproduces prev exactly;
+                        + (1 - k/(n+1)) c_k on the c_k = p_k^2: the
+                        same polynomial, so the start reproduces prev
+                        exactly;
       exp / pow sums    the components of prev keep SEED_FRAC of the
                         weight, the new one starts at its default: close to
                         prev, but not at the stationary point an exact copy
@@ -346,15 +348,18 @@ def seed_values(name, family, prev, tag):
     """
     vals = {n: p["value"] for n, p in prev["params"].items()}
     if family in BERN_COEF:
+        # the parameters are p_k, the coefficients c_k = p_k^2 (bwz.py):
+        # elevate the c_k, then back to p_k >= 0. Each c'_k is an average
+        # of two c_k >= 0, so its square root always exists.
         pre = BERN_COEF[family]
         n = 0
         while f"{pre}{n + 1}_{tag}" in vals:
             n += 1
-        b = [1.0] + [vals[f"{pre}{k}_{tag}"] for k in range(1, n + 1)]
+        b = [1.0] + [vals[f"{pre}{k}_{tag}"] ** 2 for k in range(1, n + 1)]
         for k in range(1, n + 2):
             r = k / (n + 1)
-            vals[f"{pre}{k}_{tag}"] = (r * b[k - 1]
-                                       + (1 - r) * (b[k] if k <= n else 0.0))
+            c = r * b[k - 1] + (1 - r) * (b[k] if k <= n else 0.0)
+            vals[f"{pre}{k}_{tag}"] = math.sqrt(c)
     elif name in SUM_FRAC:
         vals[f"{SUM_FRAC[name]}{tag}"] = SEED_FRAC
     return vals
@@ -862,6 +867,7 @@ def main():
             "f_threshold": F_THRESHOLD, "gof_threshold": GOF_THRESHOLD,
             "accepted_status": list(args.accept),
             "nll_penalty_per_par": NLL_PENALTY_PER_PAR,
+            "bernstein_coefficients": pdefs.BERN_COEFFICIENTS,
             "model_set": model_set,
             "observable": x.GetName(), "data_file": os.path.basename(datafile),
         },

@@ -197,6 +197,15 @@ reads and writes there unless `--wsdir` says otherwise.
     power law + constant, Landau × Bernstein (`expconst`, `powconst`,
     `landau`, `landbern1`–`4`).
 
+  Every Bernstein polynomial (`bern`, `bwzbern`, `fewzbern`, `landbern`)
+  has its first coefficient fixed to 1 and the others the **squares** of
+  the fitted parameters, c_k = p_k² (p_k in [−5, 5]), as flashggFinalFit's
+  `getBernstein`: the background can never go negative. With signed
+  coefficients the toy fits of the bias study drove it below zero under
+  the peak, traded against r, and Minuit failed. The JSONs store p_k and
+  say so (`provenance.bernstein_coefficients`); `buildWorkspace.py` stops
+  on a JSON from before, so rerun `bkgFit.py` (and `corePdfFit.py`).
+
   `--extra-models` adds the LO Drell–Yan core times exp(Chebyshev) or a
   power law (`dyexp`, `dypow`), and each frozen MC core times
   exp(Chebyshev) (`mcexp`, `mcpow`, `mcdy`).

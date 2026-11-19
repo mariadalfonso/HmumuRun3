@@ -50,27 +50,25 @@ class PDFDefinitions:
         formulas = {}    # Store formula variables!
         
         # ===== BERNSTEIN PDFs =====
-        params['bern_c0'] = RooRealVar(f'bern_c0_{tag}', 'bern_c0', 1.)  # constant value for the normalisation; only the ratios to it are fitted
-        params['bern_c1'] = RooRealVar(f'bern_c1_{tag}', 'bern_c1', 1., -10., 10.)
-        params['bern_c2'] = RooRealVar(f'bern_c2_{tag}', 'bern_c2', 1., -10., 10.)
-        params['bern_c3'] = RooRealVar(f'bern_c3_{tag}', 'bern_c3', 1., -10., 10.)
-        params['bern_c4'] = RooRealVar(f'bern_c4_{tag}', 'bern_c4', 1., -10., 10.)
-        params['bern_c5'] = RooRealVar(f'bern_c5_{tag}', 'bern_c5', 1., -10., 10.)
-
-        pdfs['bern1'] = RooBernstein(f'bern1_{tag}', 'bern1', x, 
-                                      RooArgList(params['bern_c0'], params['bern_c1']))
-        pdfs['bern2'] = RooBernstein(f'bern2_{tag}', 'bern2', x, 
-                                      RooArgList(params['bern_c0'], params['bern_c1'], params['bern_c2']))
-        pdfs['bern3'] = RooBernstein(f'bern3_{tag}', 'bern3', x, 
-                                      RooArgList(params['bern_c0'], params['bern_c1'], 
-                                                params['bern_c2'], params['bern_c3']))
-        pdfs['bern4'] = RooBernstein(f'bern4_{tag}', 'bern4', x,
-                                      RooArgList(params['bern_c0'], params['bern_c1'], 
-                                                params['bern_c2'], params['bern_c3'], params['bern_c4']))
-        pdfs['bern5'] = RooBernstein(f'bern5_{tag}', 'bern5', x,
-                                      RooArgList(params['bern_c0'], params['bern_c1'], 
-                                                params['bern_c2'], params['bern_c3'], 
-                                                params['bern_c4'], params['bern_c5']))
+        # c0 = 1 fixes the normalisation (only the ratios to it are
+        # fitted); c1..c5 are the SQUARES of the parameters bern_c<k>, so
+        # the polynomial is never negative (bwz.BERN_RANGE)
+        params['bern_c0'] = RooRealVar(f'bern_c0_{tag}', 'bern_c0', 1.)
+        coefs = [params['bern_c0']]
+        for k in range(1, 6):
+            params[f'bern_c{k}'] = p = RooRealVar(
+                f'bern_c{k}_{tag}', f'bern_c{k}', bwz.BERN_INIT,
+                *bwz.BERN_RANGE)
+            p.setError(bwz.BERN_STEP)       # Minuit's first step
+            formulas[f'bern_sq{k}'] = RooFormulaVar(
+                f'bern_sq{k}_{tag}', f'bern_c{k}^2', '@0*@0', RooArgList(p))
+            coefs.append(formulas[f'bern_sq{k}'])
+        for o in range(1, 6):
+            args = RooArgList()
+            for c in coefs[:o + 1]:
+                args.add(c)
+            pdfs[f'bern{o}'] = RooBernstein(f'bern{o}_{tag}', f'bern{o}', x,
+                                            args)
 
         # ===== EXPONENTIAL PDFs =====
         params['exp_p1'] = RooRealVar(f'exp_p1{tag}', 'exp_p1', -0.0207, -10., 10.)
@@ -258,6 +256,33 @@ def bern_families():
     FEWZ x Bern, Landau x Bern): the ones labelled with their order, and
     whose order buildWorkspace.py --members families fixes across bins."""
     return [f for f in BKG_FAMILIES if "Bern{n}" in FAMILY_LABEL.get(f, "")]
+
+
+# How the Bernstein parameters enter, written to every fit JSON's
+# provenance ("bernstein_coefficients"): "squared", c_k = p_k^2 (bwz.py).
+# A JSON without it is from before, when the stored value WAS c_k; read
+# as p_k it would give another shape, so check_bern_coefficients stops.
+BERN_COEFFICIENTS = "squared"
+
+
+def bern_members(names):
+    """The members of `names` that have Bernstein parameters (order >= 1
+    of a Bernstein family: not bwz or landau)."""
+    fam_of = {m: f for f, ms in BKG_FAMILIES.items() for m in ms}
+    bern = set(bern_families())
+    return [n for n in names if fam_of.get(n) in bern and member_order(n)]
+
+
+def check_bern_coefficients(prov, names, source):
+    """Stop if `source` (a fit JSON, provenance `prov`) stores Bernstein
+    parameters of `names` in another form than BERN_COEFFICIENTS."""
+    used = bern_members(names)
+    form = prov.get("bernstein_coefficients", "signed (before squaring)")
+    if used and form != BERN_COEFFICIENTS:
+        raise SystemExit(
+            f"{source}: Bernstein parameters stored as {form}, but the PDFs "
+            f"now use {BERN_COEFFICIENTS} coefficients ({', '.join(used)}); "
+            "rerun the fit that wrote it (bkgFit.py / corePdfFit.py)")
 
 
 # Plot labels, short forms of the Run 2 note's names (Fig. 6.19, Table

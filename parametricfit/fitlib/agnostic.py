@@ -17,8 +17,8 @@ against its bound at 0 and Minuit could not fit it.
 
 Landau is TMath::Landau with its location at mZ and a floating width s, as
 in the note; Bern_n is the Bernstein of bwz.py (fit window mapped onto
-[0, 1], first coefficient 1). Landau alone is Bern_0, so the two make one
-nested family for the F-test:
+[0, 1], first coefficient 1, the others c_k = p_k^2). Landau alone is
+Bern_0, so the two make one nested family for the F-test:
 
     family     members                         free parameters
     expconst   expconst                        f, a          (2)

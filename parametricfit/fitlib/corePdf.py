@@ -23,8 +23,9 @@ The SMF is a Bernstein polynomial over the fit window, its first
 coefficient fixed to 1 (the norm floats separately): order n has n free
 parameters, like the note's order-n polynomial.
 
-Its coefficients, and those of the FEWZ core's own Bernstein, are bounded
-below by 0 (POSITIVE_RANGE). A Bernstein polynomial with non-negative
+Its coefficients are bounded below by 0 (POSITIVE_RANGE); those of the
+FEWZ core's own Bernstein are squares (bwz.BERN_RANGE), never negative
+either. A Bernstein polynomial with non-negative
 coefficients is positive everywhere, so the product and its integral can
 never reach zero; with negative coefficients allowed, Minuit's trial steps
 made them do so, and each such step left RooFit integrating a NaN to the
@@ -52,10 +53,12 @@ import ROOT
 from . import pdfDefinitions as pdefs
 
 CORES = ["bwzredux", "fewzbern3", "exp2"]
-POSITIVE_RANGE = (0.0, 10.0)        # Bernstein coefficients: SMF, FEWZ core
+POSITIVE_RANGE = (0.0, 10.0)        # Bernstein coefficients of the SMF
 SMF_INIT, SMF_RANGE, SMF_STEP = 1.0, POSITIVE_RANGE, 0.05
-# the core parameters bounded to POSITIVE_RANGE: Bernstein coefficients
-POSITIVE_PREFIXES = ("fewzbern_c",)
+# core parameters bounded to POSITIVE_RANGE. None any more: the FEWZ
+# core's Bernstein coefficients are squared (bwz.BERN_RANGE), so they are
+# never negative without a bound
+POSITIVE_PREFIXES = ()
 
 
 def core_tag(category, year):

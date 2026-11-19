@@ -170,6 +170,7 @@ def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope",
     prov = rec["provenance"]
     x = observable(category, prov["window"])
     names = bkg_members(rec, members, orders, bkgjson)
+    pdefs.check_bern_coefficients(prov, names, bkgjson)
 
     mc_core = (rec.get("mc_core") or {}).get("cores")   # mc* members
     keep, store = [], ROOT.RooArgList()
@@ -194,6 +195,7 @@ def build_core_bkg(category, tag, corejson, wsdir, wsfile):
     prov = rec["provenance"]
     x = observable(category, prov["window"])
     year = prov["year"]
+    pdefs.check_bern_coefficients(prov, rec["members"], corejson)
     keep, store = [], ROOT.RooArgList()
     for core in rec["members"]:
         core_pdf, ck = corePdf.create_core(x, category, year, core)
