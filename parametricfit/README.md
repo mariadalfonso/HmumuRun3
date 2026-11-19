@@ -22,7 +22,7 @@ Run everything from `parametricfit/`.
 
 | where | what |
 |---|---|
-| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` (with `biasDiagnose.py` to see why a bias cell fails); `optimizeBins.py` chooses the BDT bins |
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` (with `biasDiagnose.py` to see why a bias cell fails, `submitBias.py` to run it on Slurm); `optimizeBins.py` chooses the BDT bins |
 | `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `bkgTable` (the table of background picks), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
@@ -107,6 +107,16 @@ F-test pick as a truth, each fitted with one function at a time.
 ```bash
 python buildWorkspace.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --members families
 python -u biasStudy.py --mode single -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 2000 -j 10
+```
+On Slurm (from the submit node, any environment), one job per test (bin ×
+truth × fit function, all `--ntoys` toys): a `prepare` job per bin
+(`biasStudy.py --only prepare`: workspace, r range, significances, all the
+toys), then an array of `--only fit --truth I --fit J` tasks, then the
+report. Scripts, task list and logs in `<outdir>/slurm/`; `--dry-run`
+writes them without submitting, and resubmitting redoes only what is
+missing:
+```bash
+python submitBias.py -c ggHcat -b bdt0 bdt1 bdt2 -y Run3 --ntoys 1000 --outdir BIAS
 ```
 To see why a cell of that matrix fails, `biasDiagnose.py` (container)
 plots, per truth and fit function, one toy with the S+B fit, the fitted
@@ -380,3 +390,12 @@ converged and passes the goodness of fit in every bin, or
 - `--metric median|mean`: the quoted Bias. Median by default for the
   envelope (flashggFinalFit), mean for `single` and `core` (the Run 2 note).
 - `--combine-opts`, `--seed`, `--force`, `--dry-run`, `--only run|report`.
+- `--only prepare` (no fits) and `--only fit --truth I [--fit J]` (one test,
+  from what prepare wrote): the stages `submitBias.py` runs on Slurm.
+
+**`submitBias.py`**: the `biasStudy.py` options it passes on (`-c`, `-b`,
+`-y`, `--mode single|envelope`, `--carddir`, `--outdir`, `--plotdir`,
+`--inject`, `--ntoys`, `--toys-per-job`, `--seed`, `--combine-opts`), and
+`--partition` (default `submit`), `--time-prepare`, `--time-fit` (12 h),
+`--time-report`, `--mem` (per CPU), `--prepare-cpus` (8), `--max-running`
+(array `%N`), `--container`, `--no-report`, `--dry-run`.

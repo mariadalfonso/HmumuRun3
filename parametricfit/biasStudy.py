@@ -686,22 +686,24 @@ def run_tag(tag, args):
         if meta["rrange_source"][key] == "fallback":
             print(f"  !! this is the +/- {R_SEED_RANGE:g} fallback (the "
                   f"Asimov fit failed); --force retries it")
-        nchunks = int(math.ceil(args.ntoys / float(args.toys_per_job)))
         for igen in range(len(names)):
-            for k in range(nchunks):
-                n = min(args.toys_per_job, args.ntoys - k * args.toys_per_job)
-                seed = args.seed + 1000 * igen + k
+            for k, n, seed in toy_chunks(args, igen):
                 for ifit in ([None] if fits is None else fits):
                     fs = (f"gen{igen}_{key}_s{seed}" if ifit is None else
                           f"gen{igen}_fit{ifit}_{key}_s{seed}")
                     meta["ntoys"][fs] = n
                 jobs.append((t2w, tag, igen, r_inj, rrange, n, seed, outdir,
                              extra, args.force, args.dry_run, fits, frozen))
+    if frozen is not None:    # for the --only fit tasks
+        meta["frozen"] = {str(i): list(v) for i, v in frozen.items()}
     if not args.dry_run:
         write_json(meta_path, meta)
 
+    prepare = args.only == "prepare"
     nfit = 1 if fits is None else len(fits)
-    print(f"  {len(jobs)} job(s) of {nfit} fit(s) each, {args.jobs} at a time")
+    print(f"  {len(jobs)} job(s) of "
+          + ("toy generation" if prepare else f"{nfit} fit(s) each")
+          + f", {args.jobs} at a time")
     status = {}
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         if fits is not None:     # the significances first: one fit each
@@ -711,13 +713,92 @@ def run_tag(tag, args):
                 if st not in ("done", "exists"):
                     print(f"  significance with "
                           f"{short_name(names[ifit], tag)}: {st}")
-        for res in pool.map(lambda j: toy_job(*j), jobs):
+        if prepare:              # the toys only, for the --only fit tasks
+            def gen(j):
+                stem, toys = gen_toys(*j[:4], j[5], j[6], j[7], j[8],
+                                      j[9], j[10])
+                return [(stem, "generated" if toys else
+                         "generation failed")]
+            work = gen
+        else:
+            work = lambda j: toy_job(*j)
+        for res in pool.map(work, jobs):
             for stem, st in res:
                 status.setdefault(st, []).append(stem)
-                if st not in ("done", "exists"):
+                if st not in ("done", "exists", "generated"):
                     print(f"  {stem}: {st}")
     for st, stems in sorted(status.items()):
         print(f"  {st:<18} {len(stems)}")
+
+
+def toy_chunks(args, igen):
+    """[(k, ntoys, seed)]: the --toys-per-job chunks of truth igen's toys;
+    job k of member i uses seed + 1000*i + k."""
+    nchunks = int(math.ceil(args.ntoys / float(args.toys_per_job)))
+    return [(k, min(args.toys_per_job, args.ntoys - k * args.toys_per_job),
+             args.seed + 1000 * igen + k) for k in range(nchunks)]
+
+
+def run_fit_task(tag, args):
+    """--only fit: one test, the toys of truth --truth (every chunk, all
+    --ntoys) fitted with member --fit (--mode single) or with the envelope
+    floating (--mode envelope, no --fit). Reads what --only prepare wrote
+    (meta.json, the workspace, the toys) and writes only its own fit
+    files, so the tests of a tag can run at the same time (submitBias.py,
+    a Slurm array). Fits whose output exists are skipped."""
+    outdir = tag_outdir(tag, args)
+    meta_path = os.path.join(outdir, "meta.json")
+    if not os.path.isfile(meta_path):
+        raise SystemExit(f"no {meta_path}: run --only prepare first")
+    meta = read_json(meta_path)
+    names, t2w = meta["envelope"], meta["workspace"]
+    igen = args.truth
+    ifit = args.fit if args.mode == "single" else None
+    if igen >= len(names):
+        print(f"{tag}: no truth {igen} ({len(names)} members); nothing to do")
+        return
+    if args.mode == "single" and ifit not in meta.get("fits", []):
+        print(f"{tag}: member {ifit} is not fitted ({meta.get('fits')}); "
+              "nothing to do")
+        return
+    freeze = (meta.get("frozen") or {}).get(str(ifit), ())
+    if args.mode == "single" and "frozen" not in meta:
+        raise SystemExit(f"{meta_path} has no 'frozen': rerun --only "
+                         "prepare with this biasStudy.py")
+    extra = shlex.split(args.combine_opts)
+    print(f"=== {tag}: toys from [{igen}] {short_name(names[igen], tag)}, "
+          + ("envelope floating" if ifit is None else
+             f"fitted with [{ifit}] {short_name(names[ifit], tag)}") + " ===")
+    status = {}
+    for r_inj in args.inject:
+        key = rlabel(r_inj)
+        if key not in meta["rrange"]:
+            raise SystemExit(f"{meta_path} has no r range for r = "
+                             f"{r_inj:g}: run --only prepare with --inject "
+                             f"{r_inj:g}")
+        rrange = meta["rrange"][key]
+        for k, n, seed in toy_chunks(args, igen):
+            stem = f"gen{igen}_{key}_s{seed}"
+            toys = os.path.join(outdir, f"toys_{stem}.root")
+            fstem = stem if ifit is None else stem.replace(
+                "_", f"_fit{ifit}_", 1)
+            if os.path.isfile(os.path.join(outdir, f"fit_{fstem}.root")) \
+                    and not args.force:
+                st = "exists"
+            elif not os.path.isfile(toys) and not args.dry_run:
+                st = "no toys (run --only prepare)"
+            else:
+                _, ok = fit_toys(t2w, tag, toys, stem, r_inj, rrange, n,
+                                 seed, outdir, extra, args.dry_run, ifit,
+                                 freeze)
+                st = "done" if ok else "fit failed"
+            status.setdefault(st, []).append(fstem)
+            print(f"  {fstem}: {st}", flush=True)
+    for st, stems in sorted(status.items()):
+        print(f"  {st:<18} {len(stems)}")
+    bad = [s for s in status if s not in ("done", "exists")]
+    if bad:
+        raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -1895,7 +1976,19 @@ def main():
     ap.add_argument("--combine-opts", default="",
                     help="extra options for every combine call, e.g. "
                          "\"--toysNoSystematics\"")
-    ap.add_argument("--only", choices=("run", "report"), default=None)
+    ap.add_argument("--only", choices=("run", "report", "prepare", "fit"),
+                    default=None,
+                    help="run: toys and fits, no report; report: read "
+                         "back and plot only; prepare: the workspace, the "
+                         "r range, the significances and every toy, no "
+                         "fits; fit: one test (--truth, --fit) from what "
+                         "prepare wrote. prepare and fit are the stages "
+                         "of submitBias.py (Slurm)")
+    ap.add_argument("--truth", type=int, default=None, metavar="I",
+                    help="--only fit: the pdfindex of the truth")
+    ap.add_argument("--fit", type=int, default=None, metavar="J",
+                    help="--only fit with --mode single: the pdfindex of "
+                         "the fit function")
     ap.add_argument("--force", action="store_true",
                     help="redo jobs whose output exists, and the r range")
     ap.add_argument("--dry-run", action="store_true",
@@ -1907,6 +2000,12 @@ def main():
         args.metric = DEFAULT_METRIC[args.mode]
     if args.fit_models and args.mode != "single":
         ap.error("--fit-models needs --mode single")
+    if args.only in ("prepare", "fit") and args.mode == "core":
+        ap.error(f"--only {args.only} is for --mode envelope or single")
+    if args.only == "fit" and (args.truth is None or (
+            args.mode == "single") != (args.fit is not None)):
+        ap.error("--only fit needs --truth, and --fit with --mode single "
+                 "(only then)")
     if args.carddir is None:
         args.carddir = os.path.join(HERE, config.default_wsdir(args.year))
 
@@ -1919,10 +2018,14 @@ def main():
         return
 
     tags = [f"{c}_{b}_{args.year}" for c in args.category for b in args.bins]
+    if args.only == "fit":
+        for tag in tags:
+            run_fit_task(tag, args)
+        return
     if args.only != "report":
         for tag in tags:
             run_tag(tag, args)
-    if args.only != "run" and not args.dry_run:
+    if args.only in (None, "report") and not args.dry_run:
         reports = {tag: report_tag(tag, args) for tag in tags}
         if len(args.bins) > 1 and args.mode == "single":
             for cat in args.category:
