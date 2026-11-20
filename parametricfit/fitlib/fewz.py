@@ -27,13 +27,20 @@ Bern_n is the same Bernstein as bwz.py: on the fit window mapped onto
 [0, 1], first coefficient fixed to 1, the others c_k = p_k^2 (never
 negative; bwz.BERN_RANGE).
 
-The normalisation is numeric, and RooFit's default 1D integrator (Romberg,
-at most 20 steps) gets the integral of this 161-piece formula wrong by
-~8e-4, by an amount that changes with the coefficients. With ~1e6 events
-that is enough to move the minimum: fewzbern3 fitted to its own Asimov in
-ggHcat bdt0 (5 bins) gave a Bias of -1.0. Every FEWZ pdf therefore carries
-its own integrator, adaptive Gauss-Kronrod (error < 1e-7); the setting is
-stored with the pdf, so Combine reading the workspace uses it too.
+The normalisation is numeric, and it must be both accurate and smooth in
+the coefficients. RooFit's default 1D integrator (Romberg, at most 20
+steps) gets the integral of this 161-piece formula wrong by ~8e-4, by an
+amount that changes with the coefficients; with ~1e6 events that moves the
+minimum (fewzbern3 fitted to its own Asimov in ggHcat bdt0 gave a Bias of
+-1.0). Adaptive Gauss-Kronrod (eps 1e-5, used until Nov 2026) is accurate
+at most parameter values but not all: where its subdivision changes, the
+integral jumps, by 2.6e-4 at the bdt3 minimum (3.4 units of NLL there),
+and Minuit can neither converge (status 3, Minuit2 aborts) nor find the
+error on r. Every FEWZ pdf therefore integrates with a FIXED rule, the
+midpoint rule on INT_BINS bins (RooBinIntegrator): its result is exactly
+linear in the c_k, so smooth, and ~2e-8 off (4000 and 16000 bins agree to
+2e-8). The setting is stored with the pdf, so Combine reading the
+workspace uses it too.
 """
 
 import ctypes
@@ -53,9 +60,8 @@ MAX_ORDER = 4               # fewzbern1-4
 # the normalisation integral: see the docstring. A tighter tolerance only
 # adds "roundoff error" messages (the pieces meet to rounding), not accuracy
 # that matters
-INT_METHOD = "RooAdaptiveGaussKronrodIntegrator1D"
-INT_EPS = 1e-5              # relative and absolute; the result is ~4e-8 off
-INT_MAX_SEGMENTS = 1000     # the default 100 is too few for 161 pieces
+INT_METHOD = "RooBinIntegrator"   # fixed midpoint rule: no adaptive jumps
+INT_BINS = 4000             # 0.01 GeV over 110-150: ~2e-8 off, ~2 ms each
 
 NPAR = {f"fewzbern{n}": n for n in range(1, MAX_ORDER + 1)}
 FAMILIES = {"fewzbern": list(NPAR)}
@@ -104,13 +110,11 @@ def spline_expr(lo, hi, m="@0"):
 
 
 def precise_integration(pdf):
-    """Give `pdf` its own numeric integrator (INT_METHOD), kept with it
-    when it is written to a workspace."""
+    """Give `pdf` its own numeric integrator (INT_METHOD on INT_BINS
+    bins), kept with it when it is written to a workspace."""
     cfg = pdf.specialIntegratorConfig(True)
     cfg.method1D().setLabel(INT_METHOD)
-    cfg.setEpsRel(INT_EPS)
-    cfg.setEpsAbs(INT_EPS)
-    cfg.getConfigSection(INT_METHOD).setRealValue("maxSeg", INT_MAX_SEGMENTS)
+    cfg.getConfigSection(INT_METHOD).setRealValue("numBins", INT_BINS)
     return pdf
 
 
