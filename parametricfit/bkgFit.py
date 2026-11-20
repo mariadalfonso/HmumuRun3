@@ -86,7 +86,7 @@ from datetime import datetime, timezone
 
 import ROOT
 
-from fitlib import bdtBins, bkgTable, config, mcCore, style
+from fitlib import bdtBins, bkgTable, config, fewz, mcCore, style
 from fitlib.gof import (CHI2_MIN_BIN_SIGNIFICANCE, GOF_THRESHOLD,
                         merge_chi2_bins)
 from fitlib import pdfDefinitions as pdefs
@@ -96,6 +96,7 @@ ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
 for _i in range(ROOT.RooMsgService.instance().numStreams()):
     ROOT.RooMsgService.instance().getStream(_i).removeTopic(ROOT.RooFit.Plotting)
+fewz.quiet_bin_integrator()      # its RooBinIntegrator warning, every fit
 
 # ---------------------------------------------------------------------------
 # blinding

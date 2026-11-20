@@ -47,7 +47,7 @@ import ctypes
 import functools
 import os
 
-from ROOT import RooArgList, RooGenericPdf, RooRealVar, TFile
+from ROOT import RooArgList, RooFit, RooGenericPdf, RooMsgService, RooRealVar, TFile
 
 from .bwz import BERN_INIT, BERN_RANGE, BERN_STEP, bernstein
 
@@ -116,6 +116,34 @@ def precise_integration(pdf):
     cfg.method1D().setLabel(INT_METHOD)
     cfg.getConfigSection(INT_METHOD).setRealValue("numBins", INT_BINS)
     return pdf
+
+
+_QUIET = False
+
+
+def quiet_bin_integrator():
+    """Hide RooFit's Integration WARNINGs, keep its Integration ERRORs.
+
+    RooBinIntegrator warns each time it is built ("integrand provide no
+    binning definition ... substituting default binning of INT_BINS bins"):
+    a formula pdf has no bin boundaries of its own, and RooFit builds a new
+    integral for every fit and normalisation set. The warning is expected
+    (INT_BINS is the binning we want) but floods the log. RooFit gives the
+    message no object to filter on, so the whole topic goes from the
+    streams that print WARNING, and a new stream prints it again from ERROR
+    up. Only the printing changes, not the integrals or the workspaces.
+    Call once per process, from a script; Combine never needs it.
+    """
+    global _QUIET
+    if _QUIET:
+        return
+    ms = RooMsgService.instance()
+    for i in range(ms.numStreams()):
+        st = ms.getStream(i)
+        if st.minLevel <= RooFit.WARNING:
+            st.removeTopic(RooFit.Integration)
+    ms.addStream(RooFit.ERROR, RooFit.Topic(RooFit.Integration))
+    _QUIET = True
 
 
 def create_pdfs(x, tag):
