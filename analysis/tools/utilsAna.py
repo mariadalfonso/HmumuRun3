@@ -19,15 +19,38 @@ def loadtmvahelper():
 
 # lumis with golden json
 #https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis#ReReco_ERAS_A_B_C_D_E
-lumis={
+#https://docs.google.com/presentation/d/1J-5IZ_zxELvBFhsVnlSChxWjOJB4jabXkCIalqA5GIk/edit?slide=id.g36971dee1d1_0_0#slide=id.g36971dee1d1_0_0
+#https://docs.google.com/presentation/d/1H_WuzeAGkW3xZvo3oN4qGZWfw2eBuUzMhPLeShYAQoU/edit?slide=id.g36971dee1d1_0_0#slide=id.g36971dee1d1_0_0
+#https://docs.google.com/presentation/d/1EHxQcWzw8IxPgCn8hm1prwSP-EktFtiuaEzH8WkQNVY/edit?slide=id.g36971dee1d1_0_0#slide=id.g36971dee1d1_0_0
+totalLumis={
     '12022':7.99, # C-D
     '22022':26.68, # E, F, G
     '12023':17.96, # C
     '22023':9.68, # D
     '2024':109.82, # C-I
-    '2025':110.59, # C-G
-    '2026':25.31 # C, B
+    '2025':110.63, # C-G
+    '2026':28.06 # C, B
 }
+
+lumis = {
+    "2024C": 7.26,
+    "2024D": 7.98,
+    "2024E": 11.42,
+    "2024F": 28.04,
+    "2024G": 38.07,
+    "2024H": 5.49,
+    "2024I": 11.56,
+    #
+    "2025C": 21.56,
+    "2025D": 25.82,
+    "2025E": 14.05,
+    "2025F": 26.69,
+    "2025G": 22.25,
+    #
+    "2026B":15.28,
+    "2026D":10.03,
+}
+
 
 btagPNetBM={
     '12022':0.245,
