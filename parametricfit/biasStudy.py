@@ -190,7 +190,8 @@ SERIES_HEX = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4",
               "#008300", "#6250d6", "#e34948"]
 SERIES_MARKERS = [20, 21, 22, 23, 33, 34, 29, 47]
 SINGLE_BINS_NCOL = 3
-SINGLE_BINS_PANEL_PX = (520, 420)   # one panel, pixels
+SINGLE_BINS_PANEL_PX = (520, 420)   # one panel, pixels, without the
+                                    # band of the truth and legend
 SINGLE_BINS_YMAX = 1.5              # frame -YMAX to +YMAX, as in the note;
                                     # beyond it, a triangle on the edge
 SINGLE_BINS_LEGEND_COLS = 2         # a panel's legend, top right
@@ -917,6 +918,27 @@ def draw_label(pad, right, t=None):
     return lat
 
 
+def draw_label_px(pw, ph, x0, x1, right):
+    """CMS label from x0 and `right` text up to x1, 6 px below the top of
+    a pad pw x ph pixels: pixel fonts, so the same size on any canvas."""
+    lat = ROOT.TLatex()
+    lat.SetNDC()
+    lat.SetTextAlign(13)
+    y = 1 - 6.0 / ph
+    lat.SetTextFont(63)
+    lat.SetTextSize(18)
+    lat.DrawLatex(x0 / pw, y, style.CMS_TEXT)
+    if style.CMS_EXTRA_TEXT:
+        lat.SetTextFont(53)
+        lat.SetTextSize(15)
+        lat.DrawLatex((x0 + 48.0) / pw, y - 2.0 / ph, style.CMS_EXTRA_TEXT)
+    lat.SetTextFont(43)
+    lat.SetTextSize(13)
+    lat.SetTextAlign(33)
+    lat.DrawLatex(x1 / pw, y - 2.0 / ph, right)
+    return lat
+
+
 def new_canvas(name):
     style.setup_style()
     c = ROOT.TCanvas(name, "", style.CANVAS_W, style.CANVAS_H)
@@ -1276,8 +1298,10 @@ def plot_matrix(summary, outbase, pdf):
     thr, metric = summary["threshold"], summary["metric"]
     nx, ny = len(truths), len(fits)
     cw, ch = 64, 30                                  # cell, pixels
-    band = 48                    # CMS label, as on the 600 px canvases
-    left, right, top, bottom = 120, 210, band + 40, 120
+    # from the top, in pixels: the CMS label (to 30), the title, the
+    # column heads, the matrix
+    title_y, head_y = 40, 68
+    left, right, top, bottom = 120, 210, 82, 104
     w, h = left + right + cw * nx, top + bottom + ch * ny
     style.setup_style()
     c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
@@ -1328,11 +1352,11 @@ def plot_matrix(summary, outbase, pdf):
     col.SetTextFont(43)
     col.SetTextSize(13)
     col.SetTextAlign(12)
-    x0 = 1 - c.GetRightMargin() + 0.012
-    xs = [x0, x0 + 62.0 / w, x0 + 120.0 / w]
+    x0 = 1 - (right - 10.0) / w
+    xs = [x0, x0 + 76.0 / w, x0 + 128.0 / w]
     col.SetTextColor(ROOT.kGray + 2)
     for x, head in zip(xs, ("max |Bias|", "Z_{exp}", "")):
-        col.DrawLatex(x, ndc_y(ny + 0.6), head)
+        col.DrawLatex(x, 1 - head_y / float(h), head)
     for k, f in enumerate(fits):
         v = summary["functions"][f]
         y = ndc_y(ny - k - 0.5)
@@ -1350,20 +1374,22 @@ def plot_matrix(summary, outbase, pdf):
     lat.SetNDC()
     lat.SetTextFont(43)
     lat.SetTextSize(15)
-    lat.SetTextAlign(12)
-    lat.DrawLatex(c.GetLeftMargin(), 1 - (band + 20.0) / h,
+    lat.SetTextAlign(13)
+    lat.DrawLatex(c.GetLeftMargin(), 1 - title_y / float(h),
                   f"{summary['tag']}, #mu_{{inj}} = {summary['r_inj']:g}: "
                   f"{metric} Bias, red where |Bias| #geq {thr:g}")
     # axis titles by hand: pixel-font title offsets do not scale
     lat.SetTextSize(14)
     lat.SetTextColor(ROOT.kGray + 2)
     lat.SetTextAlign(21)
-    lat.DrawLatex(c.GetLeftMargin() + 0.5 * cw * nx / w, 8.0 / h,
+    lat.DrawLatex(c.GetLeftMargin() + 0.5 * cw * nx / w, 10.0 / h,
                   "toys generated from (truth)")
     lat.SetTextAlign(32)
-    lat.DrawLatex(c.GetLeftMargin() - 8.0 / w, ndc_y(ny + 0.6), "fitted with")
-    keep += [txt, col, lat, draw_label(c, "toys (%.1f TeV)" % style.SQRT_S_TEV,
-                                       t=band / float(h))]
+    lat.DrawLatex(c.GetLeftMargin() - 8.0 / w, 1 - head_y / float(h),
+                  "fitted with")
+    keep += [txt, col, lat,
+             draw_label_px(w, h, left, w - 10.0,
+                           "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
 
 
@@ -1422,13 +1448,12 @@ def family_order(names):
 def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
     """The Run 2 note's Fig. 6.20 across the BDT bins, one panel per truth
     family (the note has one per fit function): the Bias against the bin,
-    one line per fit family. Each panel has its own labels, as in the
-    note: in a box across the top of the frame, the truth on the left and
-    the legend of the fit functions on the right, the Bernstein ones with
-    their order. A
-    point beyond +/- SINGLE_BINS_YMAX is an open triangle on that edge,
-    with its value next to it. Pixel fonts, so the canvas grows with the
-    number of panels."""
+    one line per fit family. Each panel has its own labels, in a band
+    above the frame so they hide no point: the truth on the left, the
+    legend of the fit functions on the right, the Bernstein ones with
+    their order. A point beyond +/- SINGLE_BINS_YMAX is an open triangle
+    inside that edge, with its value next to it, and the line breaks
+    there. Pixel fonts, so the canvas grows with the number of panels."""
     cells = single_by_family(by_bin)          # truth -> fit -> bin -> s
     orders = family_orders(by_bin)
     panels = family_order(cells)
@@ -1437,7 +1462,10 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
     nb = len(bins)
     ncol = min(SINGLE_BINS_NCOL, len(panels))
     nrow = int(math.ceil(len(panels) / float(ncol)))
+    leg_rows = int(math.ceil(len(series) / float(SINGLE_BINS_LEGEND_COLS)))
+    head_px = max(40, 15 * leg_rows + 8)         # the truth and the legend
     pw, ph = SINGLE_BINS_PANEL_PX
+    ph += head_px
     w, h = ncol * pw, nrow * ph
     style.setup_style()
     c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
@@ -1454,11 +1482,10 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         g.SetMarkerStyle(markers[s])
         g.SetLineWidth(2)
         proxies[s] = g
-    leg_rows = int(math.ceil(len(series) / float(SINGLE_BINS_LEGEND_COLS)))
     ymax = ytop = SINGLE_BINS_YMAX
     # series side by side within a bin, so the error bars do not overlap
     dx = min(0.6 / max(len(series), 1), 0.12)
-    left, right, top, bottom = 70.0, 14.0, 30.0, 46.0     # pixels
+    left, right, top, bottom = 70.0, 14.0, 30.0 + head_px, 46.0  # pixels
     for k, p in enumerate(panels):
         col, row = k % ncol, k // ncol
         x1, x2 = col / float(ncol), (col + 1) / float(ncol)
@@ -1509,9 +1536,11 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
             per_bin = cells[p].get(s, {})
             gr = ROOT.TGraphErrors()
             off = {True: ROOT.TGraph(), False: ROOT.TGraph()}   # above?
+            runs = [[]]                 # the line, broken where off scale
             for i, b in enumerate(bins):
                 cell = per_bin.get(b, {})
                 if "bias" not in cell:
+                    runs.append([])
                     continue
                 x = i + (j - 0.5 * (len(series) - 1)) * dx
                 v = cell["bias"]
@@ -1519,7 +1548,9 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
                     n = gr.GetN()
                     gr.SetPoint(n, x, v)
                     gr.SetPointError(n, 0, cell.get("bias_err", 0))
+                    runs[-1].append((x, v))
                     continue
+                runs.append([])
                 up = v > 0
                 k_off = stacked.get((i, up), 0)
                 stacked[i, up] = k_off + 1
@@ -1534,8 +1565,18 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
             gr.SetMarkerStyle(markers[s])
             gr.SetMarkerSize(1.0)
             gr.SetLineWidth(2)
+            for run in runs:
+                if len(run) < 2:
+                    continue
+                ln = ROOT.TGraph(len(run))
+                for n, (x, v) in enumerate(run):
+                    ln.SetPoint(n, x, v)
+                ln.SetLineColor(colors[s])
+                ln.SetLineWidth(2)
+                ln.Draw("L same")
+                keep.append(ln)
             if gr.GetN():
-                gr.Draw("PL same" if gr.GetN() > 1 else "P same")
+                gr.Draw("P same")
             for up, g in off.items():
                 g.SetMarkerColor(colors[s])
                 g.SetMarkerStyle(26 if up else 32)
@@ -1546,29 +1587,22 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         keep.append(edge)
         frame.Draw("AXIS same")
 
-        # a box across the top of the frame: the truth on the left, the
-        # legend of the fit functions on the right
-        yf = 1 - top / ph                          # top of the frame
-        xa, xb = (left + 2.0) / pw, 1 - (right + 2.0) / pw
-        box_px = max(46.0, 15.0 * leg_rows + 10.0)
-        box = ROOT.TPave(xa, yf - box_px / ph, xb, yf - 1.0 / ph, 0, "NDC")
-        box.SetFillColorAlpha(ROOT.kWhite, 0.88)
-        box.SetFillStyle(1001)
-        box.Draw()
+        # the band above the frame: the truth on the left, the legend of
+        # the fit functions on the right
+        yh = 1 - 30.0 / ph                         # top of the band
         lat = ROOT.TLatex()
         lat.SetNDC()
         lat.SetTextFont(43)
         lat.SetTextAlign(13)
-        xl = (left + 8.0) / pw
         lat.SetTextSize(14)
-        lat.DrawLatex(xl, yf - 7.0 / ph,
+        lat.DrawLatex(left / pw, yh - 4.0 / ph,
                       "Toys from #bf{%s}" % ordered_label(p, orders.get(p)))
         lat.SetTextSize(12)
-        lat.DrawLatex(xl, yf - 26.0 / ph,
+        lat.DrawLatex(left / pw, yh - 23.0 / ph,
                       f"m_{{H}} = {MH:g} GeV, #mu_{{inj}} = {r_inj:g}")
         leg = ROOT.TLegend((left + SINGLE_BINS_LABEL_PX) / pw,
-                           yf - (15.0 * leg_rows + 6.0) / ph, xb,
-                           yf - 4.0 / ph)
+                           yh - (15.0 * leg_rows + 4.0) / ph,
+                           1 - right / pw, yh - 2.0 / ph)
         leg.SetBorderSize(0)
         leg.SetFillStyle(0)
         leg.SetTextFont(43)
@@ -1578,26 +1612,8 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         for s in series:
             leg.AddEntry(proxies[s], ordered_label(s, orders.get(s)), "lp")
         leg.Draw()
-        keep += [box]
-        frame.Draw("AXIS same")
-        # CMS label in pixels: draw_label spaces it by the canvas width
-        cms = ROOT.TLatex()
-        cms.SetNDC()
-        cms.SetTextAlign(13)
-        yb = 1 - 6.0 / ph
-        cms.SetTextFont(63)
-        cms.SetTextSize(18)
-        cms.DrawLatex(left / pw, yb, style.CMS_TEXT)
-        if style.CMS_EXTRA_TEXT:
-            cms.SetTextFont(53)
-            cms.SetTextSize(15)
-            cms.DrawLatex((left + 48.0) / pw, yb - 2.0 / ph,
-                          style.CMS_EXTRA_TEXT)
-        cms.SetTextFont(43)
-        cms.SetTextSize(13)
-        cms.SetTextAlign(33)
-        cms.DrawLatex(1 - right / pw, yb - 2.0 / ph,
-                      "%s (%.1f TeV)" % (title, style.SQRT_S_TEV))
+        cms = draw_label_px(pw, ph, left, pw - right,
+                            "%s (%.1f TeV)" % (title, style.SQRT_S_TEV))
         keep += [lat, leg, cms]
     keep.append(proxies)
     save(c, outbase, pdf)
