@@ -440,6 +440,7 @@ def main():
                                      is not None else "F-test"),
                 "f_threshold": bkgFit.F_THRESHOLD,
                 "bernstein_coefficients": pdefs.BERN_COEFFICIENTS,
+                "landau_width": pdefs.agnostic.S_FIXED,
             },
             "smf_ftest": ftests,
             "members": ok, "best": best, "dropped": dropped,

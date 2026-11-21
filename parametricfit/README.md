@@ -195,7 +195,14 @@ reads and writes there unless `--wsdir` says otherwise.
     `exp`, `pow`);
   - eqs. 5.9–5.11 (`fitlib/agnostic.py`): exponential + constant,
     power law + constant, Landau × Bernstein (`expconst`, `powconst`,
-    `landau`, `landbern1`–`4`).
+    `landbern1`–`4`). The Landau has its location at m_Z, as in the note,
+    and its width **fixed** at 1 GeV (`agnostic.S_FIXED`): the window sees
+    only its far tail, ~1/(m − m_Z)², which barely depends on the width,
+    so a floating width was a near-flat direction (errors up to 300 GeV,
+    status 1 fits, a landbern2 biased on its own toys in bdt0). The family
+    starts at `landbern1`; `landbern<n>` has n free parameters. Each fit
+    JSON records the width (`provenance.landau_width`), and
+    `buildWorkspace.py` stops on a JSON fitted with another one.
 
   Every Bernstein polynomial (`bern`, `bwzbern`, `fewzbern`, `landbern`)
   has its first coefficient fixed to 1 and the others the **squares** of

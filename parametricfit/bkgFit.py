@@ -869,6 +869,7 @@ def main():
             "accepted_status": list(args.accept),
             "nll_penalty_per_par": NLL_PENALTY_PER_PAR,
             "bernstein_coefficients": pdefs.BERN_COEFFICIENTS,
+            "landau_width": pdefs.agnostic.S_FIXED,
             "model_set": model_set,
             "observable": x.GetName(), "data_file": os.path.basename(datafile),
         },

@@ -15,15 +15,27 @@ gives a shape, f_note = f / (f + (1 - f) e^(125 a)). Written literally, the
 falling term is ~1e-11 for a power law (125^-5), so f would sit at 1e-11
 against its bound at 0 and Minuit could not fit it.
 
-Landau is TMath::Landau with its location at mZ and a floating width s, as
-in the note; Bern_n is the Bernstein of bwz.py (fit window mapped onto
-[0, 1], first coefficient 1, the others c_k = p_k^2). Landau alone is
-Bern_0, so the two make one nested family for the F-test:
+Landau is TMath::Landau with its location at mZ, as in the note, and its
+width FIXED at S_FIXED; Bern_n is the Bernstein of bwz.py (fit window
+mapped onto [0, 1], first coefficient 1, the others c_k = p_k^2).
+
+The width is fixed because the fit window cannot measure it. With the
+location at mZ, 110-150 GeV is the far tail, where the Landau falls as
+~ 1/(m - mZ)^2 whatever the width: from s = 0.1 to 2 GeV the normalised
+shape over the window changes by 1-4%, not even monotonically, which the
+Bernstein terms absorb. Left floating (0.1-100 GeV, until Nov 2026) every
+bin chose s = 0.1-5.5 GeV with errors up to 300 GeV, Minuit status 1 /
+covQual 2, and the F-test counted a parameter that carried no shape. In
+ggHcat bdt0 (~1.8M events) the bias study then found landbern2 biased on
+its own toys (-0.57) and an expected significance 2.4x that of every
+other function. S_FIXED = 1 GeV sits among the widths the data chose.
+Without its free width, Landau alone has no parameter, so the family
+starts at landbern1:
 
     family     members                         free parameters
     expconst   expconst                        f, a          (2)
     powconst   powconst                        f, a          (2)
-    landbern   landau, landbern1 ... landbern4 s, c1..cn     (1 + n)
+    landbern   landbern1 ... landbern4         c1..cn        (n)
 """
 
 from ROOT import RooArgList, RooGenericPdf, RooRealVar
@@ -38,18 +50,17 @@ MAX_ORDER = 4               # landbern1-4
 F_INIT, F_RANGE, F_STEP = 0.05, (0.0, 1.0), 0.01        # the constant
 EA_INIT, EA_RANGE, EA_STEP = -0.05, (-1.0, 1.0), 1e-3   # e^(a (m-125))
 PA_INIT, PA_RANGE, PA_STEP = -5.0, (-50.0, 50.0), 0.05  # (m/125)^a
-S_INIT, S_RANGE, S_STEP = 5.0, (0.1, 100.0), 0.1        # Landau width, GeV
+S_FIXED = 1.0                 # Landau width, GeV, fixed (docstring)
 
-NPAR = {"expconst": 2, "powconst": 2, "landau": 1,
-        **{f"landbern{n}": 1 + n for n in range(1, MAX_ORDER + 1)}}
+NPAR = {"expconst": 2, "powconst": 2,
+        **{f"landbern{n}": n for n in range(1, MAX_ORDER + 1)}}
 FAMILIES = {"expconst": ["expconst"],
             "powconst": ["powconst"],
-            "landbern": ["landau"] + [f"landbern{n}"
-                                      for n in range(1, MAX_ORDER + 1)]}
+            "landbern": [f"landbern{n}" for n in range(1, MAX_ORDER + 1)]}
 
 
 def create_pdfs(x, tag):
-    """Every expconst / powconst / landau / landbern candidate in x.
+    """Every expconst / powconst / landbern candidate in x.
 
     Returns (pdfs, params), keyed like PDFDefinitions.create_bkg_pdfs.
     """
@@ -77,17 +88,16 @@ def create_pdfs(x, tag):
         f"(@1+(1-@1)*TMath::Power(@0/{MREF!r},@2))", RooArgList(x, f, a))
 
     # ---- Landau, and Landau x Bern_n (5.11) ----------------------------
-    s = var("landbern_s", S_INIT, S_RANGE, S_STEP)
+    # the width a constant in the formula: nothing for Minuit or Combine
+    # to float, and the same shape in every workspace
     bern = [var(f"landbern_c{k}", BERN_INIT, BERN_RANGE, BERN_STEP)
             for k in range(1, MAX_ORDER + 1)]
-    landau = f"TMath::Landau(@0,{MZ!r},@1)"
-    pdfs["landau"] = RooGenericPdf(f"landau_{tag}", "landau", landau,
-                                   RooArgList(x, s))
+    landau = f"TMath::Landau(@0,{MZ!r},{S_FIXED!r})"
     for n in range(1, MAX_ORDER + 1):
-        args = RooArgList(x, s)
+        args = RooArgList(x)
         for v in bern[:n]:
             args.add(v)
-        coefs = ["1.0"] + [f"@{k + 1}" for k in range(1, n + 1)]
+        coefs = ["1.0"] + [f"@{k}" for k in range(1, n + 1)]
         pdfs[f"landbern{n}"] = RooGenericPdf(
             f"landbern{n}_{tag}", f"landbern{n}",
             f"{landau}*{bernstein(u, coefs)}", args)

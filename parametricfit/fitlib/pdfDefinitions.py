@@ -236,7 +236,7 @@ def family_members(families):
 
 
 def member_order(name):
-    """bern5 -> 5, fewzbern3 -> 3; a member without a number (landau,
+    """bern5 -> 5, fewzbern3 -> 3; a member without a number (bwz,
     bwzredux) -> 0"""
     digits = name[len(name.rstrip("0123456789")):]
     return int(digits) if digits else 0
@@ -267,7 +267,7 @@ BERN_COEFFICIENTS = "squared"
 
 def bern_members(names):
     """The members of `names` that have Bernstein parameters (order >= 1
-    of a Bernstein family: not bwz or landau)."""
+    of a Bernstein family: not bwz)."""
     fam_of = {m: f for f, ms in BKG_FAMILIES.items() for m in ms}
     bern = set(bern_families())
     return [n for n in names if fam_of.get(n) in bern and member_order(n)]
@@ -283,6 +283,23 @@ def check_bern_coefficients(prov, names, source):
             f"{source}: Bernstein parameters stored as {form}, but the PDFs "
             f"now use {BERN_COEFFICIENTS} coefficients ({', '.join(used)}); "
             "rerun the fit that wrote it (bkgFit.py / corePdfFit.py)")
+
+
+# The Landau width of Landau x Bern, written to every fit JSON's provenance
+# ("landau_width", GeV). A JSON without it is from before, when the width
+# floated (and "landau" was a member): its Bernstein parameters belong to
+# another width, so check_landau_width stops.
+def check_landau_width(prov, names, source):
+    """Stop if `source` (a fit JSON, provenance `prov`) fitted the Landau
+    members of `names` with another width than agnostic.S_FIXED."""
+    used = [n for n in names
+            if n == "landau" or n in BKG_FAMILIES["landbern"]]
+    width = prov.get("landau_width", "floating (before it was fixed)")
+    if used and width != agnostic.S_FIXED:
+        raise SystemExit(
+            f"{source}: Landau width {width}, but Landau x Bern now has it "
+            f"fixed at {agnostic.S_FIXED:g} GeV ({', '.join(used)}); rerun "
+            "the fit that wrote it (bkgFit.py / corePdfFit.py)")
 
 
 # Plot labels, short forms of the Run 2 note's names (Fig. 6.19, Table
@@ -306,7 +323,7 @@ FAMILY_LABEL = {
     "mcdy": "MC DY #times ExpCheb{n}",
 }
 # members whose name has no number, or a different function at order 0
-MEMBER_LABEL = {"bwz": "BWZ", "landau": "Landau"}
+MEMBER_LABEL = {"bwz": "BWZ"}
 
 
 def model_label(name):
