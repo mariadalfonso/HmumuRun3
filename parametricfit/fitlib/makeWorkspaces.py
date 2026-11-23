@@ -18,7 +18,9 @@ biasStudy.py --mode single (the Run 2 note's truth x fit matrix).
 --order FAMILY=N replaces a family's pick by its order-N member
 (buildWorkspace.py uses it to give each Bernstein family one order in
 every bin); a member that fails the goodness of fit in this bin leaves
-its family out here.
+its family out here. --lowest instead takes each family's LOWEST order
+that converged and passes the goodness of fit in this bin (where the
+F-test starts), for a bias study of the least flexible members.
 
 With --members core the multipdf is the core-PDF of corePdfFit.py
 (Bkg_<tag>_core_params.json): core x this bin's SMF per core, the core
@@ -127,20 +129,29 @@ def build_signal(category, tag, sigjson, wsfile):
 MEMBERS_SUFFIX = {"envelope": "", "families": "_families", "core": "_core"}
 
 
-def bkg_members(rec, members, orders=None, source=""):
+def bkg_members(rec, members, orders=None, source="", lowest=False):
     """The multipdf members, in pdfindex order. "envelope": bkgFit.py's
     envelope, best first. "families": one member per family, the envelope's
     first (in its order), then any other family's F-test pick (JSONs from
     before bkgFit.py applied the goodness of fit in the F-test), lowest
     penalised NLL first. orders {family: N} replaces a family's pick by its
     order-N member; one that fails the goodness of fit in this bin (or did
-    not converge) drops its family here."""
+    not converge) drops its family here. lowest: each family's lowest order
+    that converged and passes the goodness of fit, instead of its pick."""
     env = list(rec["envelope"])
     if members == "envelope":
         return env
     cand = rec["candidates"]
     gof = rec["provenance"].get("gof_threshold", 0.0)
     choice = dict(rec["family_choice"])
+    if lowest:
+        for fam, pick in choice.items():
+            ok = [m for m in pdefs.BKG_FAMILIES[fam]
+                  if m in cand and cand[m].get("pvalue", 1.0) > gof]
+            low = min(ok, key=pdefs.member_order)   # the pick is in ok
+            print(f"  lowest   : {fam:<12} {low:<10} (F-test pick {pick}, "
+                  f"GOF p={cand[low].get('pvalue', float('nan')):.4f})")
+            choice[fam] = low
     for fam, n in (orders or {}).items():
         if fam not in choice:
             continue                    # no pick in this bin
@@ -163,13 +174,13 @@ def bkg_members(rec, members, orders=None, source=""):
 
 
 def build_bkg(category, tag, bkgjson, wsdir, wsfile, members="envelope",
-              orders=None):
+              orders=None, lowest=False):
     """The RooMultiPdf, each member at its sideband-fit values with its
     parameters floating, plus the floating norm and the data."""
     rec = read_json(bkgjson)
     prov = rec["provenance"]
     x = observable(category, prov["window"])
-    names = bkg_members(rec, members, orders, bkgjson)
+    names = bkg_members(rec, members, orders, bkgjson, lowest)
     pdefs.check_bern_coefficients(prov, names, bkgjson)
     pdefs.check_landau_width(prov, names, bkgjson)
 
@@ -292,11 +303,17 @@ def main():
                     help="with --members families: this order of the "
                          "family instead of its F-test pick, e.g. "
                          "fewzbern=3")
+    ap.add_argument("--lowest", action="store_true",
+                    help="with --members families: each family's lowest "
+                         "order passing the goodness of fit, instead of "
+                         "its F-test pick")
     args = ap.parse_args()
     args.wsdir = args.wsdir or config.default_wsdir(args.year)
     orders = parse_orders(args.order, ap)
     if orders and args.members != "families":
         ap.error("--order needs --members families")
+    if args.lowest and (args.members != "families" or orders):
+        ap.error("--lowest needs --members families, and no --order")
 
     # before writing anything: the workspaces must be built with Combine's classes
     if not pdefs.load_combine(quiet=True):
@@ -322,7 +339,8 @@ def main():
         else:
             build_bkg(args.category, tag,
                       os.path.join(args.wsdir, f"Bkg_{tag}_params.json"),
-                      args.wsdir, wsfile, args.members, orders)
+                      args.wsdir, wsfile, args.members, orders,
+                      args.lowest)
 
 
 if __name__ == "__main__":

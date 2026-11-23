@@ -30,6 +30,13 @@ of its F-test picks over the bins of -b that converged and passes the
 goodness of fit in every bin, or --bern-order FAMILY=N (a bin where that
 order fails the goodness of fit leaves the family out).
 
+--members families --lowest-order takes instead, in each bin, every
+family's LOWEST order that passes the goodness of fit (the order the
+F-test starts from), so the order can differ from bin to bin: the bias
+study of the least flexible members that still describe the data. It
+writes the same _families file names, so give it its own --wsdir (a copy
+of the fit JSONs and data) to keep the F-test set.
+
 --members core builds the Run 2 core-PDF (corePdfFit.py's
 Bkg_<tag>_core_params.json) the same way, as *_core files. The bins share
 the core's parameters and ONE index, pdfindex_<cat>_core_<year>, which the
@@ -162,9 +169,11 @@ def bern_orders(args):
 
 
 def make_workspaces(args):
-    orders = bern_orders(args) if args.members == "families" else {}
+    orders = (bern_orders(args)
+              if args.members == "families" and not args.lowest_order
+              else {})
     opt = (["--order"] + [f"{f}={n}" for f, n in orders.items()]
-           if orders else [])
+           if orders else ["--lowest"] if args.lowest_order else [])
     for b in args.bins:
         run([sys.executable, "-m", "fitlib.makeWorkspaces", "-c", args.category,
              "-b", b, "-y", args.year, "--wsdir", args.wsdir,
@@ -405,11 +414,20 @@ def main():
                     help="with --members families: the order of a "
                          "Bernstein family in every bin, e.g. fewzbern=3 "
                          "(default: its highest F-test pick over the bins)")
+    ap.add_argument("--lowest-order", action="store_true",
+                    help="with --members families: in each bin, every "
+                         "family's lowest order passing the goodness of "
+                         "fit, instead of its F-test pick (use its own "
+                         "--wsdir: same file names)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the commands, run nothing")
     args = ap.parse_args()
     if args.bern_order and args.members != "families":
         ap.error("--bern-order needs --members families")
+    if args.lowest_order and (args.members != "families"
+                              or args.bern_order):
+        ap.error("--lowest-order needs --members families, "
+                 "and no --bern-order")
 
     args.wsdir = os.path.abspath(os.path.join(
         HERE, args.wsdir or config.default_wsdir(args.year)))
