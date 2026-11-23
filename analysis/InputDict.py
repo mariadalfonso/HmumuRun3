@@ -71,7 +71,7 @@ def myData(year):
         "12023": [-23, -24],
         "22023": [-31, -32],
         "2024":  list(range(-41, -55, -1)),  # generates -41 to -54
-        "2025":  list(range(-61, -73, -1)),  # generates -61 to -70
+        "2025":  list(range(-61, -73, -1)),  # generates -61 to -72
         "2026":  list(range(-81, -89, -1)),  # generates -81 to -88
     }
 
@@ -81,7 +81,8 @@ def myData(year):
         "12023": [-123],
         "22023": [-131],
         "2024":  list(range(-141, -148, -1)),
-        "2025":  list(range(-161, -167, -1)),  # generates -61 to -70
+        "2025":  list(range(-161, -167, -1)),
+        "2026":  list(range(-181, -182, -1)),
     }
 
     data = data_map.get(year, [])
@@ -217,23 +218,27 @@ def BuildDict(year):
         "12023": "130X_mcRun3_2023_realistic_v*/*",
         "22023": "130X_mcRun3_2023_realistic_postBPix_v*-v*/*",
         "2024":  "150X_mcRun3_2024_realistic_v*-v*/*",
-        "2025":  "150X_mcRun3_2025*-v*/*", # noMC
-        "2026":  "150X_mcRun3_2025*-v*/*", # noMC
+        "2025":  "150X_mcRun3_2024_realistic_v*-v*/*", # noMC use the 24
+        "2026":  "150X_mcRun3_2024_realistic_v*-v*/*", # noMC use the 24
     }
     campaign = campaign_map.get(year, "")
 
     # Helper for building paths
     def path(suffix):
-        return f"{dirName}{year}/{suffix}/NANOAODSIM/{campaign}"
+        if year == '2025' or year == '2026': return f"{dirName}2024/{suffix}/NANOAODSIM/{campaign}"
+        else: return f"{dirName}{year}/{suffix}/NANOAODSIM/{campaign}"
 
     def pathEx(suffix,specialCampaignPrefix, year_):
         if year in year_:
-            return f"{dirName}{year}/{suffix}/NANOAODSIM/{specialCampaignPrefix}{campaign}"
+            if year == '2025' or year == '2026': return f"{dirName}2024/{suffix}/NANOAODSIM/{specialCampaignPrefix}{campaign}"
+            else: return f"{dirName}{year}/{suffix}/NANOAODSIM/{specialCampaignPrefix}{campaign}"
         else:
-            return f"{dirName}{year}/{suffix}/NANOAODSIM/{campaign}"
+            if year == '2025' or year == '2026': return f"{dirName}2024/{suffix}/NANOAODSIM/{campaign}"
+            else: return f"{dirName}{year}/{suffix}/NANOAODSIM/{campaign}"
 
     def pathScratch(suffix):
-        return f"{dirNameScratch}{year}/{suffix}/NANOAODSIM/{campaign}"
+        if str(year) == '2025' or str(year) == '2026': return f"{dirNameScratch}2024/{suffix}/NANOAODSIM/{campaign}"
+        else: return f"{dirNameScratch}{year}/{suffix}/NANOAODSIM/{campaign}"
 
     thisdict = {
         10: (findDIR(pathScratch("/VBF*Hto2Mu_*M-125_TuneCP5*_13p6TeV_powheg-pythia8")),xsecRun3['VBFH']*BRHmm),

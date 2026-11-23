@@ -12,7 +12,7 @@ from tools.datasets import (BuildDict, resolve_ids, read_list, limit_files,
 from tools.branches import branch_list, check_branches
 from tools.utilsAna import readDataQuality
 from tools.utilsAna import computeWeigths
-from tools.utilsAna import lumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
+from tools.utilsAna import totalLumis,btagPNetBM,btagPNetBL,btagParTL,btagParTM
 from tools.utilsAna import loadCorrectionSet
 from datetime import datetime
 from tools.utilsAna import loadtmvahelper
@@ -726,7 +726,7 @@ def analysis(files,year,mc,sumW):
 
     lumiIntegrated=0.
     if (isData == "false"):
-        lumiIntegrated = lumis[year]
+        lumiIntegrated = totalLumis[year]
         print('lumiIntegrated = ',lumiIntegrated)
 
     weight = "{0}".format(1.)

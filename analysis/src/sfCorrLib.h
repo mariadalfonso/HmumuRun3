@@ -110,9 +110,10 @@ MyCorrections::MyCorrections(int year) {
   std::string fileNameLUM = dirName+"LUM/"+subDirName+"puWeights.json.gz";
   if(year == 2024) fileNameLUM = dirName+"LUM/"+subDirName+"puWeights_BCDEFGHI.json.gz";
   if(year == 2025) fileNameLUM = dirName+"LUM/"+subDirName+"puWeights_2025pp_Golden_Summer24_25ns_69200ub.json.gz";
+  if(year == 2026) fileNameLUM = dirName+"LUM/"+"Run3-25Prompt-Summer24-NanoAODv15/"+folder+"puWeights_2025pp_Golden_Summer24_25ns_69200ub.json.gz";     // TMP: not yet available copy from 2025
 
   std::string corrNameLUM = "";
-  if(year == 2025 or year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
+  if(year == 2026 or year == 2025 or year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
     if(year == 2018) corrNameLUM = "Collisions18_UltraLegacy_goldenJSON";
     if(year == 2017) corrNameLUM = "Collisions17_UltraLegacy_goldenJSON";
     if(year == 22016 or year == 12016) corrNameLUM = "Collisions16_UltraLegacy_goldenJSON";
@@ -122,6 +123,7 @@ MyCorrections::MyCorrections(int year) {
     if(year == 22023) corrNameLUM = "Collisions2023_369803_370790_eraD_GoldenJson";
     if(year == 2024) corrNameLUM = "Collisions24_BCDEFGHI_goldenJSON";
     if(year == 2025) corrNameLUM = "Collisions25_goldenJSON";
+    if(year == 2026) corrNameLUM = "Collisions25_goldenJSON";         // TMP: not yet available copy from 2025
 
     auto csetPU = correction::CorrectionSet::from_file(fileNameLUM);
     puSF_ = csetPU->at(corrNameLUM);
@@ -129,6 +131,7 @@ MyCorrections::MyCorrections(int year) {
   }
 
   std::string fileNameMU = dirName+"MUO/"+subDirName+"muon_Z.json.gz";
+  if(year == 2026) fileNameMU = dirName+"MUO/"+"Run3-25Prompt-Summer24-NanoAODv15/"+folder+"muon_Z.json.gz"; // TMP: not yet available copy from 2025
 
   //// muon WP https://muon-wiki.docs.cern.ch/guidelines/recommendations/#particle-flow-isolation
 
@@ -142,7 +145,7 @@ MyCorrections::MyCorrections(int year) {
     muonISOLSF_ = csetMu->at("NUM_LooseRelIso_DEN_MediumID");
   }
 
-  if(year == 2025 or year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
+  if(year == 2026 or year == 2025 or year == 2024 or year == 22023 or year == 12023 or year == 22022 or year == 12022) {
     auto csetMu = correction::CorrectionSet::from_file(fileNameMU);
 
     muonIDMSF_ = csetMu->at("NUM_MediumID_DEN_TrackerMuons");
@@ -158,15 +161,9 @@ MyCorrections::MyCorrections(int year) {
   ////  JME
   //////////////
 
-  const std::string subDirNameJME25 = "Run3-25Prompt-Summer24-NanoAODv15/"+folder;
-  const std::string subDirNameJME26 = "Run3-26Prompt-Summer24-NanoAODv15/"+folder;
-
   if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
 
-    std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
-    if ( year == 2025 ) fileNameJEC = dirName+"JME/"+subDirNameJME25+"jet_jerc.json.gz";
-    if ( year == 2026 ) fileNameJEC = dirName+"JME/"+subDirNameJME26+"jet_jerc.json.gz";
-
+    const std::string fileNameJEC = dirName+"JME/"+subDirName+"jet_jerc.json.gz";
     auto csetJEC = correction::CorrectionSet::from_file(fileNameJEC);
 
     const std::string jetType="AK4PFPuppi";
@@ -200,7 +197,7 @@ MyCorrections::MyCorrections(int year) {
     if(year == 22023)  tagNameJER = "Summer23BPixPrompt23_RunD_JRV3";
     if(year == 2024)   tagNameJER = "Summer24Prompt24_JRV2";
     if(year == 2025)   tagNameJER = "Summer24Prompt25_JRV2";
-    if(year == 2026)   tagNameJER = "Summer24Prompt26_JRV1";
+    if(year == 2026)   tagNameJER = "Summer24Prompt26_RunBD_JRV1";
 
     JER_ = csetJEC->at(tagNameJER+"_MC_PtResolution_"+jetType);
     jerSF_ = csetJEC->at(tagNameJER+"_MC_ScaleFactor_"+jetType);
@@ -214,9 +211,7 @@ MyCorrections::MyCorrections(int year) {
 
   if(year == 12022 or year == 22022 or year == 12023 or year == 22023 or year == 2024 or year == 2025 or year == 2026) {
 
-    std::string fileNameFatJEC = dirName+"JME/"+subDirName+"fatJet_jerc.json.gz";
-    if ( year == 2025 ) fileNameFatJEC = dirName+"JME/"+subDirNameJME25+"fatJet_jerc.json.gz";
-    if ( year == 2026 ) fileNameFatJEC = dirName+"JME/"+subDirNameJME26+"fatJet_jerc.json.gz";
+    const std::string fileNameFatJEC = dirName+"JME/"+subDirName+"fatJet_jerc.json.gz";
 
     auto csetFatJEC = correction::CorrectionSet::from_file(fileNameFatJEC);
 
@@ -247,8 +242,7 @@ MyCorrections::MyCorrections(int year) {
   }
 
   // jetID
-  std::string fileNameJetID = dirName+"JME/"+subDirName+"jetid.json.gz";
-  if ( year == 2025 ) fileNameJetID = dirName+"JME/"+"Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/"+"jetid.json.gz";  // to be fixed when available
+  const std::string fileNameJetID = dirName+"JME/"+subDirName+"jetid.json.gz"; // TMP: 2026 file is copied from 2025
 
   auto csetJetID = correction::CorrectionSet::from_file(fileNameJetID);
   const std::string tagNameJetID = "AK4PUPPI_Tight";
@@ -256,9 +250,7 @@ MyCorrections::MyCorrections(int year) {
   jetID_ = csetJetID->at(tagNameJetID);
 
   // veto Map the jet
-  std::string fileNameJetVeto = dirName+"JME/"+subDirName+"jetvetomaps.json.gz";
-  if ( year == 2025 ) fileNameJetVeto = dirName+"JME/"+subDirNameJME25+"jetvetomaps.json.gz";
-  if ( year == 2026 ) fileNameJetVeto = dirName+"JME/"+subDirNameJME26+"jetvetomaps.json.gz";
+  const std::string fileNameJetVeto = dirName+"JME/"+subDirName+"jetvetomaps.json.gz";  // TMP: 2026 file is copied from 2025
 
   auto csetVeto = correction::CorrectionSet::from_file(fileNameJetVeto);
   std::string tagNameVeto = "";
@@ -433,13 +425,13 @@ double MyCorrections::eval_muonISOSF(std::string year, std::string valType, doub
   pt = std::max(pt,15.001);
 
   if (workingPoint=="T") {
-    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025") return muonTIsoM_->evaluate({ eta, pt, valType});
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025" or year == "2026") return muonTIsoM_->evaluate({ eta, pt, valType});
     return muonISOTSF_->evaluate({year, eta, pt, valType});
   } else if (workingPoint=="M") {
-    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025") return muonLIsoM_->evaluate({eta, pt, valType});
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025" or year == "2026") return muonLIsoM_->evaluate({eta, pt, valType});
     return muonISOLSF_->evaluate({year, eta, pt, valType});
   } else if (workingPoint=="L") {
-    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025") return muonLIsoL_->evaluate({eta, pt, valType});
+    if (year == "12022" or year == "22022" or year == "12023" or year == "22023" or year == "2024" or year == "2025" or year == "2026") return muonLIsoL_->evaluate({eta, pt, valType});
     return muonISOLSF_->evaluate({year, eta, pt, valType});
   }
   return 1.;
