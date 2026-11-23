@@ -1,30 +1,30 @@
 import ROOT
-import json
+import os
 
 import xgboost as xgb
-import os
-import sys
 
 ROOT.gROOT.SetBatch(True)
 
 from settings import *
 
 import matplotlib
-matplotlib.use("Agg")     # IMPORTANT for batch mode / no display
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import scipy.stats
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve, auc
-from scipy.ndimage import gaussian_filter1d
-
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from LoadTree import loadTree
 from LoadTree import vv, tt2l, ttV
+
+from mva_utils import (get_var_range, make_input_plots, plot_roc,
+                       plot_feature_importance, plot_correlation_matrix,
+                       plot_overtraining, plot_auc_vs_round,
+                       plot_score_vs_mass, plot_mass_in_score_bins,
+                       compare_even_odd, print_var_diagnostics,
+                       build_training_weights, save_xgb_model)
 
 #myDir='/work/submit/mariadlf/HmumuRun3/ROOTFILES/newID_'
 myDir='/work/submit/mariadlf/HmumuRun3/ROOTFILES/'
@@ -33,8 +33,8 @@ years = ['_12022', '_22022', '_12023', '_22023', '_2024']
 
 #category = sys.argv[1]
 
-category="ggHcat"
-#category="VBFcat"
+#category="ggHcat"
+category="VBFcat"
 #category="TTLcat"
 #category="VLcat"
 #
@@ -174,132 +174,6 @@ variables_notUseful_map = {
     "VHcat": ["Muon1_eta","Muon2_eta","goodWjj_pt","goodWjj_eta","Muon2_pt"],
 }
 
-def get_var_range(df, var, pad=0.05):
-    """Return (xmin, xmax) for a variable using RDataFrame Min/Max."""
-    min_val = df.Min(var).GetValue()
-    max_val = df.Max(var).GetValue()
-
-    # Add small padding around edges (5% by default)
-    span = max_val - min_val
-    xmin = min_val - span * pad
-    xmax = max_val + span * pad
-
-    return xmin, xmax
-
-def make_plots(df):
-
-    # Define weight
-    df = df.Define("weight", "w_allSF")
-
-    # Define signal & background filters
-    sig_ids = signal_map[category]
-    bkg_ids = bkg_map[category]
-    sig_filter = " || ".join([f"mc == {mid}" for mid in sig_ids])
-    bkg_filter = " || ".join([f"mc == {mid}" for mid in bkg_ids])
-    df_sig = df.Filter(sig_filter, f"Signal ({sig_filter})")
-    df_bkg = df.Filter(bkg_filter, f"Background ({bkg_filter})")
-    df_sig = df_sig.Define("absweight", "fabs(weight)")
-    df_bkg = df_bkg.Define("absweight", "fabs(weight)")
-
-    for var in variables_map[category] + variables_resolution[category]:
-        print(f"Plotting {var}...")
-
-        # Get automatic min/max from **both** samples together
-        xmin_s, xmax_s = get_var_range(df_sig, var)
-        xmin_b, xmax_b = get_var_range(df_bkg, var)
-        xmin = min(xmin_s, xmin_b)
-        xmax = max(xmax_s, xmax_b)
-
-        nbins = 40  # if you want different binning per variable, I can automate this too
-
-        # Create histograms
-        hsig = df_sig.Histo1D(
-            (f"h_{var}_sig", f"{var} (Signal);{var};Normalized Events", nbins, xmin, xmax),
-            var, "weight"
-        )
-        hbkg = df_bkg.Histo1D(
-            (f"h_{var}_bkg", f"{var} (Background);{var};Normalized Events", nbins, xmin, xmax),
-            var, "weight"
-        )
-        hsigABS = df_sig.Histo1D(
-            (f"h_{var}_abssig", f"{var} (Signal) ABSw;{var};Normalized Events", nbins, xmin, xmax),
-            var, "absweight"
-        )
-        hbkgABS = df_bkg.Histo1D(
-            (f"h_{var}_absbkg", f"{var} (Background) ABSw;{var};Normalized Events", nbins, xmin, xmax),
-            var, "absweight"
-        )
-
-        # Draw
-        c = ROOT.TCanvas(f"c_{var}", "", 800, 600)
-        hsig.SetLineColor(ROOT.kOrange)
-        hsigABS.SetLineColor(ROOT.kRed)
-        hbkg.SetLineColor(ROOT.kBlue)
-        hbkgABS.SetLineColor(ROOT.kGreen+1)
-
-        if hsig.Integral() > 0: hsig.Scale(1.0 / hsig.Integral())
-        if hsigABS.Integral() > 0: hsigABS.Scale(1.0 / hsigABS.Integral())
-        if hbkg.Integral() > 0: hbkg.Scale(1.0 / hbkg.Integral())
-        if hbkgABS.Integral() > 0: hbkgABS.Scale(1.0 / hbkgABS.Integral())
-        hsig.SetMaximum(1.5*max(hsig.GetMaximum(),hbkg.GetMaximum()))
-        hsig.Draw("HIST")
-        hsigABS.Draw("HIST SAME")
-        hbkg.Draw("HIST SAME")
-        hbkgABS.Draw("HIST SAME")
-
-        # Explicit legend (middle right)
-        leg = ROOT.TLegend(0.60, 0.40, 0.88, 0.65)
-        leg.SetBorderSize(0)
-        leg.SetFillStyle(0)
-        leg.SetTextSize(0.04)
-
-        leg.AddEntry(hsigABS.GetValue(), "sig", "l")
-        leg.AddEntry(hbkg.GetValue(), "bkg", "l")
-        leg.Draw()
-        #c.BuildLegend()
-
-        c.SaveAs(dir_map[category]+f"VARS/{var}_sig_bkg_{category}{labelForPNG}.png")
-
-        print(f" → Saved {var}_sig_bkg.png")
-
-def plotCovMatrix(matrixTXT,sample_name):
-
-    df = pd.read_csv(matrixTXT, sep="\t", index_col=0)
-
-    plt.figure(figsize=(8, 7))
-    ax = plt.gca()
-
-    im = plt.imshow(df, vmin=-1, vmax=1)
-
-    plt.xticks(range(len(df.columns)), df.columns, rotation=45, ha="right")
-    plt.yticks(range(len(df.index)), df.index)
-
-    plt.colorbar(im, label="Correlation")
-
-    # -----------------------------
-    # ADD SEPARATION LINES
-    # -----------------------------
-    split = len(df) - 2
-
-    ax.axhline(split - 0.5, color="white", linewidth=2)
-    ax.axvline(split - 0.5, color="white", linewidth=2)
-
-    # -----------------------------
-    # values in cells
-    # -----------------------------
-    for i in range(len(df.index)):
-        for j in range(len(df.columns)):
-            plt.text(j, i, f"{df.iloc[i, j]:.2f}",
-                     ha="center", va="center", fontsize=8)
-
-    plt.title("Feature Correlation Matrix")
-    plt.tight_layout()
-
-    plt.savefig(f"{dir_map[category]}/correlation_matrix_{category}_{sample_name}{labelForPNG}.png", dpi=200)
-    plt.close()
-
-    print("✅ Saved correlation_matrix.png")
-
 def load_process_class(class_id, variables, drawPlot=False):
 
     # Heavy-lifting in C++ and remote access of data
@@ -372,100 +246,6 @@ def load_process_class(class_id, variables, drawPlot=False):
     pdf['target'] = class_id
     return pdf
 
-def overtraining(bdt, train_data, train_labels, train_weights, test_data, test_labels, test_weights):
-
-    if doMultiClass:
-        # score = P(VBF)
-        train_scores = bdt.predict_proba(train_data)[:,0]
-        test_scores  = bdt.predict_proba(test_data)[:,0]
-
-        sig_mask_train = (train_labels == 0)
-        sig_mask_test  = (test_labels  == 0)
-
-    else:
-        train_scores = bdt.predict_proba(train_data)[:,1]
-        test_scores  = bdt.predict_proba(test_data)[:,1]
-
-        sig_mask_train = (train_labels == 1)
-        sig_mask_test  = (test_labels  == 1)
-
-    bkg_mask_train = ~sig_mask_train
-    bkg_mask_test  = ~sig_mask_test
-
-    train_sig = train_scores[sig_mask_train]
-    train_bkg = train_scores[bkg_mask_train]
-
-    test_sig  = test_scores[sig_mask_test]
-    test_bkg  = test_scores[bkg_mask_test]
-
-    train_w_sig = train_weights[sig_mask_train]
-    train_w_bkg = train_weights[bkg_mask_train]
-
-    test_w_sig  = test_weights[sig_mask_test]
-    test_w_bkg  = test_weights[bkg_mask_test]
-
-    bins = np.linspace(0, 1, 50)
-
-    plt.figure(figsize=(8,6))
-
-    # --- TRAIN (histograms) ---
-    plt.hist(train_sig, bins=bins, weights=train_w_sig,
-             density=True, histtype='step', linewidth=2,
-             label='Train Signal')
-
-    plt.hist(train_bkg, bins=bins, weights=train_w_bkg,
-             density=True, histtype='step', linewidth=2,
-             label='Train Background')
-
-    # --- TEST (points with errors) ---
-    def weighted_hist_with_err(values, weights, bins):
-        hist, edges = np.histogram(values, bins=bins, weights=weights, density=True)
-
-        # statistical uncertainty (approx)
-        sumw2, _ = np.histogram(values, bins=bins, weights=weights**2)
-#        err = np.sqrt(sumw2) / np.sum(weights)
-        err = np.sqrt(sumw2) / np.diff(edges) / np.sum(weights)
-
-        centers = (edges[:-1] + edges[1:]) / 2
-        return centers, hist, err
-
-    # Signal
-    x_sig, y_sig, err_sig = weighted_hist_with_err(test_sig, test_w_sig, bins)
-    plt.errorbar(x_sig, y_sig, yerr=err_sig, fmt='o', label='Test Signal')
-
-    # Background
-    x_bkg, y_bkg, err_bkg = weighted_hist_with_err(test_bkg, test_w_bkg, bins)
-    plt.errorbar(x_bkg, y_bkg, yerr=err_bkg, fmt='o', label='Test Background')
-
-    # Labels
-    plt.xlabel('BDT Output Score')
-    plt.ylabel('Probability Density')
-    plt.title('XGBoost Overtraining Check')
-    plt.legend()
-    plt.grid(alpha=0.3)
-    outfile = dir_map[category] + f"overtraining_{category}{labelForPNG}.png"
-    plt.savefig(outfile, dpi=200)
-    plt.close()
-
-    print(f"📊 Saved overtraining to: {outfile}")
-
-    # Plot Over Training curve
-    results = bdt.evals_result()
-
-    # Plot
-    plt.plot(results['validation_0']['auc'], label='Train')
-    plt.plot(results['validation_1']['auc'], label='Validation')
-#    plt.ylim(0.6, 1.0)
-    plt.xlabel('Boosting Rounds')
-    plt.ylabel('AUC')
-    plt.legend()
-    plt.title('XGBoost Overfitting Plot')
-    outfile = dir_map[category] + f"overtraining_AUCvsRound_{category}{labelForPNG}.png"
-    plt.savefig(outfile, dpi=200)
-    plt.close()
-
-    print(f"📊 Saved overtraining to: {outfile}")
-
 def plot_mass_correlations(data, variables, bkg_mask):
 
     corrs = []
@@ -506,117 +286,6 @@ def plot_mass_correlations(data, variables, bkg_mask):
 
     print(f"Saved {outfile}")
 
-def plot_score_vs_mass(score, sig_mask, bkg_mask, data):
-
-
-    mass = data["HiggsCandCorrMass"].values
-
-    # Check for NaN values
-    valid_mask = ~(np.isnan(score) | np.isnan(mass))
-    score = score[valid_mask]
-    mass = mass[valid_mask]
-    sig_mask = sig_mask[valid_mask]
-    bkg_mask = bkg_mask[valid_mask]
-
-    corr_sig = np.corrcoef(score[sig_mask], mass[sig_mask])[0,1]
-    corr_bkg = np.corrcoef(score[bkg_mask], mass[bkg_mask])[0,1]
-
-    print("corr(score,mass) signal =", corr_sig)
-    print("corr(score,mass) bkg    =", corr_bkg)
-
-    plot_mass_correlations(
-        data,
-        variables_map[category] + variables_resolution[category],
-        bkg_mask
-    )
-
-    for name, mask in [("sig", sig_mask), ("bkg", bkg_mask)]:
-
-        plt.figure(figsize=(8,6))
-
-        plt.hist2d(
-            mass[mask],
-            score[mask],
-            bins=[60,50],
-            range=[[105,155],[0,1]]
-        )
-
-        plt.xlabel(r"$m_{\mu\mu}$ [GeV]")
-        plt.ylabel("BDT score")
-        plt.title(f"{name}: BDT score vs mass")
-        plt.colorbar(label="Events")
-
-        outfile = (
-            dir_map[category]
-            + f"score_vs_mass_{name}_{category}{labelForPNG}.png"
-        )
-
-        plt.tight_layout()
-        plt.savefig(outfile, dpi=200)
-        plt.close()
-
-        print(f"Saved {outfile}")
-
-
-def plot_mass_in_score_bins(score, sig_mask, bkg_mask, data, variables):
-
-    mass = data["HiggsCandCorrMass"].values
-
-    for v in variables:
-
-        corr = np.corrcoef(
-            data.loc[bkg_mask,v],
-        data.loc[bkg_mask,"HiggsCandCorrMass"]
-        )[0,1]
-
-        print(f"{v:25s} {corr: .4f}")
-
-    score_bins = np.arange(0, 1.01, 0.1)
-
-    for name, mask in [("sig", sig_mask), ("bkg", bkg_mask)]:
-
-        plt.figure(figsize=(8,6))
-
-        for low, high in zip(score_bins[:-1], score_bins[1:]):
-
-            sel = (
-                mask
-                & (score >= low)
-                & (score < high)
-            )
-
-            if np.sum(sel) < 10:
-                continue
-
-            plt.hist(
-                mass[sel],
-                bins=60,
-                range=(105,155),
-                density=True,
-                histtype="step",
-                linewidth=1.5,
-                label=f"{low:.1f}-{high:.1f}"
-            )
-
-        plt.xlabel(r"$m_{\mu\mu}$ [GeV]")
-        plt.ylabel("Normalized events")
-        plt.title(f"{category} {name}: mass in score bins")
-        plt.legend(
-            ncol=2,
-            fontsize=8
-        )
-
-        outfile = (
-            dir_map[category]
-            + f"mass_in_score_bins_{name}_{category}{labelForPNG}.png"
-        )
-
-        plt.tight_layout()
-        plt.savefig(outfile, dpi=200)
-        plt.close()
-
-        print(f"Saved {outfile}")
-
 def plot_confusion_matrix(y_true, y_pred, test_weights):
 
     labels = labels_map[category]
@@ -647,69 +316,6 @@ def plot_confusion_matrix(y_true, y_pred, test_weights):
     plt.close()
 
     print("saved:", outfile)
-
-def diagnostic(bdt,proba,y_true_binary,variables):                                          
-
-    P_sig = proba[:, signal_classes].sum(axis=1)
-    P_bkg = proba[:, background_classes].sum(axis=1)
-
-    y_score = P_sig / (P_sig + P_bkg + 1e-12)
-    print("Score range:", y_score.min(), y_score.max())
-
-    # -------------------------------------------------
-    # ROC
-    # -------------------------------------------------
-    roc = roc_auc_score(y_true_binary, y_score)
-    print(f"ROC AUC (sig vs all bkg): {roc:.4f}")
-
-    fpr, tpr, thresholds = roc_curve(y_true_binary, y_score)
-    roc_auc = auc(fpr, tpr)
-
-    ##--
-
-    # Plot ROC curve
-    plt.figure(figsize=(8,6))
-    plt.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
-    plt.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('XGBoost ROC Curve')
-    plt.legend(loc="lower right")
-    plt.grid(alpha=0.3)
-    outfile = dir_map[category] + f"roc_{category}{labelForPNG}.png"
-    plt.savefig(outfile, dpi=200)
-    plt.close()
-    print(f"📊 Saved roc to: {outfile}")
-
-    # Set feature names for export
-    booster = bdt.get_booster()
-    booster.feature_names = variables
-    print("Number of input vars:", len(variables))
-    print("Booster feature names:", booster.feature_names)
-    importance = booster.get_score(importance_type="gain")
-    print("Non-zero features:", importance)
-
-    importance_types = ["gain", "weight", "cover"]
-    titles = {
-        "gain": "XGBoost Feature Importance — Gain",
-        "weight": "XGBoost Feature Importance — Weight (Split Count)",
-        "cover": "XGBoost Feature Importance — Cover"
-    }
-
-    for imp in importance_types:
-        plt.figure(figsize=(8, 6))
-        xgb.plot_importance(bdt, importance_type=imp, max_num_features=20)
-        plt.title(titles[imp])
-#        plt.tight_layout()
-        plt.subplots_adjust(left=0.35)
-
-        outfile = dir_map[category] + f"feature_importance_{imp}_{category}{labelForPNG}.png"
-        plt.savefig(outfile, dpi=200)
-        plt.close()
-
-        print(f"📊 Saved feature importance ({imp}) to: {outfile}")
 
 def plot_score_signed_vs_abs(score, sig_mask, bkg_mask, data):
 
@@ -764,73 +370,6 @@ def plot_score_signed_vs_abs(score, sig_mask, bkg_mask, data):
     plt.close()
 
     print("saved", outfile)
-
-def compare_even_odd(score_even, score_odd,
-                     y_even, y_odd,
-                     w_even, w_odd):
-
-    sig_mask_even = np.isin(y_even, signal_classes)
-    sig_mask_odd  = np.isin(y_odd, signal_classes)
-
-    bkg_mask_even = np.isin(y_even, background_classes)
-    bkg_mask_odd  = np.isin(y_odd, background_classes)
-
-    bins = np.linspace(0, 1, 50)
-
-    plt.figure(figsize=(8,6))
-
-    # -------------------------
-    # SIGNAL
-    # -------------------------
-    plt.hist(score_even[sig_mask_even],
-             bins=bins,
-             weights=w_even[sig_mask_even],
-             density=True,
-             histtype='step',
-             linewidth=2,
-             label="Even (signal)")
-
-    plt.hist(score_odd[sig_mask_odd],
-             bins=bins,
-             weights=w_odd[sig_mask_odd],
-             density=True,
-             histtype='step',
-             linewidth=2,
-             linestyle="--",
-             label="Odd (signal)")
-
-    # -------------------------
-    # BACKGROUND
-    # -------------------------
-    plt.hist(score_even[bkg_mask_even],
-             bins=bins,
-             weights=w_even[bkg_mask_even],
-             density=True,
-             histtype='step',
-             linewidth=2,
-             label="Even (bkg)")
-
-    plt.hist(score_odd[bkg_mask_odd],
-             bins=bins,
-             weights=w_odd[bkg_mask_odd],
-             density=True,
-             histtype='step',
-             linewidth=2,
-             linestyle="--",
-             label="Odd model (bkg)")
-
-    plt.xlabel("BDT score")
-    plt.ylabel("Normalized entries")
-    plt.title("Even/Odd training stability")
-    plt.legend()
-    plt.grid(alpha=0.3)
-
-    outfile = dir_map[category]+f"score_even_vs_odd_{category}{labelForPNG}.png"
-    plt.savefig(outfile,dpi=200)
-    plt.close()
-
-    print("saved", outfile)
-    
 
 def train_one_fold(data, train_mask, variables, verbose ): #, labelForPNG):
 
@@ -919,43 +458,7 @@ def train_one_fold(data, train_mask, variables, verbose ): #, labelForPNG):
         print("Train positive fraction:", train_labels.mean())
         print("Test positive fraction:", test_labels.mean())
 
-        # Basic statistics
-        for v in variables:
-            col = train_data[v]  # Series
-            print(
-                f"{v:20s}",
-                "min =", col.min(),
-                "max =", col.max(),
-                "std =", col.std(),
-            )
-
-        '''
-        KS      Interpretation
-        < 0.05  No separation
-        0.05–0.15  Very weak
-        0.15–0.30  Some discrimination
-        > 0.30  Strong
-        '''
-
-        # KS test between signal and background
-        for v in variables:
-            sig = train_data.loc[train_labels == 1, v]
-            bkg = train_data.loc[train_labels == 0, v]
-
-            ks_stat = scipy.stats.ks_2samp(sig, bkg).statistic
-
-            if ks_stat < 0.05: comment='No separation'
-            elif ks_stat > 0.05 and ks_stat < 0.15: comment='very weak'
-            elif ks_stat > 0.15 and ks_stat < 0.30: comment='some discrimination'
-            elif ks_stat > 0.30: comment='STRONG'
-
-            print(
-                f"{v:20s}",
-                "⟨sig⟩ =", sig.mean(),
-                "⟨bkg⟩ =", bkg.mean(),
-                "KS =", ks_stat,
-                "==> ",comment
-            )
+        print_var_diagnostics(train_data, train_labels, variables)
 
         # Sanity checks
         print("Any NaNs in train_data:", train_data.isna().any().any())
@@ -995,28 +498,20 @@ def train_one_fold(data, train_mask, variables, verbose ): #, labelForPNG):
         if doMultiClass: fOutName = f"output/classification_model_multiclass_{category}.root"
         else: fOutName = f"output/classification_model_{category}.root"
         model_name = f"bdt_model_{category}"
-        print("variables",variables)
-        print("Export model ",model_name)
-
-        ROOT.TMVA.Experimental.SaveXGBoost(bdt, model_name, fOutName, num_inputs=len(variables))
-        print(f"output written to {fOutName} with name {model_name}")
-
-        variables_ = ROOT.TList()
-        for var in variables:
-            print(var)
-            variables_.Add(ROOT.TObjString(var))
-        fOut = ROOT.TFile(fOutName, "UPDATE")
-        fOut.WriteObject(variables_, "variables")
-        fOut.Close()
-        print('FILE SAVED')
+        save_xgb_model(bdt, variables, fOutName, model_name)
 
     # -------------------------------------------------
     # DIAGNOSTIC
     # -------------------------------------------------
 
+    outdir = dir_map[category]
+
     if verbose:
-        ## only the main signal
-        overtraining(bdt, train_data, train_labels, train_weights, test_data, test_labels, test_weights)
+        plot_overtraining(bdt, train_data, train_labels, train_weights,
+                          test_data, test_labels, test_weights,
+                          signal_classes, outdir + f"overtraining_{category}{labelForPNG}.png",
+                          doMultiClass=doMultiClass)
+        plot_auc_vs_round(bdt, outdir + f"overtraining_AUCvsRound_{category}{labelForPNG}.png")
 
     proba = bdt.predict_proba(test_data)
 
@@ -1027,40 +522,32 @@ def train_one_fold(data, train_mask, variables, verbose ): #, labelForPNG):
     else:
         y_true_binary = (test_labels == 1).astype(int)
 
-    diagnostic(bdt,proba,y_true_binary,variables)
-
-    if doMultiClass:
-        # Multi-class AUC (one-vs-rest)
-        auc_ovr = roc_auc_score(test_labels, proba, multi_class='ovr', labels=list(range(len(labels_map[category]))))
-        print(f"✅ Multiclass AUC (OvR, what XGBoost trained on): {auc_ovr:.4f}")
-
-        # Also try one-vs-one
-        auc_ovo = roc_auc_score(test_labels, proba, multi_class='ovo', labels=list(range(len(labels_map[category]))))
-        print(f"   Multiclass AUC (OvO): {auc_ovo:.4f}")
-
-        #XGBoost multiclass is NOT training on "signal vs background" (which gives 0.8031)
-        #It's training on: Each class vs all others, averaged together.
-
-        #This is why:
-        #0.8912 = how well class 0 vs others, class 1 vs others, ... are separated on average
-        #0.8031 = how well your custom binary grouping (0+1 vs 2+3) is separated
-
-    # -------------------------------------------------
-    # FINAL SCORE
-    # -------------------------------------------------
-
     P_sig = proba[:, signal_classes].sum(axis=1)
     P_bkg = proba[:, background_classes].sum(axis=1)
-
+    y_score = P_sig / (P_sig + P_bkg + 1e-12)
     score = P_sig
+
+    plot_roc(y_true_binary, y_score, outdir + f"roc_{category}{labelForPNG}.png")
+    plot_feature_importance(bdt, variables, outdir, f"_{category}{labelForPNG}")
+
+    if doMultiClass:
+        auc_ovr = roc_auc_score(test_labels, proba, multi_class='ovr', labels=list(range(len(labels_map[category]))))
+        print(f"Multiclass AUC (OvR): {auc_ovr:.4f}")
+        auc_ovo = roc_auc_score(test_labels, proba, multi_class='ovo', labels=list(range(len(labels_map[category]))))
+        print(f"Multiclass AUC (OvO): {auc_ovo:.4f}")
 
     # -------------------------------------------------
     # EXTRA FUNCTIONS diagnostic
     # -------------------------------------------------
 
     if verbose:
-        plot_score_vs_mass(score, sig_mask, bkg_mask, test_data_df)
-        plot_mass_in_score_bins(score, sig_mask, bkg_mask, test_data_df, variables)
+        plot_score_vs_mass(score, sig_mask, bkg_mask, test_data_df,
+                           "HiggsCandCorrMass", outdir, category, labelForPNG)
+        plot_mass_in_score_bins(score, sig_mask, bkg_mask, test_data_df,
+                                "HiggsCandCorrMass", outdir, category, labelForPNG)
+        plot_mass_correlations(test_data_df,
+                               variables_map[category] + variables_resolution[category],
+                               bkg_mask)
         plot_score_signed_vs_abs(score, sig_mask, bkg_mask, test_data_df)
 
     return score,test_labels,test_weights,bdt
@@ -1131,7 +618,8 @@ def correlation_diagnostics(train_variables):
         corr_df.round(3).to_csv(out_corr,sep="\t")
         print(f"📐 saved {out_corr}")
 
-        plotCovMatrix(out_corr,sample_name)
+        plot_correlation_matrix(out_corr,
+            f"{dir_map[category]}/correlation_matrix_{category}_{sample_name}{labelForPNG}.png")
 
         # ----------------------
         # correlation wrt mass
@@ -1181,144 +669,6 @@ def correlation_diagnostics(train_variables):
         print("  std:", np.std(x))
         print("  unique:", len(np.unique(x)))
 
-
-'''
-def build_training_weights(data,
-                           doMultiClass=False,
-                           flatten_background=True,
-                           signal_sigma_power=1.0,
-                           signal_relative_sigma=True):
-
-    w = data["weight"].abs().to_numpy().clip(min=1e-10)
-
-    weights = w.copy()
-'''
-
-def build_training_weights(data,
-                           doMultiClass=False,
-                           flatten_background=True,
-                           signal_sigma_power=1.0,
-                           signal_relative_sigma=True):
-
-    w = data["weight"].abs().to_numpy().clip(min=1e-10)
-    weights = w.copy()
-
-    if doMultiClass:
-        nclass = len(np.unique(data["target"]))
-
-        # ✅ CORRECT: Weight inversely by class frequency
-        class_weights = {}
-        total_weight = 0
-
-        for k in range(nclass):
-            mask = data["target"] == k
-            class_sum = weights[mask].sum()
-            class_weights[k] = 1.0 / max(class_sum, 1e-10)
-            total_weight += class_weights[k]
-
-        # Normalize so average weight across all classes = 1
-        for k in range(nclass):
-            class_weights[k] /= total_weight / nclass
-
-        # Apply per-class weights
-        for k in range(nclass):
-            mask = data["target"] == k
-            weights[mask] *= class_weights[k]
-
-        # Final normalization to mean=1
-        weights /= weights.mean()
-
-        print("✅ Multiclass weights per class:")
-        for k in range(nclass):
-            mask = data["target"] == k
-            print(f"   Class {k}: weight sum = {weights[mask].sum():.2e}")
-
-        return weights
-
-    ###############################################################
-    # for Binary
-
-    sig_mask = data["target"] == 1
-    bkg_mask = data["target"] == 0
-
-    ###############################################################
-    # Signal weighting
-    ###############################################################
-
-    sigma = data["HiggsCandCorrMassErr"].to_numpy()
-
-    sigma_safe = np.where(
-        (sigma <= 0) | (~np.isfinite(sigma)),
-        1e-3,
-        sigma,
-    )
-
-    if signal_relative_sigma:
-
-        mass = data["HiggsCandCorrMass"].to_numpy()
-
-        mass_safe = np.where(
-            (mass <= 0) | (~np.isfinite(mass)),
-            125.,
-            mass,
-        )
-
-        sigma_used = sigma_safe / mass_safe
-
-    else:
-
-        sigma_used = sigma_safe
-
-    weights[sig_mask] *= (
-        1.0 / np.power(sigma_used[sig_mask], signal_sigma_power)
-    )
-
-    ###############################################################
-    # Background flattening
-    ###############################################################
-
-    if flatten_background:
-
-        mass = data["HiggsCandCorrMass"].to_numpy()
-
-        bins = np.linspace(110,150,41)
-
-        hist, edges = np.histogram(
-            mass[bkg_mask],
-            bins=bins,
-            weights=w[bkg_mask]
-        )
-
-        #
-        # smooth to avoid huge fluctuations
-        #
-        hist = gaussian_filter1d(hist.astype(float), sigma=1.5)
-
-        hist = np.maximum(hist,1e-6)
-
-        inv = 1./hist
-
-        #
-        # normalize so average weight = 1
-        #
-        inv *= hist.sum()/np.sum(hist*inv)
-
-        ibin = np.clip(
-            np.digitize(mass,edges)-1,
-            0,
-            len(inv)-1
-        )
-
-        weights[bkg_mask] *= inv[ibin][bkg_mask]
-
-    ###############################################################
-    # Final normalization
-    ###############################################################
-
-    weights[sig_mask] /= weights[sig_mask].mean()
-    weights[bkg_mask] /= weights[bkg_mask].mean()
-
-    return weights
 
 def _test_XGB_class(label):
 
@@ -1397,8 +747,9 @@ def _test_XGB_class(label):
     score_odd, y_odd, w_odd, bdt_odd  = train_one_fold(data, data["event"] % 2 == 1, train_variables, False ) #, labelForPNG)
     score_even, y_even, w_even, bdt_even = train_one_fold(data, data["event"] % 2 == 0, train_variables, True ) #, labelForPNG)
 
-    # below score is ok, but  not yet ok for multiclass
-    compare_even_odd(score_even, score_odd, y_even, y_odd, w_even, w_odd)
+    compare_even_odd(score_even, score_odd, y_even, y_odd, w_even, w_odd,
+                     signal_classes, background_classes,
+                     dir_map[category] + f"score_even_vs_odd_{category}{labelForPNG}.png")
 
 if __name__ == "__main__":
 
