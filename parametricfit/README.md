@@ -187,7 +187,7 @@ reads and writes there unless `--wsdir` says otherwise.
   default with the families of the Run 2 note, Sec. 5.3, every parameter
   floating on data:
   - eqs. 5.1–5.4 (`fitlib/bwz.py`): BWZ and BWZ × Bernstein as one nested
-    family (`bwz`, `bwzbern1`–`4`), `bwzgamma`, `bwzredux`;
+    family (`bwz`, `bwzbern1`–`4`), `bwzgamma`, `bwzredux1`–`3`;
   - eq. 5.5 (`fitlib/fewz.py`): FEWZ × Bernstein (`fewzbern1`–`4`). The
     FEWZ spline (`fitlib/fewz_spline.root`, copied from flashggFinalFit)
     is fixed; the Bernstein coefficients float;
@@ -375,7 +375,7 @@ The significance scales less than √L between 2024 and Run 3; still to check.
   others).
 - `--smf-min-order` (default 1), `--smf-max-order` (default 4): the
   F-test's range.
-- `--cores`: default `bwzredux fewzbern3 exp2`.
+- `--cores`: default `bwzredux3 fewzbern3 exp2`.
 - `--strict-status`: Minuit status 0 only.
 
 **`buildWorkspace.py`**: `-c`, `-b`, `-y`, `--wsdir` (default `WS_<year>`),

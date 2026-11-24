@@ -237,7 +237,7 @@ def family_members(families):
 
 def member_order(name):
     """bern5 -> 5, fewzbern3 -> 3; a member without a number (bwz,
-    bwzredux) -> 0"""
+    bwzgamma) -> 0"""
     digits = name[len(name.rstrip("0123456789")):]
     return int(digits) if digits else 0
 
@@ -285,6 +285,23 @@ def check_bern_coefficients(prov, names, source):
             "rerun the fit that wrote it (bkgFit.py / corePdfFit.py)")
 
 
+# Members renamed since, {old: new}: bwzredux became bwzredux3 when
+# BWZRedux got its orders 1 and 2 (Nov 2026). A fit JSON naming an old one
+# is from before; check_member_names stops, as its family's F-test differs.
+RENAMED = {"bwzredux": "bwzredux3"}
+
+
+def check_member_names(names, source):
+    """Stop if `source` (a fit JSON) names a member that RENAMED has
+    since given another name."""
+    old = [n for n in names if n in RENAMED]
+    if old:
+        raise SystemExit(
+            f"{source}: {', '.join(old)} renamed since ("
+            + ", ".join(f"{o} -> {RENAMED[o]}" for o in old)
+            + "); rerun the fit that wrote it (bkgFit.py / corePdfFit.py)")
+
+
 # The Landau width of Landau x Bern, written to every fit JSON's provenance
 # ("landau_width", GeV). A JSON without it is from before, when the width
 # floated (and "landau" was a member): its Bernstein parameters belong to
@@ -308,7 +325,7 @@ def check_landau_width(prov, names, source):
 FAMILY_LABEL = {
     "bwzbern": "BWZ #times Bern{n}",
     "bwzgamma": "BWZGamma",
-    "bwzredux": "BWZRedux",
+    "bwzredux": "BWZRedux{n}",
     "fewzbern": "FEWZ #times Bern{n}",
     "bernstein": "Bern{n}",
     "exponential": "S-Exp{n}",
@@ -424,6 +441,9 @@ def create_bkg_pdf(x, tag, name, mc_core=None):
 
     Returns (pdf, keep); keep["params"] are its FLOATING parameters.
     """
+    if name in RENAMED:
+        raise KeyError(f"'{name}' is now '{RENAMED[name]}'; rerun the fit "
+                       "that named it (bkgFit.py / corePdfFit.py)")
     if name not in BKG_NPAR:
         raise KeyError(f"unknown background model '{name}'; "
                        f"known: {sorted(BKG_NPAR)}")

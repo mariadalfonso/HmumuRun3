@@ -6,7 +6,7 @@ distributions from all its toy fits.
 
     python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS_5bins
     python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS_5bins \
-        --truth exp2 --fit bwzredux --toy 3
+        --truth exp2 --fit bwzredux3 --toy 3
     python biasDiagnose.py -c ggHcat -b bdt0 bdt1 -y Run3 \
         --outdir BIAS_5bins --asimov
 

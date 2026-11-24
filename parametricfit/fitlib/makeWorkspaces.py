@@ -138,6 +138,7 @@ def bkg_members(rec, members, orders=None, source="", lowest=False):
     order-N member; one that fails the goodness of fit in this bin (or did
     not converge) drops its family here. lowest: each family's lowest order
     that converged and passes the goodness of fit, instead of its pick."""
+    pdefs.check_member_names(rec["candidates"], source)
     env = list(rec["envelope"])
     if members == "envelope":
         return env
@@ -207,6 +208,7 @@ def build_core_bkg(category, tag, corejson, wsdir, wsfile):
     prov = rec["provenance"]
     x = observable(category, prov["window"])
     year = prov["year"]
+    pdefs.check_member_names(rec["members"], corejson)
     pdefs.check_bern_coefficients(prov, rec["members"], corejson)
     pdefs.check_landau_width(prov, rec["members"], corejson)
     keep, store = [], ROOT.RooArgList()

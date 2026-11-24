@@ -13,6 +13,18 @@ parameter floats on the data; mZ and GammaZ are fixed (dyCore.MZ, GZ):
                         t = (m - m0) / h, m0 and h the window's centre and
                         half-width (130 and 20 GeV): t in [-1, 1]
 
+BWZRedux is a nested family of three orders, as RooModZPdf's forms with
+1, 2 and 3 parameters:
+
+    bwzredux1   GZ e^(a t)         / ((m - mZ)^2 + (GZ/2)^2)    (a)
+    bwzredux2   GZ e^(a t)         / ((m - mZ)^c + (GZ/2)^c)    (a, c)
+    bwzredux3   GZ e^(a t + b t^2) / ((m - mZ)^c + (GZ/2)^c)    (a, b, c)
+
+Each is the one above at c = 2 or b = 0, and the three share their
+parameters, so bkgFit.py's start at the order below reproduces it exactly
+(c and b start at 2 and 0). bwzredux1 is BWZ with its exponent in t: the
+same function as bwz, the first member of bwzbern.
+
 Bern_n is the Bernstein polynomial of order n on the fit window mapped onto
 [0, 1], with its first coefficient fixed to 1 (only the shape is fitted)
 and the others the squares of the fitted parameters, c_k = p_k^2, so that
@@ -23,7 +35,7 @@ family for the F-test:
     family    members                        free parameters
     bwzbern   bwz, bwzbern1 ... bwzbern4     a, Bernstein c1..cn   (1 + n)
     bwzgamma  bwzgamma                       a, f                  (2)
-    bwzredux  bwzredux                       a, b, c               (3)
+    bwzredux  bwzredux1 ... bwzredux3        a; a, c; a, b, c      (1-3)
 
 The note writes the exponentials in m itself, not in m - 125; so does this
 file, except BWZRedux. There e^(a m + b m^2) has a and b almost fully
@@ -32,7 +44,8 @@ Minuit forces its covariance positive-definite (status 1) on every fit,
 and bkgFit.py drops it. e^(a t + b t^2) is the same family (a, b map
 linearly onto the note's; the constant goes into the normalisation): the
 same minimum, and toy fits converge with an accurate covariance about
-70% of the time. In the window m > mZ, so (m - mZ)^c is real for any c.
+70% of the time. bwzredux1 and 2 use the same t. In the window m > mZ,
+so (m - mZ)^c is real for any c.
 
 Everything is a formula string in standard RooFit classes, so the same
 functions work in conda, in the Combine container and in Combine, as for
@@ -44,6 +57,7 @@ from ROOT import RooArgList, RooGenericPdf, RooRealVar
 from .dyCore import GZ, MZ
 
 MAX_ORDER = 4               # bwzbern1-4
+REDUX_ORDERS = (1, 2, 3)    # bwzredux1-3: (a), (a, c), (a, b, c)
 
 # start value, range and first Minuit step of every parameter. The steps
 # matter: a multiplies m ~ 130 GeV, so Minuit's default first step (a
@@ -68,11 +82,11 @@ BERN_INIT, BERN_RANGE, BERN_STEP = 1.0, (-5.0, 5.0), 0.05
 NPAR = {"bwz": 1,
         **{f"bwzbern{n}": 1 + n for n in range(1, MAX_ORDER + 1)},
         "bwzgamma": 2,
-        "bwzredux": 3}
+        **{f"bwzredux{n}": n for n in REDUX_ORDERS}}
 FAMILIES = {"bwzbern": ["bwz"] + [f"bwzbern{n}"
                                   for n in range(1, MAX_ORDER + 1)],
             "bwzgamma": ["bwzgamma"],
-            "bwzredux": ["bwzredux"]}
+            "bwzredux": [f"bwzredux{n}" for n in REDUX_ORDERS]}
 
 _GZ, _MZ, _HALF = repr(GZ), repr(MZ), repr(GZ / 2.0)
 
@@ -143,13 +157,19 @@ def create_pdfs(x, tag):
         f"(@2*{_bw('@0', '@1*@0')}+(1-@2)*exp(@1*@0)/(@0*@0))",
         RooArgList(x, a, f))
 
-    # ---- BWZRedux (5.3) ------------------------------------------------
+    # ---- BWZRedux (5.3), orders 1-3, sharing a, b, c --------------------
     a = var("bwzredux_a", RA_INIT, RA_RANGE, RA_STEP)
     b = var("bwzredux_b", RB_INIT, RB_RANGE, RB_STEP)
     c = var("bwzredux_c", C_INIT, C_RANGE, C_STEP)
     t = f"((@0-{0.5 * (lo + hi)!r})/{0.5 * (hi - lo)!r})"
-    pdfs["bwzredux"] = RooGenericPdf(
-        f"bwzredux_{tag}", "bwzredux",
+    pdfs["bwzredux1"] = RooGenericPdf(
+        "bwzredux1_" + tag, "bwzredux1",
+        _bw("@0", f"@1*{t}"), RooArgList(x, a))
+    pdfs["bwzredux2"] = RooGenericPdf(
+        "bwzredux2_" + tag, "bwzredux2",
+        _bw("@0", f"@1*{t}", "@2"), RooArgList(x, a, c))
+    pdfs["bwzredux3"] = RooGenericPdf(
+        "bwzredux3_" + tag, "bwzredux3",
         _bw("@0", f"@1*{t}+@2*{t}*{t}", "@3"), RooArgList(x, a, b, c))
 
     return pdfs, params

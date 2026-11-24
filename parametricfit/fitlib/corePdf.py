@@ -12,7 +12,7 @@ The core is itself an envelope of three functions with three parameters
 each, as in the note, so the bins also share ONE discrete index:
 
     core      the Run 2 function           members here
-    bwzredux  BWZRedux (5.3)               bwzredux  (a, b, c)
+    bwzredux3 BWZRedux (5.3)               bwzredux3 (a, b, c)
     fewzbern3 FEWZ x Bernstein (5.5)       fewzbern3 (c1, c2, c3)
     exp2      S-exponential (5.7)          exp2      (two slopes, one fraction)
 
@@ -52,7 +52,7 @@ import ROOT
 
 from . import pdfDefinitions as pdefs
 
-CORES = ["bwzredux", "fewzbern3", "exp2"]
+CORES = ["bwzredux3", "fewzbern3", "exp2"]
 POSITIVE_RANGE = (0.0, 10.0)        # Bernstein coefficients of the SMF
 SMF_INIT, SMF_RANGE, SMF_STEP = 1.0, POSITIVE_RANGE, 0.05
 # core parameters bounded to POSITIVE_RANGE. None any more: the FEWZ
