@@ -1516,6 +1516,10 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         frame.GetYaxis().SetTitleOffset(1.9)
         frame.GetYaxis().SetNdivisions(505)
         frame.GetXaxis().SetLabelOffset(0.012)
+        # the ticks and faint lines at the bin edges, drawn here so they do
+        # not depend on how ROOT ticks a labelled axis; the labels and the
+        # points sit at the bin centres, between them
+        frame.GetXaxis().SetTickLength(0)
         frame.Draw("AXIS")
         band = ROOT.TBox(-0.5, -threshold, nb - 0.5, threshold)
         band.SetFillColor(ROOT.TColor.GetColor(*SUMMARY_BAND_RGB))
@@ -1525,6 +1529,18 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         zero.SetLineColor(ROOT.kGray + 2)
         zero.Draw()
         keep += [pad, frame, band, zero]
+        tick = 8.0 / (ph - top - bottom) * (ytop + ymax)   # 8 px tall
+        for i in range(1, nb):
+            xe = i - 0.5
+            sep = ROOT.TLine(xe, -ymax, xe, ytop)
+            sep.SetLineColor(ROOT.kGray)
+            sep.SetLineStyle(3)
+            sep.Draw()
+            keep.append(sep)
+            for y0, y1 in ((-ymax, -ymax + tick), (ytop, ytop - tick)):
+                t = ROOT.TLine(xe, y0, xe, y1)
+                t.Draw()
+                keep.append(t)
         edge = ROOT.TLatex()
         edge.SetTextFont(43)
         edge.SetTextSize(11)
