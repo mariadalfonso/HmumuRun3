@@ -1451,9 +1451,9 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
     one line per fit family. Each panel has its own labels, in a band
     above the frame so they hide no point: the truth on the left, the
     legend of the fit functions on the right, the Bernstein ones with
-    their order. A point beyond +/- SINGLE_BINS_YMAX is an open triangle
-    inside that edge, with its value next to it, and the line breaks
-    there. Pixel fonts, so the canvas grows with the number of panels."""
+    their order. Every point sits at the centre of its bin. A point beyond
+    +/- SINGLE_BINS_YMAX is an open triangle inside that edge, with its
+    value next to it, and the line breaks there. Pixel fonts, so the canvas grows with the number of panels."""
     cells = single_by_family(by_bin)          # truth -> fit -> bin -> s
     orders = family_orders(by_bin)
     panels = family_order(cells)
@@ -1483,8 +1483,6 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         g.SetLineWidth(2)
         proxies[s] = g
     ymax = ytop = SINGLE_BINS_YMAX
-    # series side by side within a bin, so the error bars do not overlap
-    dx = min(0.6 / max(len(series), 1), 0.12)
     left, right, top, bottom = 70.0, 14.0, 30.0 + head_px, 46.0  # pixels
     for k, p in enumerate(panels):
         col, row = k % ncol, k // ncol
@@ -1532,7 +1530,7 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         edge.SetTextSize(11)
         edge.SetTextAlign(12)
         stacked = {}                    # off-scale points per bin and side
-        for j, s in enumerate(series):
+        for s in series:
             per_bin = cells[p].get(s, {})
             gr = ROOT.TGraphErrors()
             off = {True: ROOT.TGraph(), False: ROOT.TGraph()}   # above?
@@ -1542,7 +1540,7 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
                 if "bias" not in cell:
                     runs.append([])
                     continue
-                x = i + (j - 0.5 * (len(series) - 1)) * dx
+                x = float(i)            # every series at the bin centre
                 v = cell["bias"]
                 if -ymax <= v <= ytop:
                     n = gr.GetN()
