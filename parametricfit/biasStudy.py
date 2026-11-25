@@ -1426,9 +1426,10 @@ def family_orders(by_bin):
 
 
 def ordered_label(fam, orders):
-    """A Bernstein family with its order, "FEWZ #times Bern3" (one order
-    in every bin, as buildWorkspace.py --members families builds them;
-    older cards may differ, "Bern3/2/1"); the others as family_label."""
+    """A Bernstein family with its order: "FEWZ #times Bern3" when every
+    bin has the same one (buildWorkspace.py --fixed-bern-order), else one
+    per bin, "Bern3/3/2/1/1" (each bin's F-test pick, the default); the
+    others as family_label."""
     present = {o for o in orders or [] if o is not None}
     if fam not in pdefs.bern_families() or not present:
         return family_label(fam)
@@ -1445,15 +1446,37 @@ def family_order(names):
                                         else len(order), f))
 
 
+_TEXT_PX = []
+
+
+def text_px(text, size):
+    """The width in pixels of the TLatex `text` in pixel font 43 at `size`
+    (measured on a canvas of its own, so call it before drawing)."""
+    if not _TEXT_PX:
+        _TEXT_PX.append(ROOT.TCanvas("c_text_px", "", 1000, 100))
+    pad = ROOT.gPad
+    _TEXT_PX[0].cd()
+    lat = ROOT.TLatex(0, 0, text)
+    lat.SetTextFont(43)
+    lat.SetTextSize(size)
+    out = lat.GetXsize() * 1000.0
+    if pad:
+        pad.cd()
+    return out
+
+
 def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
     """The Run 2 note's Fig. 6.20 across the BDT bins, one panel per truth
     family (the note has one per fit function): the Bias against the bin,
     one line per fit family. Each panel has its own labels, in a band
     above the frame so they hide no point: the truth on the left, the
     legend of the fit functions on the right, the Bernstein ones with
-    their order. Every point sits at the centre of its bin. A point beyond
-    +/- SINGLE_BINS_YMAX is an open triangle inside that edge, with its
-    value next to it, and the line breaks there. Pixel fonts, so the canvas grows with the number of panels."""
+    their order (one per bin when it differs, "Bern3/3/2/1/1"). When the
+    labels are too long for that, the legend goes under the truth, across
+    the panel, in as many columns as fit. Every point sits at the centre of
+    its bin. A point beyond +/- SINGLE_BINS_YMAX is an open triangle inside
+    that edge, with its value next to it, and the line breaks there. Pixel
+    fonts, so the canvas grows with the number of panels."""
     cells = single_by_family(by_bin)          # truth -> fit -> bin -> s
     orders = family_orders(by_bin)
     panels = family_order(cells)
@@ -1462,9 +1485,26 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
     nb = len(bins)
     ncol = min(SINGLE_BINS_NCOL, len(panels))
     nrow = int(math.ceil(len(panels) / float(ncol)))
-    leg_rows = int(math.ceil(len(series) / float(SINGLE_BINS_LEGEND_COLS)))
-    head_px = max(40, 15 * leg_rows + 8)         # the truth and the legend
     pw, ph = SINGLE_BINS_PANEL_PX
+    left, right, bottom = 70.0, 14.0, 46.0       # pixels
+    # the band above the frame: the truth (two lines) left, the legend
+    # right of it if every label fits, else under it across the panel
+    labels = {s: ordered_label(s, orders.get(s)) for s in series}
+    entry_px = max(text_px(t, 12) for t in labels.values()) + 26.0
+    title_px = max(text_px("Toys from #bf{%s}" % ordered_label(
+        q, orders.get(q)), 14) for q in panels)
+    side_px = pw - left - right - SINGLE_BINS_LABEL_PX
+    beside = (title_px + 10.0 <= SINGLE_BINS_LABEL_PX
+              and SINGLE_BINS_LEGEND_COLS * entry_px <= side_px)
+    if beside:
+        leg_cols = SINGLE_BINS_LEGEND_COLS
+        leg_x0, leg_y0 = left + SINGLE_BINS_LABEL_PX, 2.0
+    else:
+        leg_cols = max(1, min(len(series),
+                              int((pw - left - right) // entry_px)))
+        leg_x0, leg_y0 = left, 40.0
+    leg_rows = int(math.ceil(len(series) / float(leg_cols)))
+    head_px = max(40, int(leg_y0) + 15 * leg_rows + 8)
     ph += head_px
     w, h = ncol * pw, nrow * ph
     style.setup_style()
@@ -1483,7 +1523,7 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         g.SetLineWidth(2)
         proxies[s] = g
     ymax = ytop = SINGLE_BINS_YMAX
-    left, right, top, bottom = 70.0, 14.0, 30.0 + head_px, 46.0  # pixels
+    top = 30.0 + head_px
     for k, p in enumerate(panels):
         col, row = k % ncol, k // ncol
         x1, x2 = col / float(ncol), (col + 1) / float(ncol)
@@ -1614,17 +1654,20 @@ def plot_single_bins(by_bin, title, r_inj, threshold, metric, outbase, pdf):
         lat.SetTextSize(12)
         lat.DrawLatex(left / pw, yh - 23.0 / ph,
                       f"m_{{H}} = {MH:g} GeV, #mu_{{inj}} = {r_inj:g}")
-        leg = ROOT.TLegend((left + SINGLE_BINS_LABEL_PX) / pw,
-                           yh - (15.0 * leg_rows + 4.0) / ph,
-                           1 - right / pw, yh - 2.0 / ph)
+        leg = ROOT.TLegend(leg_x0 / pw,
+                           yh - (leg_y0 + 15.0 * leg_rows + 2.0) / ph,
+                           1 - right / pw, yh - leg_y0 / ph)
         leg.SetBorderSize(0)
         leg.SetFillStyle(0)
         leg.SetTextFont(43)
         leg.SetTextSize(12)
-        leg.SetNColumns(SINGLE_BINS_LEGEND_COLS)
-        leg.SetMargin(0.2)
+        leg.SetNColumns(leg_cols)
+        # the marker's share of a column: 0.2 beside the truth, as before;
+        # 22 px across the panel, where the columns are wider
+        leg.SetMargin(0.2 if beside else
+                      min(0.2, 22.0 * leg_cols / (pw - right - leg_x0)))
         for s in series:
-            leg.AddEntry(proxies[s], ordered_label(s, orders.get(s)), "lp")
+            leg.AddEntry(proxies[s], labels[s], "lp")
         leg.Draw()
         cms = draw_label_px(pw, ph, left, pw - right,
                             "%s (%.1f TeV)" % (title, style.SQRT_S_TEV))

@@ -21,14 +21,17 @@ and prints the combine commands for the expected limit and significance.
 
 --members families builds a second set, for biasStudy.py --mode single (the
 Run 2 note's single-function bias study): the multipdf holds every family's
-F-test pick (each passes the goodness of fit), and every
-file name gets _families (Bkg_<tag>_families_workspace.root,
-datacard_<tag>_families.txt, <name>_families.root). The envelope files are
-not touched, so the limit cards stay as they are. Each Bernstein family
-(FEWZ x Bern, Landau x Bern, ...) gets ONE order in every bin: the highest
-of its F-test picks over the bins of -b that converged and passes the
-goodness of fit in every bin, or --bern-order FAMILY=N (a bin where that
-order fails the goodness of fit leaves the family out).
+F-test pick in that bin (each passes the goodness of fit), the same
+members the envelope chooses from, so a family's order can differ from
+bin to bin. Every file name gets _families
+(Bkg_<tag>_families_workspace.root, datacard_<tag>_families.txt,
+<name>_families.root). The envelope files are not touched, so the limit
+cards stay as they are. --fixed-bern-order gives each Bernstein family
+(FEWZ x Bern, Landau x Bern, ...) ONE order in every bin instead: the
+highest of its F-test picks over the bins of -b that converged and passes
+the goodness of fit in every bin. --bern-order FAMILY=N fixes that
+family at order N in every bin (a bin where that order fails the goodness
+of fit leaves the family out).
 
 --members families --lowest-order takes instead, in each bin, every
 family's LOWEST order that passes the goodness of fit (the order the
@@ -116,10 +119,12 @@ def run(cmd, args, cwd=HERE, stdout=None):
 # ---------------------------------------------------------------------------
 
 def bern_orders(args):
-    """{family: order} for --members families, one order per Bernstein
-    family in every bin: --bern-order, or by default the highest F-test
+    """{family: order} for --members families: the Bernstein families
+    given ONE order in every bin. --bern-order FAMILY=N fixes that family
+    at N; --fixed-bern-order fixes every other one at its highest F-test
     pick over the bins that converged and passes the goodness of fit in
-    every bin that has the family (else the highest order that does). An
+    every bin that has the family (else the highest order that does). A
+    family left out keeps each bin's own F-test pick (the default). An
     order that fails in a bin leaves the family out of that bin
     (makeWorkspaces.py says so)."""
     recs = []
@@ -147,6 +152,10 @@ def bern_orders(args):
         if fam in fixed:
             out[fam], how = fixed[fam], "--bern-order"
         elif not have:
+            continue
+        elif not args.fixed_bern_order:
+            print(f"order    : {fam:<10} each bin's F-test pick "
+                  f"({'/'.join(map(str, picks))})")
             continue
         else:
             orders = sorted({pdefs.member_order(m)
@@ -413,7 +422,12 @@ def main():
                     metavar="FAMILY=N",
                     help="with --members families: the order of a "
                          "Bernstein family in every bin, e.g. fewzbern=3 "
-                         "(default: its highest F-test pick over the bins)")
+                         "(default: each bin's own F-test pick)")
+    ap.add_argument("--fixed-bern-order", action="store_true",
+                    help="with --members families: every Bernstein family "
+                         "at ONE order in every bin, its highest F-test "
+                         "pick over the bins (default: each bin's own "
+                         "F-test pick)")
     ap.add_argument("--lowest-order", action="store_true",
                     help="with --members families: in each bin, every "
                          "family's lowest order passing the goodness of "
@@ -422,12 +436,13 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="print the commands, run nothing")
     args = ap.parse_args()
-    if args.bern_order and args.members != "families":
-        ap.error("--bern-order needs --members families")
+    if (args.bern_order or args.fixed_bern_order) \
+            and args.members != "families":
+        ap.error("--bern-order / --fixed-bern-order need --members families")
     if args.lowest_order and (args.members != "families"
-                              or args.bern_order):
-        ap.error("--lowest-order needs --members families, "
-                 "and no --bern-order")
+                              or args.bern_order or args.fixed_bern_order):
+        ap.error("--lowest-order needs --members families, and no "
+                 "--bern-order / --fixed-bern-order")
 
     args.wsdir = os.path.abspath(os.path.join(
         HERE, args.wsdir or config.default_wsdir(args.year)))

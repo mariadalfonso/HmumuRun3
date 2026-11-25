@@ -254,7 +254,7 @@ def family_member(fam, order):
 def bern_families():
     """The families built on a Bernstein polynomial (bern, BWZ x Bern,
     FEWZ x Bern, Landau x Bern): the ones labelled with their order, and
-    whose order buildWorkspace.py --members families fixes across bins."""
+    whose order buildWorkspace.py --fixed-bern-order fixes across bins."""
     return [f for f in BKG_FAMILIES if "Bern{n}" in FAMILY_LABEL.get(f, "")]
 
 

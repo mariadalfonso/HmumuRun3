@@ -16,8 +16,8 @@ With --members families the multipdf holds every family's F-test pick
 Bkg_<tag>_families_workspace.root instead. That is the input of
 biasStudy.py --mode single (the Run 2 note's truth x fit matrix).
 --order FAMILY=N replaces a family's pick by its order-N member
-(buildWorkspace.py uses it to give each Bernstein family one order in
-every bin); a member that fails the goodness of fit in this bin leaves
+(buildWorkspace.py --fixed-bern-order / --bern-order use it to give a
+Bernstein family one order in every bin); a member that fails the goodness of fit in this bin leaves
 its family out here. --lowest instead takes each family's LOWEST order
 that converged and passes the goodness of fit in this bin (where the
 F-test starts), for a bias study of the least flexible members.

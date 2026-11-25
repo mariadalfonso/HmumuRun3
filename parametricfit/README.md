@@ -383,10 +383,13 @@ The significance scales less than √L between 2024 and Run 3; still to check.
 every family's F-test pick in the multipdf, as `*_families` files for
 `biasStudy.py --mode single` and `--mode core`; `core`: the core-PDF of
 `corePdfFit.py`, as `*_core` files; the envelope cards are not touched).
-With `families`, each Bernstein family (FEWZ × Bern, Landau × Bern, …) has
-one order in every bin: its highest F-test pick over the bins of `-b` that
-converged and passes the goodness of fit in every bin, or
-`--bern-order FAMILY=N` (e.g. `--bern-order fewzbern=3 landbern=2`).
+With `families`, every family has its own F-test pick in each bin, the
+members the envelope chooses from, so an order can differ between bins.
+`--fixed-bern-order` gives each Bernstein family (FEWZ × Bern, Landau ×
+Bern, …) one order in every bin instead: its highest F-test pick over the
+bins of `-b` that converged and passes the goodness of fit in every bin.
+`--bern-order FAMILY=N` fixes that family at N in every bin (e.g.
+`--bern-order fewzbern=3 landbern=2`).
 
 **`biasStudy.py`**
 - `-c`, `-b`, `-y`.
