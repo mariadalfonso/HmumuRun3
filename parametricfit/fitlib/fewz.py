@@ -69,21 +69,30 @@ FAMILIES = {"fewzbern": list(NPAR)}
 
 @functools.lru_cache(maxsize=None)
 def spline_expr(lo, hi, m="@0"):
-    """The spline over [lo, hi] as a formula string in `m`, 1 at MREF.
-
-    One cubic per knot interval that overlaps the window,
-    y + b*dx + c*dx^2 + d*dx^3 with dx = m - x_knot (TSpline3::GetCoeff);
-    the first and last pieces carry on past the window edges.
-    """
+    """The FEWZ spline over [lo, hi] as a formula string in `m`, 1 at MREF
+    (spline_to_expr on fewz_spline)."""
     f = TFile.Open(FEWZ_FILE)
     if not f or f.IsZombie():
         raise RuntimeError(f"cannot open {FEWZ_FILE}")
     sp = f.Get(SPLINE)
     if not sp:
         raise RuntimeError(f"{FEWZ_FILE} has no {SPLINE}")
+    expr = spline_to_expr(sp, lo, hi, m)
+    f.Close()
+    return expr
+
+
+def spline_to_expr(sp, lo, hi, m="@0"):
+    """Any TSpline3 over [lo, hi] as a formula string in `m`, 1 at MREF.
+
+    One cubic per knot interval that overlaps the window,
+    y + b*dx + c*dx^2 + d*dx^3 with dx = m - x_knot (TSpline3::GetCoeff);
+    the first and last pieces carry on past the window edges.
+    """
     if not sp.GetXmin() <= lo < hi <= sp.GetXmax():
-        raise RuntimeError(f"fit window {lo}-{hi} GeV is outside the FEWZ "
-                           f"spline ({sp.GetXmin()}-{sp.GetXmax()} GeV)")
+        raise RuntimeError(f"fit window {lo}-{hi} GeV is outside the "
+                           f"spline {sp.GetName()} ({sp.GetXmin()}-"
+                           f"{sp.GetXmax()} GeV)")
     norm = sp.Eval(MREF)
     pieces = []
     for i in range(sp.GetNp() - 1):
@@ -94,7 +103,6 @@ def spline_expr(lo, hi, m="@0"):
         if x1.value > lo and x0.value < hi:
             pieces.append((x0.value, x1.value,
                            *(v.value / norm for v in (y, b, c, d))))
-    f.Close()
 
     terms = []
     for k, (x0, x1, y, b, c, d) in enumerate(pieces):

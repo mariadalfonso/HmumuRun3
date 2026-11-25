@@ -22,8 +22,8 @@ Run everything from `parametricfit/`.
 
 | where | what |
 |---|---|
-| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` (with `biasDiagnose.py` to see why a bias cell fails, `submitBias.py` to run it on Slurm); `optimizeBins.py` chooses the BDT bins |
-| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `bkgTable` (the table of background picks), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
+| top level | the chain: `sigFit.py`, `mcCoreFit.py`, `bkgFit.py`, `corePdfFit.py`, `buildWorkspace.py`, `biasStudy.py` (with `biasDiagnose.py` to see why a bias cell fails, `submitBias.py` to run it on Slurm); `optimizeBins.py` chooses the BDT bins; `dyCoreCompare.py` compares the FEWZ spline with the new FEWZ and DYTurbo DY shapes (alone, and against the DY MC per bin) |
+| `fitlib/` | shared code: `config` (fit window, modes, lumi), `style` (CMS plot style), `signal` (the signal fit), `pdfDefinitions`, `dyCore`, `bwz`, `fewz` (with `fewz_spline.root`; `fewz_smooth.csv` and `dyturbo_smooth.csv` are the new FEWZ and DYTurbo predictions, read by `dyCoreCompare.py`), `agnostic`, `corePdf`, `mcCore`, `gof` (the χ² goodness of fit), `bkgTable` (the table of background picks), `prepareFits`, `bdtBins` (the BDT cuts, `SELMVA`; `bdt_bins.json` from `optimizeBins.py --apply`), and the steps `buildWorkspace.py` runs (`makeWorkspaces`, `bwsHrare`) |
 | `studies/` | side studies of the signal shape, run as modules: `python -m studies.fitEtaBins 2024` |
 
 ## Workflow
