@@ -1,8 +1,8 @@
 """
 biasDiagnose.py -- why a cell of the biasStudy.py --mode single matrix
 fails: for each (truth, fit function), one toy (or the truth's Asimov),
-the S+B fit of that function to it, and the cell's pull and mu_fit
-distributions from all its toy fits.
+the S+B and the background-only fits of that function to it, and the
+cell's pull and mu_fit distributions from all its toy fits.
 
     python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS_5bins
     python biasDiagnose.py -c ggHcat -b bdt0 -y Run3 --outdir BIAS_5bins \
@@ -18,8 +18,9 @@ Per cell, one plot <plotdir>/<cat>/bias_diag_<tag>_<r>[_asimov]/
 <truth>__fit_<fit>.png with four panels:
 
   mass       the toy (points), the truth's background (red; the shape the
-             toy was generated from), and the fit: S+B (blue) and its
-             background (dashed blue)
+             toy was generated from), the fit: S+B (blue) and its
+             background (dashed blue), and the background-only fit of the
+             same function over the full range, r = 0 (orange)
   residual   per bin, the toy minus the S+B fit (points), the fitted
              background minus the truth's (blue line), and the injected
              signal (grey): where the fitted background misses the truth
@@ -33,7 +34,9 @@ Per cell, one plot <plotdir>/<cat>/bias_diag_<tag>_<r>[_asimov]/
 
 and the numbers: mu_fit of this fit and of combine's fit of the same toy
 (they should agree), the integral of (fitted - truth background) and of
-the injected signal over 120-130 GeV.
+the injected signal over 120-130 GeV, and the binned chi2 and p-value of
+both fits (toyGof.chi2_pvalue: 1 GeV bins merged as bkgFit.py does, ndf
+= merged bins - floating parameters, r among them only for S+B).
 
 The fit here is a RooFit fit of the channel's S+B pdf, the index frozen to
 the fit function and the other functions' parameters frozen (as
@@ -66,6 +69,7 @@ WINDOW = (120.0, 130.0)     # the signal window the integrals are over
 NSUB = 20                   # grid points per plot bin for the curves
 TRUTH_RGB = (200, 30, 30)
 FIT_RGB = (31, 90, 180)
+BONLY_RGB = (230, 120, 0)
 SIG_RGB = (190, 190, 190)
 EDGE_FRAC = 1e-3            # mu_fit this close to the range edge: at it
 
@@ -208,6 +212,28 @@ def fit(model, data):
     return res.status(), model.r.getVal(), model.r.getError(), res.minNll()
 
 
+def fit_bonly(model, data):
+    """Background-only fit of the current function to data over the full
+    range: r fixed at 0, everything else as in fit(). Returns the status;
+    r is floating again afterwards."""
+    r = model.r
+    const = r.isConstant()
+    r.setRange(min(r.getMin(), 0.0), max(r.getMax(), 0.0))
+    r.setVal(0.0)
+    r.setConstant(True)
+    status = fit(model, data)[0]
+    r.setConstant(const)
+    return status
+
+
+def free_params(model):
+    """The parameters a fit floats (the observable aside): the chi2 ndf
+    subtracts them."""
+    xname = model.x.GetName()
+    return sum(1 for v in model.vars.values()
+               if not v.isConstant() and v.GetName() != xname)
+
+
 def hist_of(data, x, edges, name):
     """The data in the plot binning."""
     h = ROOT.TH1D(name, "", len(edges) - 1, edges[0], edges[-1])
@@ -323,7 +349,7 @@ def draw_cell(d, outbase, pdf):
     h.SetLineColor(ROOT.kBlack)
     hi = max(h.GetMaximum(), max(d["truth_b"]))
     lo_y = min(h.GetBinContent(b) for b in range(1, h.GetNbinsX() + 1))
-    h.SetMaximum(hi + 0.45 * (hi - lo_y))
+    h.SetMaximum(hi + 0.6 * (hi - lo_y))
     h.SetMinimum(max(0.0, lo_y - 0.15 * (hi - lo_y)))
     h.GetYaxis().SetTitle(f"events / {width:g} GeV")
     h.GetXaxis().SetLabelSize(0)
@@ -344,11 +370,14 @@ def draw_cell(d, outbase, pdf):
         keep.append(g)
         return g
 
+    # the B-only fit first, under the others: it sits close to them away
+    # from the peak
+    g_b0 = curve(d["dens_fit_b0"], BONLY_RGB, 1, "g_b0")
     g_tb = curve(d["dens_truth_b"], TRUTH_RGB, 1, "g_tb")
     g_fsb = curve(d["dens_fit_sb"], FIT_RGB, 1, "g_fsb")
     g_fb = curve(d["dens_fit_b"], FIT_RGB, 2, "g_fb")
     h.Draw("E1 same")
-    leg = ROOT.TLegend(0.52, 0.66, 0.95, 0.89)
+    leg = ROOT.TLegend(0.52, 0.62, 0.95, 0.89)
     leg.SetBorderSize(0)
     leg.SetFillStyle(0)
     leg.SetTextFont(42)
@@ -357,13 +386,14 @@ def draw_cell(d, outbase, pdf):
     leg.AddEntry(g_tb, f"truth background: {d['truth']}", "l")
     leg.AddEntry(g_fsb, f"fit S+B: {d['fit']}", "l")
     leg.AddEntry(g_fb, "fit, its background", "l")
+    leg.AddEntry(g_b0, f"B-only fit (#mu = 0): {d['fit']}", "l")
     leg.Draw()
     keep.append(leg)
     lat = ROOT.TLatex()
     lat.SetNDC()
     lat.SetTextFont(42)
     lat.SetTextSize(0.036)
-    x0, y0 = 0.50, 0.61
+    x0, y0 = 0.50, 0.57
     for k, line in enumerate(d["text"]):
         lat.DrawLatex(x0, y0 - 0.048 * k, line)
     keep.append(lat)
@@ -560,6 +590,15 @@ def diagnose_tag(tag, args):
         for j in fits:
             fitname = names[j]
             prefix = f"gen{i}_fit{j}_{key}"
+            # background only, over the full range (r = 0): the chi2
+            # counts the free parameters, r not among them
+            model.reset()
+            model.select(j)
+            b0_status = fit_bonly(model, data)
+            fit_b0 = model.density(xs)
+            b0_chi2, b0_ndf, b0_p = toyGof.chi2_pvalue(
+                h, per_bin(fit_b0, NSUB, step), free_params(model))
+            # S+B
             model.reset()
             model.select(j)
             model.r.setRange(*rrange)
@@ -577,9 +616,8 @@ def diagnose_tag(tag, args):
             # the chi2 biasStudy.py's toy goodness of fit uses (toyGof):
             # bins merged as bkgFit.py does, the free parameters and r
             # counted (MH and the constrained nuisances are fixed here)
-            npar = sum(1 for v in model.vars.values()
-                       if not v.isConstant() and v.GetName() != x.GetName())
-            chi2, ndf, pval = toyGof.chi2_pvalue(h, fsb_bins, npar)
+            chi2, ndf, pval = toyGof.chi2_pvalue(h, fsb_bins,
+                                                 free_params(model))
             win = "%g-%g GeV" % WINDOW
             text = [
                 "#mu_{fit} = %.3f #pm %.3f (status %d)" % (mu, err, status),
@@ -587,15 +625,18 @@ def diagnose_tag(tag, args):
                  "combine, same toy: #mu_{fit} = %.3f" % cmu),
                 "B_{fit} - B_{truth} in %s: %+.0f events" % (win, db_win),
                 "S(#mu_{inj}) in %s: %.0f events" % (win, s_win),
-                "#chi^{2} / ndf = %.0f / %d, p = %.2g" % (
+                "S+B: #chi^{2} / ndf = %.0f / %d, p = %.2g" % (
                     chi2, max(ndf, 1), pval),
+                "B only: #chi^{2} / ndf = %.0f / %d, p = %.2g%s" % (
+                    b0_chi2, max(b0_ndf, 1), b0_p,
+                    "" if b0_status == 0 else f" (status {b0_status})"),
             ]
             text = [t for t in text if t]
             d = {"edges": edges, "centers": centers, "xs": xs,
                  "data": h.Clone(f"h_{i}_{j}"), "data_label": data_label,
                  "truth": truth, "fit": fitname, "r_inj": args.inject,
                  "dens_truth_b": truth_b, "dens_fit_sb": fit_sb,
-                 "dens_fit_b": fit_b,
+                 "dens_fit_b": fit_b, "dens_fit_b0": fit_b0,
                  "truth_b": per_bin(truth_b, NSUB, step),
                  "truth_s": per_bin(truth_s, NSUB, step),
                  "fit_b": per_bin(fit_b, NSUB, step), "fit_sb": fsb_bins,
@@ -610,6 +651,8 @@ def diagnose_tag(tag, args):
                 "bias": exp_bias, "delta_b_window": db_win,
                 "s_window": s_win, "combine_mu": cmu,
                 "chi2": chi2, "ndf": ndf, "pvalue": pval,
+                "bonly_status": b0_status, "bonly_chi2": b0_chi2,
+                "bonly_ndf": b0_ndf, "bonly_pvalue": b0_p,
                 "combine_mean_pull": (sum(pulls) / len(pulls)
                                       if pulls else None),
                 "combine_median_pull": bs.median(pulls) if pulls else None,
@@ -618,6 +661,7 @@ def diagnose_tag(tag, args):
                   f"{err:6.3f}"
                   + ("" if cmu is None else f" (combine {cmu:+8.3f})")
                   + f"  dB(window) {db_win:+9.0f}  S {s_win:7.0f}"
+                  + f"  p S+B {pval:.2g} B-only {b0_p:.2g}"
                   + f"  combine pulls: mean "
                   + ("%+7.2f median %+6.2f" % (
                       sum(pulls) / len(pulls), bs.median(pulls))
