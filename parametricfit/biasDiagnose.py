@@ -57,7 +57,7 @@ import ROOT
 
 import biasStudy as bs
 from fitlib import pdfDefinitions as pdefs
-from fitlib import style
+from fitlib import style, toyGof
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -130,43 +130,6 @@ class Model:
         return out
 
 
-def find_add(pdf, multi):
-    """The extended RooAddPdf with a term that holds `multi`, under pdf
-    (a RooSimultaneous of one channel, a RooProdPdf with the constraints,
-    or the RooAddPdf itself)."""
-    if pdf.InheritsFrom("RooAddPdf"):
-        if (pdf.coefList().getSize() == pdf.pdfList().getSize()
-                and any(p.dependsOn(multi) for p in pdf.pdfList())):
-            return pdf
-    if pdf.InheritsFrom("RooSimultaneous"):
-        for label in category_labels(pdf.indexCat()):
-            sub = pdf.getPdf(label)
-            if sub:
-                found = find_add(sub, multi)
-                if found:
-                    return found
-    if pdf.InheritsFrom("RooProdPdf"):
-        for p in pdf.pdfList():
-            if p.dependsOn(multi):
-                found = find_add(p, multi)
-                if found:
-                    return found
-    return None
-
-
-def category_labels(cat):
-    """The state names of a RooAbsCategory."""
-    try:
-        return [str(s.first) for s in cat.states()]    # ROOT >= 6.22
-    except AttributeError:
-        it = cat.typeIterator()
-        out, t = [], it.Next()
-        while t:
-            out.append(t.GetName())
-            t = it.Next()
-        return out
-
-
 def load_model(t2w, tag):
     if not pdefs.load_combine(quiet=True):
         raise SystemExit("needs libHiggsAnalysisCombinedLimit: run inside "
@@ -185,7 +148,7 @@ def load_model(t2w, tag):
                          f"{[v.GetName() for v in obs]}")
     x = obs[0]
     model_s = w.pdf("model_s")
-    add = find_add(model_s, multi) if model_s else None
+    add = toyGof.find_add(model_s, multi) if model_s else None
     if add is None:
         raise SystemExit(f"{t2w}: no S+B RooAddPdf holding the multipdf "
                          "found under model_s")
@@ -610,15 +573,13 @@ def diagnose_tag(tag, args):
                                                        args.toy)
             pulls, mus, drop, nfiles = cell_results(
                 outdir, prefix, args.inject, rrange, meta.get("ntoys", {}))
-            chi2, ndf = 0.0, 0
             fsb_bins = per_bin(fit_sb, NSUB, step)
-            for b, e in enumerate(fsb_bins):
-                if e > 0:
-                    chi2 += (h.GetBinContent(b + 1) - e) ** 2 / e
-                    ndf += 1
-            ndf -= 1 + sum(1 for v in model.vars.values()
-                           if not v.isConstant()
-                           and v.GetName() != x.GetName())
+            # the chi2 biasStudy.py's toy goodness of fit uses (toyGof):
+            # bins merged as bkgFit.py does, the free parameters and r
+            # counted (MH and the constrained nuisances are fixed here)
+            npar = sum(1 for v in model.vars.values()
+                       if not v.isConstant() and v.GetName() != x.GetName())
+            chi2, ndf, pval = toyGof.chi2_pvalue(h, fsb_bins, npar)
             win = "%g-%g GeV" % WINDOW
             text = [
                 "#mu_{fit} = %.3f #pm %.3f (status %d)" % (mu, err, status),
@@ -626,7 +587,8 @@ def diagnose_tag(tag, args):
                  "combine, same toy: #mu_{fit} = %.3f" % cmu),
                 "B_{fit} - B_{truth} in %s: %+.0f events" % (win, db_win),
                 "S(#mu_{inj}) in %s: %.0f events" % (win, s_win),
-                "#chi^{2} / ndf = %.0f / %d" % (chi2, max(ndf, 1)),
+                "#chi^{2} / ndf = %.0f / %d, p = %.2g" % (
+                    chi2, max(ndf, 1), pval),
             ]
             text = [t for t in text if t]
             d = {"edges": edges, "centers": centers, "xs": xs,
@@ -647,7 +609,7 @@ def diagnose_tag(tag, args):
                 "mu": mu, "mu_err": err, "status": status,
                 "bias": exp_bias, "delta_b_window": db_win,
                 "s_window": s_win, "combine_mu": cmu,
-                "chi2": chi2, "ndf": ndf,
+                "chi2": chi2, "ndf": ndf, "pvalue": pval,
                 "combine_mean_pull": (sum(pulls) / len(pulls)
                                       if pulls else None),
                 "combine_median_pull": bs.median(pulls) if pulls else None,

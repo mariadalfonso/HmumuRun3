@@ -70,6 +70,10 @@ def bias_args(args, cats, bins):
         out += ["--plotdir", args.plotdir]
     if args.combine_opts:
         out += ["--combine-opts", args.combine_opts]
+    if args.r_width is not None:
+        out += ["--r-width", "%g" % args.r_width]
+    if args.rrange:
+        out += ["--rrange", *("%g" % r for r in args.rrange)]
     return " ".join(["-c", *cats, "-b", *bins] + [shlex.quote(o) for o in out])
 
 
@@ -136,6 +140,12 @@ def main():
                     help="toys per combine call and file (default 100)")
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--combine-opts", default="")
+    ap.add_argument("--r-width", type=float, default=None, metavar="N",
+                    help="biasStudy.py --r-width: the r range's half-width "
+                         "in sigma_r (its default if not given)")
+    ap.add_argument("--rrange", nargs=2, type=float, default=None,
+                    metavar=("RMIN", "RMAX"),
+                    help="biasStudy.py --rrange: a fixed r range instead")
     ap.add_argument("--partition", default="submit")
     ap.add_argument("--time-prepare", default="04:00:00")
     ap.add_argument("--time-fit", default="12:00:00",

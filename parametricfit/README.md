@@ -398,7 +398,9 @@ bins of `-b` that converged and passes the goodness of fit in every bin.
 - `--outdir`, `--plotdir`.
 - `--inject`: injected r, default 1.
 - `--ntoys` (default 1000), `--toys-per-job` (100), `-j`.
-- `--rrange`: fixed r range.
+- `--r-width`: the toy fits' r range, r_inj ± N σ_r from an Asimov fit
+  (default 30), its lower edge kept where S + B ≥ 0. `--rrange`: a fixed
+  range instead.
 - `--threshold`: default 0.20.
 - `--mode envelope|single|core`: the envelope floating (default), the Run 2
   single-function matrix, or the Run 2 core-PDF test.

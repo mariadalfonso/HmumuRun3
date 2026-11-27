@@ -42,6 +42,16 @@ only while it profiles the index, and floating they are flat directions
 on which Minuit2 can abort a whole job. Fits made before this are refused
 (delete them; the toys stay valid).
 
+Each toy fit also has a goodness of fit (fitlib/toyGof.py): Combine
+tracks every floating parameter of the fit (--trackParameters), and right
+after the fit the S+B expectation at its best point is compared with the
+toy, a binned chi2 as bkgFit.py's (1 GeV bins, sparse ones merged) over
+the full window, ndf = bins - (free parameters + r). The report gives per
+cell the fraction of toys with p > 0.01 and their median p, next to the
+Bias: a cell whose toys the fit cannot describe (the data would have told
+the two shapes apart) reads low. The fits do it themselves; --only gof
+redoes it from the fit files (both in the Combine container).
+
 --mode core: the Run 2 note's core-PDF test (Sec. 6.4.2)
 --------------------------------------------------------
 The fit model is corePdfFit.py's core-PDF across all the bins of -b (the
@@ -73,6 +83,7 @@ and plots in <plotdir>/<cat>/bias_<tag>_<r>_{<member>,summary}.png.
 --mode single writes to <outdir>/<tag>_single/ instead:
     toys_gen<i>_<r>_s<seed>.root          as above, truth i
     fit_gen<i>_fit<j>_<r>_s<seed>.root    those toys fitted with member j
+    gof_gen<i>_fit<j>_<r>_s<seed>.json    per toy, chi2, ndf, p of that fit
     sig_fit<j>.root                       expected significance with j
     bias_<tag>_<r>_matrix.json            the matrix, usable fits, choice
 and the plot <plotdir>/<cat>/bias_<tag>_<r>_matrix.png. With more than one
@@ -114,7 +125,7 @@ from concurrent.futures import ThreadPoolExecutor
 import ROOT
 
 from fitlib import pdfDefinitions as pdefs
-from fitlib import config, corePdf, style
+from fitlib import config, corePdf, style, toyGof
 
 ROOT.gROOT.SetBatch(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.WARNING)
@@ -145,11 +156,16 @@ ROWS_TOP_PX, ROWS_BOTTOM_PX = 48, 64
 ROWS_LEFT_PX, ROWS_RIGHT_PX = 120, 150   # member names | value column
 ROW_LABEL_PX, ROW_VALUE_PX = 16, 14
 
-# r range of the toy fits: r_inj -/+ R_WIDTH * sigma_r(Asimov). Wide enough
-# that the 1 sigma interval of a toy never reaches the edge; --algo singles
-# reports an interval that hits the edge as the edge itself, which is why the
-# README's rMin = 0 runs lose the lower error.
-R_WIDTH = 10.0
+# r range of the toy fits: r_inj -/+ --r-width * sigma_r(Asimov), default
+# R_WIDTH. Wide enough that a fit with a wrong shape still finds its minimum
+# inside (at 10 sigma, a function far from the truth stopped at the edge in
+# every toy, with a meaningless error); --algo singles reports an interval
+# that hits the edge as the edge itself, which is why the README's rMin = 0
+# runs lose the lower error. The lower edge never goes below R_FLOOR_FRAC of
+# the r at which S + B turns negative somewhere (toyGof.r_floor): there the
+# likelihood is not defined, and in the high-S/B bins 30 sigma reaches it.
+R_WIDTH = 30.0
+R_FLOOR_FRAC = 0.9
 R_SEED_RANGE = 50.0        # range of the Asimov fit that sets it
 
 # Discrete profiling, as recommended in the Combine documentation: Minuit
@@ -388,6 +404,36 @@ def read_members(t2w, tag):
     return names, params
 
 
+def fit_tracked(t2w, tag, frozen):
+    """{i: {"track": names, "npar": n}} per member i fitted alone: every
+    parameter that floats in its toy fits (its shape parameters, the
+    background normalisation, the constrained nuisances; not r, MH, the
+    global observables or the frozen ones), for Combine's
+    --trackParameters, and the number the chi2 counts as fitted (the
+    unconstrained ones, plus r)."""
+    if not pdefs.load_combine(quiet=True):
+        raise SystemExit("needs libHiggsAnalysisCombinedLimit: run inside "
+                         "the Combine container")
+    f = ROOT.TFile.Open(t2w)
+    w = f.Get("w")
+    model = w.pdf("model_s")
+    obs = w.set("observables")
+    globs = model_set(w, "globalObservables")
+    pois = model_set(w, "POI")
+    constrained = {n for n in model_set(w, "nuisances")
+                   if f"{n}_In" in globs}
+    floating = sorted(v.GetName() for v in model.getParameters(obs)
+                      if v.InheritsFrom("RooRealVar") and not v.isConstant()
+                      and v.GetName() not in globs | pois | {"MH"})
+    f.Close()
+    out = {}
+    for i, others in frozen.items():
+        track = [n for n in floating if n not in set(others)]
+        out[i] = {"track": track,
+                  "npar": sum(1 for n in track if n not in constrained) + 1}
+    return out
+
+
 def read_singles(path, index_name=None):
     """{iToy: {best, lo, hi, index}} from a MultiDimFit --algo singles file.
 
@@ -419,10 +465,41 @@ def read_singles(path, index_name=None):
     return out
 
 
-def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry, label=""):
-    """r_inj -/+ R_WIDTH * sigma_r, sigma_r from an Asimov fit with the
-    envelope floating; the wider of the two errors is used. `label` keeps
+def workspace_r_floor(t2w):
+    """toyGof.r_floor of a text2workspace output, or None"""
+    if not pdefs.load_combine(quiet=True):
+        return None
+    f = ROOT.TFile.Open(t2w)
+    if not f or f.IsZombie():
+        return None
+    w = f.Get("w")
+    out = toyGof.r_floor(w) if w else None
+    f.Close()
+    return out
+
+
+def floored(rrange, floor, r_inj):
+    """rrange with its lower edge at no less than R_FLOOR_FRAC * floor"""
+    if floor is None or rrange[0] >= R_FLOOR_FRAC * floor:
+        return list(rrange)
+    lo = R_FLOOR_FRAC * floor
+    if lo >= r_inj:
+        print(f"  !! S + B turns negative at r = {floor:.3g}, above "
+              f"r_inj = {r_inj:g}: the lower edge is left at "
+              f"{rrange[0]:.3g}")
+        return list(rrange)
+    print(f"  lower edge raised from {rrange[0]:.3g} to {lo:.3g}: S + B "
+          f"turns negative at r = {floor:.3g}")
+    return [lo, rrange[1]]
+
+
+def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry, label="",
+                  width=R_WIDTH):
+    """r_inj -/+ width * sigma_r, sigma_r from an Asimov fit with the
+    envelope floating; the wider of the two errors is used. The lower edge
+    stays above the r where S + B turns negative (floored). `label` keeps
     the files of several workspaces in one outdir apart."""
+    floor = None if dry else workspace_r_floor(t2w)
     name = f"_asimov{label}_{rlabel(r_inj)}"
     dest = os.path.join(outdir, f"asimov{label}_{rlabel(r_inj)}.root")
     cmd = (["combine", "-M", "MultiDimFit", "-d", t2w, "-m", "%g" % MH,
@@ -430,7 +507,8 @@ def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry, label=""):
             "-P", "r", "--algo", "singles", "--floatOtherPOIs", "1",
             "--setParameters", "r=%g" % r_inj,
             "--setParameterRanges",
-            "r=%g,%g" % (r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE),
+            "r=%g,%g" % tuple(floored([r_inj - R_SEED_RANGE,
+                                       r_inj + R_SEED_RANGE], floor, r_inj)),
             "-n", name] + COMBINE_FIT_OPTS + extra)
     ok = run_cmd(cmd, outdir, os.path.join(outdir, "logs", f"{name[1:]}.log"),
                  dry) and take_output(outdir, name, "MultiDimFit", dest, dry)
@@ -446,10 +524,13 @@ def asimov_rrange(t2w, tag, r_inj, outdir, extra, dry, label=""):
         print(f"  !! Asimov fit gave no usable error on r (see "
               f"logs/{name[1:]}.log); using r in +/- {R_SEED_RANGE:g}. "
               f"Set --rrange to override.")
-        return [r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE], "fallback"
+        return floored([r_inj - R_SEED_RANGE, r_inj + R_SEED_RANGE], floor,
+                       r_inj), "fallback"
     sig = max(errs)
-    print(f"  Asimov, r = {r_inj:g}: sigma_r = {sig:.3f}")
-    return [r_inj - R_WIDTH * sig, r_inj + R_WIDTH * sig], "asimov"
+    print(f"  Asimov, r = {r_inj:g}: sigma_r = {sig:.3f}, range +/- "
+          f"{width:g} sigma_r")
+    return floored([r_inj - width * sig, r_inj + width * sig], floor,
+                   r_inj), "asimov"
 
 
 def gen_toys(t2w, tag, igen, r_inj, ntoys, seed, outdir, extra, force, dry):
@@ -482,10 +563,12 @@ def frozen_list(idx, freeze):
 
 
 def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
-             extra, dry, ifit=None, freeze=()):
+             extra, dry, ifit=None, freeze=(), track=()):
     """Fit the toys of `stem`: pdfindex floating (ifit None), as in the
     limit, or frozen to member ifit, with `freeze` (the other members'
-    parameters) frozen too. Returns the fit output's stem.
+    parameters) frozen too, and `track` written at each toy's best fit
+    (--trackParameters, for the chi2 of toyGof). Returns the fit output's
+    stem.
 
     With the index frozen Combine does not freeze the other members'
     parameters itself (MINIMIZER_freezeDisassociatedParams acts only while
@@ -502,6 +585,8 @@ def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
     else:
         index = ["--setParameters", f"r={r_inj:g},{idx}={ifit}",
                  "--freezeParameters", frozen_list(idx, freeze)]
+        if track:
+            index += ["--trackParameters", ",".join(track)]
     fitc = (["combine", "-M", "MultiDimFit", "-d", t2w, "-m", "%g" % MH,
              "-t", str(ntoys), "-s", str(seed), "--toysFile", toys,
              "-P", "r", "--algo", "singles", "--floatOtherPOIs", "1",
@@ -515,7 +600,7 @@ def fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys, seed, outdir,
 
 
 def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
-            force, dry, fits=None, frozen=None):
+            force, dry, fits=None, frozen=None, tracked=None):
     """One chunk of toys from member igen, then its fits: with the envelope
     floating (fits None), or once per member in `fits` with the index
     frozen, and frozen[member] (the others' parameters) with it. Fits whose
@@ -542,7 +627,9 @@ def toy_job(t2w, tag, igen, r_inj, rrange, ntoys, seed, outdir, extra,
     for ifit in todo:
         fstem, ok = fit_toys(t2w, tag, toys, stem, r_inj, rrange, ntoys,
                              seed, outdir, extra, dry, ifit,
-                             (frozen or {}).get(ifit, ()))
+                             (frozen or {}).get(ifit, ()),
+                             ((tracked or {}).get(ifit) or {}).get("track",
+                                                                  ()))
         done.append((fstem, "done" if ok else "fit failed"))
     return done
 
@@ -642,18 +729,21 @@ def run_tag(tag, args):
     if meta.get("envelope") not in (None, names):
         print(f"  !! envelope changed since the last run "
               f"({meta['envelope']} -> {names}); rerun with --force")
-    fits = frozen = None
+    fits = frozen = tracked = None
     if args.mode == "single":
         fits = fit_indices(names, tag, args.fit_models)
         frozen = others_frozen(params)
         check_single_fits(outdir, meta, args)
         meta["fits"] = fits
         meta["freeze_others"] = True
+        if not (args.dry_run and not os.path.isfile(t2w)):
+            tracked = fit_tracked(t2w, tag, frozen)
     meta.update({"tag": tag, "card": card, "workspace": t2w, "mode": args.mode,
                  "envelope": names, "mh": MH,
                  "combine_opts": COMBINE_FIT_OPTS + extra})
     meta.setdefault("rrange", {})
     meta.setdefault("rrange_source", {})   # asimov, fallback or user
+    meta.setdefault("r_width", {})         # its width in sigma_r (asimov)
     meta.setdefault("ntoys", {})       # per job, to count fits that wrote nothing
     print(("  envelope : " if args.mode == "envelope" else "  truths   : ")
           + ", ".join(f"[{i}] {short_name(n, tag)}"
@@ -672,14 +762,27 @@ def run_tag(tag, args):
         if args.rrange:
             meta["rrange"][key] = list(args.rrange)
             meta["rrange_source"][key] = "user"
+            floor = None if args.dry_run else workspace_r_floor(t2w)
+            if floor is not None and args.rrange[0] < floor:
+                print(f"  !! --rrange goes below r = {floor:.3g}, where "
+                      "S + B turns negative: fits that get there fail")
         elif key not in meta["rrange"] or args.force:
             meta["rrange"][key], meta["rrange_source"][key] = asimov_rrange(
-                t2w, tag, r_inj, outdir, extra, args.dry_run)
+                t2w, tag, r_inj, outdir, extra, args.dry_run,
+                width=args.r_width)
+            meta["r_width"][key] = args.r_width
         elif key not in meta["rrange_source"]:  # meta.json from before
             wide = meta["rrange"][key][1] - meta["rrange"][key][0]
             meta["rrange_source"][key] = ("fallback" if
                                           wide >= 2 * R_SEED_RANGE - 1e-6
                                           else "asimov")
+        if (meta["rrange_source"][key] == "asimov"
+                and meta["r_width"].get(key, 10.0) != args.r_width):
+            print(f"  !! the r range was set at +/- "
+                  f"{meta['r_width'].get(key, 10.0):g} sigma_r, not "
+                  f"--r-width {args.r_width:g}; kept, since the fits so far "
+                  "used it (--force redoes the range, the toys and the "
+                  "fits)")
         rrange = meta["rrange"][key]
         print(f"  r = {r_inj:g}: toy fits in r [{rrange[0]:.3g}, "
               f"{rrange[1]:.3g}]")
@@ -693,9 +796,12 @@ def run_tag(tag, args):
                           f"gen{igen}_fit{ifit}_{key}_s{seed}")
                     meta["ntoys"][fs] = n
                 jobs.append((t2w, tag, igen, r_inj, rrange, n, seed, outdir,
-                             extra, args.force, args.dry_run, fits, frozen))
+                             extra, args.force, args.dry_run, fits, frozen,
+                             tracked))
     if frozen is not None:    # for the --only fit tasks
         meta["frozen"] = {str(i): list(v) for i, v in frozen.items()}
+    if tracked is not None:
+        meta["tracked"] = {str(i): v for i, v in tracked.items()}
     if not args.dry_run:
         write_json(meta_path, meta)
 
@@ -729,6 +835,9 @@ def run_tag(tag, args):
                     print(f"  {stem}: {st}")
     for st, stems in sorted(status.items()):
         print(f"  {st:<18} {len(stems)}")
+    if fits is not None and not prepare and not args.dry_run:
+        # after the pool: PyROOT is not for threads
+        write_gofs(outdir, meta, tag, args.force)
 
 
 def toy_chunks(args, igen):
@@ -762,6 +871,8 @@ def run_fit_task(tag, args):
               "nothing to do")
         return
     freeze = (meta.get("frozen") or {}).get(str(ifit), ())
+    track = ((meta.get("tracked") or {}).get(str(ifit)) or {}).get(
+        "track", ())
     if args.mode == "single" and "frozen" not in meta:
         raise SystemExit(f"{meta_path} has no 'frozen': rerun --only "
                          "prepare with this biasStudy.py")
@@ -790,15 +901,94 @@ def run_fit_task(tag, args):
             else:
                 _, ok = fit_toys(t2w, tag, toys, stem, r_inj, rrange, n,
                                  seed, outdir, extra, args.dry_run, ifit,
-                                 freeze)
+                                 freeze, track)
                 st = "done" if ok else "fit failed"
+            if (ifit is not None and st in ("done", "exists")
+                    and not args.dry_run):
+                g = write_gof(outdir, meta, tag, fstem, args.force)
+                st += f", chi2 {g}"
             status.setdefault(st, []).append(fstem)
             print(f"  {fstem}: {st}", flush=True)
     for st, stems in sorted(status.items()):
         print(f"  {st:<18} {len(stems)}")
-    bad = [s for s in status if s not in ("done", "exists")]
+    bad = [s for s in status if s.split(",")[0] not in ("done", "exists")]
     if bad:
         raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# the toys' goodness of fit (--mode single)
+# ---------------------------------------------------------------------------
+
+FIT_STEM = re.compile(r"^gen(\d+)_fit(\d+)_(.+)_s(\d+)$")
+_CHANNELS = {}
+
+
+def gof_channel(t2w, tag):
+    """(toyGof.Channel, pdfindex) of the workspace, loaded once."""
+    if t2w not in _CHANNELS:
+        if not pdefs.load_combine(quiet=True):
+            raise SystemExit("needs libHiggsAnalysisCombinedLimit: run "
+                             "inside the Combine container")
+        f = ROOT.TFile.Open(t2w)
+        ROOT.SetOwnership(f, False)         # keep the workspace alive
+        w = f.Get("w")
+        multi = find_multipdf(w, tag)
+        add = toyGof.find_add(w.pdf("model_s"), multi)
+        xs = [v for v in w.set("observables")
+              if v.InheritsFrom("RooRealVar")]
+        if add is None or len(xs) != 1:
+            raise SystemExit(f"{t2w}: no single-channel S+B RooAddPdf for "
+                             "the chi2")
+        variables = {v.GetName(): v for v in w.allVars()}
+        _CHANNELS[t2w] = (toyGof.Channel(xs[0], add, variables),
+                          w.cat(f"pdfindex_{tag}"))
+    return _CHANNELS[t2w]
+
+
+def gof_path(outdir, fstem):
+    return os.path.join(outdir, f"gof_{fstem}.json")
+
+
+def write_gof(outdir, meta, tag, fstem, force=False):
+    """gof_<fstem>.json: per toy of fit_<fstem>.root, the chi2, ndf and
+    p-value of its fit (toyGof). Returns what happened, for the log."""
+    out = gof_path(outdir, fstem)
+    fit = os.path.join(outdir, f"fit_{fstem}.root")
+    if (not force and os.path.isfile(out)
+            and os.path.getmtime(out) >= os.path.getmtime(fit)):
+        return "exists"
+    m = FIT_STEM.match(fstem)
+    if not m:
+        return "not a --mode single fit"
+    igen, ifit, key, seed = m.groups()
+    info = (meta.get("tracked") or {}).get(ifit)
+    if not info:
+        return "no tracked parameters in meta.json (rerun --only prepare)"
+    rows = toyGof.read_tracked(fit, info["track"])
+    if rows is None:
+        return "fit made without --trackParameters (refit for the chi2)"
+    channel, index = gof_channel(meta["workspace"], tag)
+    index.setIndex(int(ifit))
+    toys = os.path.join(outdir, f"toys_gen{igen}_{key}_s{seed}.root")
+    res = toyGof.toys_gof(channel, toys, rows, info["npar"])
+    write_json(out, {"fit": os.path.basename(fit), "npar": info["npar"],
+                     "bin_gev": toyGof.BIN_GEV,
+                     "toys": {str(k): list(v) for k, v in res.items()}})
+    return f"{len(res)} toys"
+
+
+def write_gofs(outdir, meta, tag, force=False):
+    """write_gof for every --mode single fit file in outdir"""
+    done = {}
+    for fit in sorted(glob.glob(os.path.join(outdir,
+                                             "fit_gen*_fit*_s*.root"))):
+        fstem = os.path.basename(fit)[len("fit_"):-len(".root")]
+        st = write_gof(outdir, meta, tag, fstem, force)
+        done.setdefault(st if not st.endswith(" toys") else "computed",
+                        []).append(fstem)
+    for st, stems in sorted(done.items()):
+        print(f"  chi2 {st:<14} {len(stems)}")
 
 
 # ---------------------------------------------------------------------------
@@ -1161,6 +1351,14 @@ def collect_member(outdir, prefix, r_inj, rrange, index_name, requested,
     s = summarize(pulls, dr, chosen, drop, nmembers, threshold, metric)
     s["n_files"] = len(files)
     s["failed_jobs"] = failed
+    gofs = [gof_path(outdir, os.path.basename(p)[len("fit_"):-len(".root")])
+            for p in files]
+    have_gof = [g for g in gofs if os.path.isfile(g)]
+    if have_gof:
+        ps = [v[2] for g in have_gof
+              for v in read_json(g)["toys"].values()]
+        s["gof"] = toyGof.summarize_p(ps)
+        s["gof"]["files_without"] = len(gofs) - len(have_gof)
     return s, pulls
 
 
@@ -1296,11 +1494,13 @@ def plot_matrix(summary, outbase, pdf):
     truths, fits = summary["truths"], summary["fits"]
     thr, metric = summary["threshold"], summary["metric"]
     nx, ny = len(truths), len(fits)
-    cw, ch = 64, 30                                  # cell, pixels
+    with_gof = any(summary["matrix"][f][t].get("gof", {}).get("n")
+                   for f in fits for t in truths)
+    cw, ch = 64, (40 if with_gof else 30)            # cell, pixels
     # from the top, in pixels: the CMS label (to 30), the title, the
     # column heads, the matrix
-    title_y, head_y = 40, 68
-    left, right, top, bottom = 120, 210, 82, 104
+    title_y, head_y = 40, (86 if with_gof else 68)
+    left, right, top, bottom = 120, 210, head_y + 14, 104
     w, h = left + right + cw * nx, top + bottom + ch * ny
     style.setup_style()
     c = ROOT.TCanvas(f"c_{os.path.basename(outbase)}", "", w, h)
@@ -1329,6 +1529,11 @@ def plot_matrix(summary, outbase, pdf):
     txt.SetTextFont(43)
     txt.SetTextSize(13)
     txt.SetTextAlign(22)
+    gtxt = ROOT.TLatex()            # the toys' goodness of fit, under it
+    gtxt.SetTextFont(43)
+    gtxt.SetTextSize(10)
+    gtxt.SetTextAlign(22)
+    gtxt.SetTextColor(ROOT.kGray + 2)
     for k, f in enumerate(fits):
         y = ny - k - 1
         for i, t in enumerate(truths):
@@ -1338,8 +1543,13 @@ def plot_matrix(summary, outbase, pdf):
                              bad_col if "bias" in s else ROOT.kWhite)
             box.Draw()
             keep.append(box)
-            txt.DrawLatex(i + 0.5, y + 0.5,
+            txt.DrawLatex(i + 0.5, y + (0.62 if with_gof else 0.5),
                           "%+.2f" % s["bias"] if "bias" in s else "-")
+            g = s.get("gof", {})
+            if g.get("n"):
+                gtxt.DrawLatex(i + 0.5, y + 0.27,
+                               "p>%g: %.0f%%" % (g["threshold"],
+                                                 100 * g["frac_pass"]))
     frame.Draw("AXIS same")
 
     # per fit function, right of the matrix
@@ -1377,6 +1587,16 @@ def plot_matrix(summary, outbase, pdf):
     lat.DrawLatex(c.GetLeftMargin(), 1 - title_y / float(h),
                   f"{summary['tag']}, #mu_{{inj}} = {summary['r_inj']:g}: "
                   f"{metric} Bias, red where |Bias| #geq {thr:g}")
+    if with_gof:
+        gthr = next(summary["matrix"][f][t]["gof"]["threshold"]
+                    for f in fits for t in truths
+                    if summary["matrix"][f][t].get("gof", {}).get("n"))
+        lat.SetTextSize(12)
+        lat.SetTextColor(ROOT.kGray + 2)
+        lat.DrawLatex(c.GetLeftMargin(), 1 - 64.0 / h,
+                      "under it, the toys whose fit has #chi^{2} p > %g"
+                      % gthr)
+        lat.SetTextColor(ROOT.kBlack)
     # axis titles by hand: pixel-font title offsets do not scale
     lat.SetTextSize(14)
     lat.SetTextColor(ROOT.kGray + 2)
@@ -1386,7 +1606,7 @@ def plot_matrix(summary, outbase, pdf):
     lat.SetTextAlign(32)
     lat.DrawLatex(c.GetLeftMargin() - 8.0 / w, 1 - head_y / float(h),
                   "fitted with")
-    keep += [txt, col, lat,
+    keep += [txt, gtxt, col, lat,
              draw_label_px(w, h, left, w - 10.0,
                            "toys (%.1f TeV)" % style.SQRT_S_TEV)]
     save(c, outbase, pdf)
@@ -1707,6 +1927,27 @@ def print_matrix(summary):
     print("  * = |Bias| above the threshold")
     print("  chosen: " + (summary["chosen"] or
                           "none (no function passes against every truth)"))
+    if any("gof" in s for f in fits for s in summary["matrix"][f].values()):
+        thr = next(s["gof"]["threshold"] for f in fits
+                   for s in summary["matrix"][f].values()
+                   if s.get("gof", {}).get("n"))
+        print(f"\n  goodness of fit of the toy fits: the fraction of toys "
+              f"with chi2 p > {thr:g} (median p)")
+        print("  " + "fit / truth".ljust(11)
+              + "".join(t.rjust(wid + 5) for t in truths))
+        for f in fits:
+            cells = ""
+            for t in truths:
+                g = summary["matrix"][f][t].get("gof", {})
+                cells += (("%3.0f%% (%.2f)" % (100 * g["frac_pass"],
+                                               g["median_p"]))
+                          if g.get("n") else "-").rjust(wid + 5)
+            print(f"  {f:<11}{cells}")
+        missing = sum(1 for f in fits for s in summary["matrix"][f].values()
+                      if s.get("gof", {}).get("files_without"))
+        if missing:
+            print(f"  !! {missing} cell(s) have fit files without a chi2 "
+                  "(--only gof, in the container)")
 
 
 def print_table(summary):
@@ -1901,7 +2142,8 @@ def run_core(category, args):
             elif key not in rr or args.force:
                 rr[key] = asimov_rrange(t2w["core", test], name, r_inj,
                                         outdir, extra, args.dry_run,
-                                        label=f"_{test}")[0]
+                                        label=f"_{test}",
+                                        width=args.r_width)[0]
             print(f"  test {test}, r = {r_inj:g}: toy fits in r "
                   f"[{rr[key][0]:.3g}, {rr[key][1]:.3g}]")
             for ifam, fam in enumerate(fam_idx):
@@ -2041,20 +2283,28 @@ def main():
     ap.add_argument("--rrange", nargs=2, type=float, default=None,
                     metavar=("RMIN", "RMAX"),
                     help="r range of the toy fits (default: from an Asimov "
-                         f"fit, r_inj -/+ {R_WIDTH:g} sigma_r)")
+                         "fit, r_inj -/+ --r-width sigma_r, the lower edge "
+                         "kept where S + B >= 0)")
+    ap.add_argument("--r-width", type=float, default=R_WIDTH, metavar="N",
+                    help="the r range's half-width in sigma_r (default "
+                         f"{R_WIDTH:g}); an outdir keeps the range its fits "
+                         "used unless --force")
     ap.add_argument("--threshold", type=float, default=PULL_THRESHOLD,
                     help=f"max |Bias| (default {PULL_THRESHOLD})")
     ap.add_argument("--combine-opts", default="",
                     help="extra options for every combine call, e.g. "
                          "\"--toysNoSystematics\"")
-    ap.add_argument("--only", choices=("run", "report", "prepare", "fit"),
+    ap.add_argument("--only", choices=("run", "report", "prepare", "fit",
+                                       "gof"),
                     default=None,
                     help="run: toys and fits, no report; report: read "
                          "back and plot only; prepare: the workspace, the "
                          "r range, the significances and every toy, no "
                          "fits; fit: one test (--truth, --fit) from what "
                          "prepare wrote. prepare and fit are the stages "
-                         "of submitBias.py (Slurm)")
+                         "of submitBias.py (Slurm). gof (--mode single): "
+                         "the chi2 p-value of every toy fit from the fit "
+                         "files, which the fits also do themselves")
     ap.add_argument("--truth", type=int, default=None, metavar="I",
                     help="--only fit: the pdfindex of the truth")
     ap.add_argument("--fit", type=int, default=None, metavar="J",
@@ -2071,6 +2321,8 @@ def main():
         args.metric = DEFAULT_METRIC[args.mode]
     if args.fit_models and args.mode != "single":
         ap.error("--fit-models needs --mode single")
+    if args.only == "gof" and args.mode != "single":
+        ap.error("--only gof is for --mode single")
     if args.only in ("prepare", "fit") and args.mode == "core":
         ap.error(f"--only {args.only} is for --mode envelope or single")
     if args.only == "fit" and (args.truth is None or (
@@ -2092,6 +2344,13 @@ def main():
     if args.only == "fit":
         for tag in tags:
             run_fit_task(tag, args)
+        return
+    if args.only == "gof":
+        for tag in tags:
+            outdir, meta = read_meta(tag, args)
+            if meta is not None:
+                print(f"\n=== {tag} ===")
+                write_gofs(outdir, meta, tag, args.force)
         return
     if args.only != "report":
         for tag in tags:
